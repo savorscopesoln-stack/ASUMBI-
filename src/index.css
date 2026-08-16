@@ -1,0 +1,62 @@
+/* =========================
+   ASUMBI TTC MODERN THEME
+========================= */
+
+:root {
+  --primary: #4f46e5;
+  --secondary: #0a0f1c;
+  --accent: #fbbf24;
+  --glass: rgba(255, 255, 255, 0.06);
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: radial-gradient(circle at top, #111827, #0a0f1c, #050814);
+  color: white;
+}
+
+/* smooth transitions */
+* {
+  transition: all 0.25s ease;
+}
+
+/* glass card */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+/* hover lift */
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+}
+
+/* buttons */
+.btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  color: white;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+/* sidebar active */
+.active {
+  background: rgba(79,70,229,0.25);
+  border-left: 3px solid var(--primary);
+  padding-left: 10px;
+}
