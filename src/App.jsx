@@ -13,7 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import Teachers from "./pages/Teachers";
 import Users from "./pages/Users";
-import Reports from "./pages/Reports";
+import Reports from "./pages/reports";
 import Graduation from "./pages/Graduation";
 import RegistrationPage from "./pages/RegistrationPage";
 import AssessmentFeature from "./pages/AssessmentFeature";
