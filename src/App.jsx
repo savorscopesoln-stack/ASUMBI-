@@ -32,7 +32,7 @@ import Login from "./pages/Login";
 /* =========================================================
    STUDENT
 ========================================================= */
-import StudentLeaveOut from "./pages/student/StudentLeaveOut";
+import StudentLeaveOut from "./pages/Student/StudentLeaveOut";
 import StudentLayout from "./pages/student/StudentLayout";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import StudentMarks from "./pages/student/StudentMarks";
