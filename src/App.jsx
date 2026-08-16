@@ -33,17 +33,17 @@ import Login from "./pages/Login";
    STUDENT
 ========================================================= */
 import StudentLeaveOut from "./pages/Student/StudentLeaveOut";
-import StudentLayout from "./pages/student/StudentLayout";
-import StudentDashboard from "./pages/student/StudentDashboard";
-import StudentMarks from "./pages/student/StudentMarks";
-import StudentProfile from "./pages/student/StudentProfile";
-import StudentReport from "./pages/student/StudentReport";
-import StudentNotifications from "./pages/student/StudentNotifications";
-import StudentMealCard from "./pages/student/StudentMealCard";
-import TakeAssessment from "./pages/student/TakeEAssessment";
+import StudentLayout from "./pages/Student/StudentLayout";
+import StudentDashboard from "./pages/Student/StudentDashboard";
+import StudentMarks from "./pages/Student/StudentMarks";
+import StudentProfile from "./pages/Student/StudentProfile";
+import StudentReport from "./pages/Student/StudentReport";
+import StudentNotifications from "./pages/Student/StudentNotifications";
+import StudentMealCard from "./pages/Student/StudentMealCard";
+import TakeAssessment from "./pages/Student/TakeEAssessment";
 
 /* ================= NEW ================= */
-import StudentEAssessments from "./pages/student/StudentEAssessments";
+import StudentEAssessments from "./pages/Student/StudentEAssessments";
 
 /* =========================================================
    TEACHER
