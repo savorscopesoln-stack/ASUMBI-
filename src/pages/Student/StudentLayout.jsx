@@ -282,12 +282,7 @@ export default function StudentLayout() {
               </div>
             </div>
           ))}
-        </nav>
-
-        <div style={S.divider} />
-
-        {/* logout */}
-        <button
+            <button
           onClick={logout}
           className="dash-btn"
           aria-label="Log out of your account"
@@ -297,6 +292,12 @@ export default function StudentLayout() {
           <LogOut size={17} strokeWidth={2.25} />
           {!sidebarCollapsed && <span>Log out</span>}
         </button>
+        </nav>
+
+        <div style={S.divider} />
+
+        {/* logout */}
+      
       </aside>
 
       {/* ════════ MAIN ════════ */}
