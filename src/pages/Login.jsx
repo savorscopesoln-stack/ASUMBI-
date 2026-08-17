@@ -52,6 +52,8 @@ const injectAuthStyles = () => {
       --shadow: 0 1px 3px rgba(0,0,0,0.4);
     }
 
+    * { box-sizing: border-box; }
+    html, body { overflow-x: hidden; width: 100%; }
     body { background: var(--bg); }
 
     @keyframes authFadeUp { from { opacity:0; transform:translateY(12px);} to { opacity:1; transform:translateY(0);} }
@@ -70,6 +72,12 @@ const injectAuthStyles = () => {
       box-shadow: 0 0 0 3px var(--primary-tint);
     }
 
+    /* 16px min font-size on inputs prevents iOS Safari from
+       auto-zooming the viewport when a field gets focus. */
+    .auth-input, input[type="text"], input[type="password"] {
+      font-size: 16px !important;
+    }
+
     .auth-submit-btn:hover:not(:disabled) { background: var(--primary-dark) !important; border-color: var(--primary-dark) !important; }
 
     .auth-visual-caption {
@@ -77,12 +85,29 @@ const injectAuthStyles = () => {
       -webkit-backdrop-filter: blur(6px);
     }
 
+    /* ── layout: two columns on desktop/tablet, single column
+       (image collapses into a compact top banner) on phones ── */
+    .auth-page {
+      grid-template-columns: 1.05fr 1fr;
+    }
+
     @media (max-width: 980px) {
       .auth-visual { display: none !important; }
       .auth-visual-mobile { display: flex !important; }
+      .auth-page { grid-template-columns: 1fr !important; }
     }
     @media (min-width: 981px) {
       .auth-visual-mobile { display: none !important; }
+    }
+
+    /* ── phone-specific spacing/type tightening ── */
+    @media (max-width: 640px) {
+      .auth-form-panel { padding: 20px 16px !important; }
+      .auth-heading { font-size: 25px !important; }
+      .auth-visual-mobile { height: 140px !important; }
+    }
+    @media (max-width: 380px) {
+      .auth-form-panel { padding: 16px 12px !important; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -197,7 +222,7 @@ export default function Login() {
   };
 
   return (
-    <div style={S.page}>
+    <div className="auth-page" style={S.page}>
       {/* ── Left: visual panel (desktop/tablet) ── */}
       <div className="auth-visual" style={S.visual}>
         <div style={S.visualGlow} aria-hidden="true" />
@@ -230,7 +255,7 @@ export default function Login() {
       </div>
 
       {/* ── Right: form panel ── */}
-      <div style={S.formPanel}>
+      <div className="auth-form-panel" style={S.formPanel}>
         <div className="auth-card" style={S.formCard}>
 
           {/* Brand + theme toggle */}
@@ -248,7 +273,7 @@ export default function Login() {
           </div>
 
           <div style={{ marginTop: 34 }}>
-            <h1 style={S.heading}>Welcome back</h1>
+            <h1 className="auth-heading" style={S.heading}>Welcome back</h1>
             <p style={S.subheading}>Sign in to continue to your account.</p>
           </div>
 
@@ -319,6 +344,10 @@ const S = {
   page: {
     minHeight: "100vh",
     display: "grid",
+    // column count itself now lives in the .auth-page CSS class so
+    // it can be overridden by a media query on phones (inline
+    // styles can't respond to @media). Value here is just the
+    // desktop/tablet fallback.
     gridTemplateColumns: "1.05fr 1fr",
     background: "var(--bg)",
     fontFamily: "'Inter', system-ui, sans-serif",

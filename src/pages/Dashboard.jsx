@@ -516,24 +516,7 @@ function Dashboard() {
         </div>
 
         {/* Profile card */}
-        <button
-          type="button"
-          className="dash-profile-card"
-          style={D.profileCard}
-          onClick={() => navigate("/profile")}
-          aria-label={`Signed in as ${user.username || "User"}, role ${user.role || "staff"}. Open profile.`}
-          title={sidebarCollapsed ? `${user.username || "User"} · ${user.role || "staff"}` : undefined}
-        >
-          <div style={D.profileAvatar}>{(user.username || "U")[0].toUpperCase()}</div>
-          {!sidebarCollapsed && (
-            <div style={{ flex:1, minWidth:0, textAlign:"left" }}>
-              <div style={D.profileName}>{user.username || "User"}</div>
-              <span style={D.profileRoleBadge}>{user.role || "staff"}</span>
-            </div>
-          )}
-          {!sidebarCollapsed && <ChevronDown size={15} color="var(--text-muted)" style={{ flexShrink:0 }} />}
-        </button>
-
+        
         <div style={D.divider} />
 
         {/* Grouped nav */}
@@ -554,16 +537,13 @@ function Dashboard() {
                     <span style={D.navIcon}><Icon size={17} strokeWidth={2} /></span>
                     {!sidebarCollapsed && <span style={D.navLabel}>{name}</span>}
                   </button>
+                  
                 ))}
+                
               </div>
             </div>
           ))}
-        </nav>
-
-        <div style={D.divider} />
-
-        {/* Accessible logout */}
-        <button
+          <button
           onClick={logout}
           className="dash-btn"
           aria-label="Log out of your account"
@@ -576,6 +556,12 @@ function Dashboard() {
           <LogOut size={17} strokeWidth={2.25} />
           {!sidebarCollapsed && <span>Log out</span>}
         </button>
+        </nav>
+
+        <div style={D.divider} />
+
+        {/* Accessible logout */}
+        
       </aside>
 
       {/* ════════ MAIN ════════ */}
@@ -583,6 +569,24 @@ function Dashboard() {
 
         {/* ── Header ── */}
         <header style={D.pageHeader}>
+          <button
+          type="button"
+          className="dash-profile-card"
+          style={D.profileCard}
+          onClick={() => navigate("/profile")}
+          aria-label={`Signed in as ${user.username || "User"}, role ${user.role || "staff"}. Open profile.`}
+          title={sidebarCollapsed ? `${user.username || "User"} · ${user.role || "staff"}` : undefined}
+        >
+          <div style={D.profileAvatar}>{(user.username || "U")[0].toUpperCase()}</div>
+          {!sidebarCollapsed && (
+            <div style={{ flex:1, minWidth:0, textAlign:"left" }}>
+              <div style={D.profileName}>{user.username || "User"}</div>
+              <span style={D.profileRoleBadge}>{user.role || "staff"}</span>
+            </div>
+          )}
+          {!sidebarCollapsed && <ChevronDown size={15} color="var(--text-muted)" style={{ flexShrink:0 }} />}
+        </button>
+
           <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
             <button
               className="dash-mobile-toggle dash-icon-btn"
@@ -1028,12 +1032,14 @@ const D = {
     color: "#fff",
     flexShrink: 0,
   },
-  profileName: { fontSize: 13.5, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  profileName: { fontSize: 20, fontWeight: 900, color: "var(--text)", alignItems: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   profileRoleBadge: {
     display: "inline-block",
     marginTop: 2,
     fontSize: 10,
     fontWeight: 700,
+    alignItems: "center",
+    justifyContent: "center",
     textTransform: "capitalize",
     color: "var(--primary)",
     background: "var(--primary-tint)",
