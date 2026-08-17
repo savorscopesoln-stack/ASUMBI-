@@ -1,93 +1,166 @@
-import React, { useEffect, useMemo, useState, useCallback, useContext, createContext } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api";
+import { useTheme } from "../context/ThemeContext";
+import {
+  Search, X, RefreshCw, Download, Plus, UserPlus, ChevronDown, ArrowLeft, Pencil, Trash2,
+  Check, CheckCircle2, AlertTriangle, Lock, Unlock, Zap, Rocket, MessageSquare, Mail,
+  BarChart3, ClipboardList, FileText, Award, LockKeyhole, Users, Inbox, Clock, TrendingUp,
+  Sun, Moon,
+} from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
-   THEME — shared `tv_theme_preference` key + a single palette
-   object handed down through context so every sub-component
-   (many of which live outside the main component) can read
-   the current theme's colors without prop-drilling
+   DESIGN TOKENS — shared with the rest of the app
+   ─────────────────────────────────────────────────────────
+   Same stylesheet id/contents as the dashboard's token sheet,
+   so this page inherits the same palette and dark-mode support.
+   Injecting twice is a no-op if the dashboard already mounted
+   it. Theme itself now comes from the shared ThemeContext
+   instead of a page-local `tv_theme_preference` key, so toggling
+   here stays in sync with every other page.
 ═══════════════════════════════════════════════════════════ */
-function useThemePreference() {
-  const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem("tv_theme_preference") || "dark"; } catch { return "dark"; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem("tv_theme_preference", theme); } catch { /* ignore */ }
-  }, [theme]);
-  const toggleTheme = useCallback(() => setTheme((t) => (t === "dark" ? "light" : "dark")), []);
-  return [theme, toggleTheme];
-}
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-function getPalette(theme) {
-  if (theme === "light") {
-    return {
-      theme, invert: 1,
-      bg: "#fafafa", bgAlt: "#f2f2f2", surface: "#ffffff", card: "#ffffff", cardHover: "#f5f5f5",
-      border: "#e3e3e3", borderHi: "#cfcfcf",
-      textPri: "#121212", textSec: "#5c5c5c", textMuted: "#9a9a9a",
-      accent: "#2555c7",
-      success: "#1a7f4f", danger: "#c1352f", warning: "#9a6300",
-      white: "#ffffff",
-    };
-  }
-  return {
-    theme, invert: 0,
-    bg: "#0a0a0a", bgAlt: "#111111", surface: "#131313", card: "#141414", cardHover: "#1b1b1b",
-    border: "#262626", borderHi: "#343434",
-    textPri: "#f2f2f2", textSec: "#9a9a9a", textMuted: "#5c5c5c",
-    accent: "#5b8def",
-    success: "#3ecf8e", danger: "#f16565", warning: "#e0a537",
-    white: "#ffffff",
-  };
-}
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
 
-const ColorContext = createContext(getPalette("dark"));
-const useC = () => useContext(ColorContext);
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:translateY(0);} }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes softPulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
+
+    .dash-spin { animation: spin 0.8s linear infinite; }
+    .dash-skeleton { background: linear-gradient(90deg, var(--border) 25%, var(--card-elevated) 50%, var(--border) 75%); background-size: 200% 100%; animation: softPulse 1.4s ease-in-out infinite; border-radius: 8px; }
+
+    .dash-card:hover { box-shadow: var(--shadow); }
+    .dash-icon-btn:hover { background: var(--bg); }
+
+    button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .dash-main { padding: 20px 16px 48px !important; }
+      .dash-two-col { grid-template-columns: 1fr !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── static token map ───
+   Every sub-component below reads colors through useC() so
+   nothing needs prop-drilling. The values are CSS variables, so
+   light/dark switching is handled entirely by the stylesheet's
+   [data-theme] selector rather than by recomputing this object —
+   no context/provider needed any more.
+*/
+const C = {
+  bg: "var(--bg)", bgAlt: "var(--bg)", surface: "var(--card)", card: "var(--card)", cardHover: "var(--card-elevated)",
+  border: "var(--border)", borderHi: "var(--border)",
+  textPri: "var(--text)", textSec: "var(--text-secondary)", textMuted: "var(--text-muted)",
+  accent: "var(--primary)",
+  success: "var(--success)", danger: "var(--destructive)", warning: "var(--warning)",
+  white: "#ffffff",
+};
+const useC = () => C;
 
 /* ═══════════════════════════════════════════════════════════
-   ICONS — professional stroke set, replaces every emoji glyph
+   ICONS — lucide-react, aliased to the original names so every
+   call site below (IconSearch, IconX, …) is untouched
 ═══════════════════════════════════════════════════════════ */
-function Icon({ children, size = 16, style, ...rest }) {
+function IconDot({ size = 8, style }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor"
-      strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-      style={{ flexShrink: 0, display: "block", ...style }} {...rest}>
-      {children}
+    <svg width={size} height={size} viewBox="0 0 8 8" style={style}>
+      <circle cx="4" cy="4" r="4" fill="currentColor" />
     </svg>
   );
 }
-const IconSearch        = (p) => <Icon {...p}><circle cx="8.5" cy="8.5" r="5.5" /><path d="m17 17-3.8-3.8" /></Icon>;
-const IconX              = (p) => <Icon {...p}><path d="M5 5l10 10M15 5 5 15" /></Icon>;
-const IconRefresh        = (p) => <Icon {...p}><path d="M16.5 8.5A6.5 6.5 0 1 0 15 13" /><path d="M16.5 3.5v5h-5" /></Icon>;
-const IconDownload       = (p) => <Icon {...p}><path d="M10 3v9.5M6 9l4 4 4-4" /><path d="M4 15.5v1a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-1" /></Icon>;
-const IconPlus           = (p) => <Icon {...p}><path d="M10 4v12M4 10h12" /></Icon>;
-const IconUserPlus       = (p) => <Icon {...p}><circle cx="8" cy="7" r="3" /><path d="M2.8 17c.5-3 2.6-4.5 5.2-4.5s4.7 1.5 5.2 4.5" /><path d="M15.5 6v4M13.5 8h4" /></Icon>;
-const IconChevronDown    = (p) => <Icon {...p}><path d="m5 7.5 5 5 5-5" /></Icon>;
-const IconArrowLeft      = (p) => <Icon {...p}><path d="M12.5 4.5 6.5 10l6 5.5" /></Icon>;
-const IconEdit           = (p) => <Icon {...p}><path d="M12.8 3.3 16 6.5l-9.5 9.5H3.3v-3.2Z" /></Icon>;
-const IconTrash          = (p) => <Icon {...p}><path d="M4 6h12M8 6V4.5A1.5 1.5 0 0 1 9.5 3h1A1.5 1.5 0 0 1 12 4.5V6M6 6l.7 9.2A1.5 1.5 0 0 0 8.2 16.6h3.6a1.5 1.5 0 0 0 1.5-1.4L14 6" /></Icon>;
-const IconCheck          = (p) => <Icon {...p}><path d="M4 10.5 8 14.5 16 5.5" /></Icon>;
-const IconCheckCircle    = (p) => <Icon {...p}><circle cx="10" cy="10" r="7.25" /><path d="M6.7 10.2 9 12.5 13.4 7.5" /></Icon>;
-const IconAlert          = (p) => <Icon {...p}><path d="M10 3 18 16H2L10 3Z" /><path d="M10 8.3v3.4" /><circle cx="10" cy="14" r=".9" fill="currentColor" stroke="none" /></Icon>;
-const IconLock           = (p) => <Icon {...p}><rect x="4.5" y="9" width="11" height="8" rx="1.5" /><path d="M6.5 9V6.5a3.5 3.5 0 0 1 7 0V9" /></Icon>;
-const IconUnlock         = (p) => <Icon {...p}><rect x="4.5" y="9" width="11" height="8" rx="1.5" /><path d="M6.5 9V6.5a3.5 3.5 0 0 1 6.7-1.4" /></Icon>;
-const IconZap            = (p) => <Icon {...p}><path d="M11 2 4 12h5l-1 6 7-10h-5l1-6Z" /></Icon>;
-const IconRocket         = (p) => <Icon {...p}><path d="M10 2c2.5 1 4.5 3.5 4.5 7 0 2-1 4-2 5.5l-2.5-1-2.5 1c-1-1.5-2-3.5-2-5.5C5.5 5.5 7.5 3 10 2Z" /><circle cx="10" cy="8" r="1.4" /><path d="M7.5 14.5 6 18l3-1.3M12.5 14.5 14 18l-3-1.3" /></Icon>;
-const IconMessage        = (p) => <Icon {...p}><path d="M3 4.5h14v9H8l-3.5 3v-3H3v-9Z" /></Icon>;
-const IconMail           = (p) => <Icon {...p}><rect x="3" y="5" width="14" height="10" rx="1.5" /><path d="m3.5 5.8 6.5 5 6.5-5" /></Icon>;
-const IconBarChart       = (p) => <Icon {...p}><line x1="5" y1="15" x2="5" y2="10" /><line x1="10" y1="15" x2="10" y2="5" /><line x1="15" y1="15" x2="15" y2="12" /></Icon>;
-const IconClipboardList  = (p) => <Icon {...p}><rect x="5" y="3" width="10" height="4" rx="1" /><path d="M5 5H4.5A1.5 1.5 0 0 0 3 6.5v9A1.5 1.5 0 0 0 4.5 17h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 15.5 5H15" /><path d="M6.5 10h7M6.5 13h7" /></Icon>;
-const IconFileText       = (p) => <Icon {...p}><path d="M6 2.5h5.5L15 6v11.5H6Z" /><path d="M11.5 2.5V6H15" /><path d="M7.7 10h4.6M7.7 12.7h4.6" /></Icon>;
-const IconAward          = (p) => <Icon {...p}><circle cx="10" cy="7.5" r="4" /><path d="M7.2 10.8 6 17l4-2 4 2-1.2-6.2" /></Icon>;
-const IconLockKeyhole    = (p) => <Icon {...p}><circle cx="10" cy="8" r="5.5" /><circle cx="10" cy="7" r="1.3" /><path d="M10 8.3v2" /></Icon>;
-const IconUsers          = (p) => <Icon {...p}><circle cx="7" cy="7" r="2.6" /><path d="M2.3 16c.4-2.8 2.2-4.2 4.7-4.2s4.3 1.4 4.7 4.2" /><circle cx="14" cy="6.5" r="2.1" /><path d="M12.3 12c1.9.4 3 1.6 3.4 4" /></Icon>;
-const IconInbox          = (p) => <Icon {...p}><path d="M3 11 5.5 4h9L17 11" /><path d="M3 11v4.5A1.5 1.5 0 0 0 4.5 17h11a1.5 1.5 0 0 0 1.5-1.5V11h-4l-1 2H9l-1-2H3Z" /></Icon>;
-const IconClock          = (p) => <Icon {...p}><circle cx="10" cy="10" r="7" /><path d="M10 6v4l2.6 1.6" /></Icon>;
-const IconTrendUp        = (p) => <Icon {...p}><path d="M3 13.5 8 8.5l3 3 6-6.5" /><path d="M12.5 5h4.5v4.5" /></Icon>;
-const IconSun            = (p) => <Icon {...p}><circle cx="10" cy="10" r="3.3" /><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1 4.7 4.7" /></Icon>;
-const IconMoon           = (p) => <Icon {...p}><path d="M16.5 12.3A7 7 0 0 1 7.7 3.5a7 7 0 1 0 8.8 8.8Z" /></Icon>;
-const IconDot            = (p) => <svg width={p.size || 8} height={p.size || 8} viewBox="0 0 8 8" style={p.style}><circle cx="4" cy="4" r="4" fill="currentColor" /></svg>;
+const IconSearch       = Search;
+const IconX            = X;
+const IconRefresh      = RefreshCw;
+const IconDownload     = Download;
+const IconPlus         = Plus;
+const IconUserPlus     = UserPlus;
+const IconChevronDown  = ChevronDown;
+const IconArrowLeft    = ArrowLeft;
+const IconEdit         = Pencil;
+const IconTrash        = Trash2;
+const IconCheck        = Check;
+const IconCheckCircle  = CheckCircle2;
+const IconAlert        = AlertTriangle;
+const IconLock         = Lock;
+const IconUnlock       = Unlock;
+const IconZap          = Zap;
+const IconRocket       = Rocket;
+const IconMessage      = MessageSquare;
+const IconMail         = Mail;
+const IconBarChart     = BarChart3;
+const IconClipboardList= ClipboardList;
+const IconFileText     = FileText;
+const IconAward        = Award;
+const IconLockKeyhole  = LockKeyhole;
+const IconUsers        = Users;
+const IconInbox        = Inbox;
+const IconClock        = Clock;
+const IconTrendUp      = TrendingUp;
+const IconSun          = Sun;
+const IconMoon         = Moon;
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -129,9 +202,10 @@ const TABS = [
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════════ */
 export default function AdminEAssessments() {
+  injectStyles();
+
   const navigate = useNavigate();
-  const [theme, toggleTheme] = useThemePreference();
-  const C = useMemo(() => getPalette(theme), [theme]);
+  const { theme, toggleTheme } = useTheme();
 
   /* core data */
   const [list,             setList]             = useState([]);
@@ -533,756 +607,752 @@ export default function AdminEAssessments() {
 
   const lockedSessions = examSessions.filter((s) => s.status === "locked").length;
 
+  const sx = s(C);
+
   /* ── Loading skeleton ── */
   if (loading) return (
-    <ColorContext.Provider value={C}>
-      <div style={{ ...s(C).page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 20 }} data-theme={theme}>
-        <style>{globalStyles}</style>
-        <div style={s(C).spinner} />
-        <p style={{ color: C.textSec, fontSize: 14 }}>Loading assessment dashboard…</p>
-      </div>
-    </ColorContext.Provider>
+    <div className="dash-main" style={{ ...sx.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 20 }} data-theme={theme}>
+      <style>{globalStyles}</style>
+      <div className="dash-spin" style={sx.spinner} />
+      <p style={{ color: C.textSec, fontSize: 14 }}>Loading assessment dashboard…</p>
+    </div>
   );
-
-  const sx = s(C);
 
   /* ═══════════════════════════════════════════════════════════
      RENDER
   ═══════════════════════════════════════════════════════════ */
   return (
-    <ColorContext.Provider value={C}>
-      <div style={sx.page} data-theme={theme}>
-        <style>{globalStyles}</style>
+    <div className="dash-main" style={sx.page} data-theme={theme}>
+      <style>{globalStyles}</style>
 
-        {/* Toast notification */}
-        {toast && (
-          <div style={{ ...sx.toast, borderColor: toast.type === "error" ? C.danger : C.success }}>
-            {toast.type === "error" ? <IconX size={16} style={{ color: C.danger }} /> : <IconCheck size={16} style={{ color: C.success }} />}
-            <span style={{ color: C.textPri, fontSize: 14 }}>{toast.msg}</span>
-          </div>
-        )}
-
-        {/* ── Page Header ── */}
-        <div style={sx.header}>
-          <div>
-            <button style={sx.backBtn} onClick={() => navigate(-1)}>
-              <IconArrowLeft size={14} /> Back
-            </button>
-            <h1 style={sx.pageTitle}>E-Assessment Administration</h1>
-            <p style={sx.pageSub}>Manage assessments, submissions, marking workflow, and mark release</p>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
-            <ActionButton primary icon={<IconPlus size={14} />} onClick={() => setFormOpen(true)}>New Assessment</ActionButton>
-            <ActionButton icon={<IconUserPlus size={14} />} onClick={() => setAssignOpen(true)}>Assign Teacher</ActionButton>
-            <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(list, "assessments.csv")}>Export</ActionButton>
-            <button style={sx.iconBtn} onClick={loadAll} title="Refresh data"><IconRefresh size={15} /></button>
-          </div>
+      {/* Toast notification */}
+      {toast && (
+        <div style={{ ...sx.toast, borderColor: toast.type === "error" ? C.danger : C.success }}>
+          {toast.type === "error" ? <IconX size={16} style={{ color: C.danger }} /> : <IconCheck size={16} style={{ color: C.success }} />}
+          <span style={{ color: C.textPri, fontSize: 14 }}>{toast.msg}</span>
         </div>
+      )}
 
-        {/* ── Tab Bar ── */}
-        <div style={sx.tabBar}>
-          {TABS.map((t, i) => (
-            <button key={t.label} style={{ ...sx.tab, ...(activeTab === i ? sx.tabActive : {}) }} onClick={() => setActiveTab(i)}>
-              <t.icon size={15} />
-              {t.label}
-              {i === 1 && subStats.unassigned > 0 && <NotifPill n={subStats.unassigned} tone="warning" />}
-              {i === 2 && pendingRemarks > 0        && <NotifPill n={pendingRemarks}        tone="accent" />}
-              {i === 4 && lockedSessions > 0        && <NotifPill n={lockedSessions}        tone="danger" />}
-            </button>
-          ))}
+      {/* ── Page Header ── */}
+      <div style={sx.header}>
+        <div>
+          <button style={sx.backBtn} className="dash-icon-btn" onClick={() => navigate(-1)}>
+            <IconArrowLeft size={14} /> Back
+          </button>
+          <h1 style={sx.pageTitle}>E-Assessment Administration</h1>
+          <p style={sx.pageSub}>Manage assessments, submissions, marking workflow, and mark release</p>
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          <ActionButton primary icon={<IconPlus size={14} />} onClick={() => setFormOpen(true)}>New Assessment</ActionButton>
+          <ActionButton icon={<IconUserPlus size={14} />} onClick={() => setAssignOpen(true)}>Assign Teacher</ActionButton>
+          <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(list, "assessments.csv")}>Export</ActionButton>
+          <button style={sx.iconBtn} className="dash-icon-btn" onClick={loadAll} title="Refresh data"><IconRefresh size={15} /></button>
+        </div>
+      </div>
 
-        {/* ════════════════════════════════════════════
-            TAB 0 — ASSESSMENTS
-        ════════════════════════════════════════════ */}
-        {activeTab === 0 && (
-          <>
-            <div style={sx.filterRow}>
-              <div style={sx.searchWrap}>
-                <IconSearch size={15} style={{ position: "absolute", left: 12, color: C.textMuted }} />
-                <input
-                  placeholder="Search title or subject…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  style={sx.searchInput}
-                />
-                {search && (
-                  <button style={sx.clearBtn} onClick={() => setSearch("")}><IconX size={13} /></button>
-                )}
-              </div>
+      {/* ── Tab Bar ── */}
+      <div style={sx.tabBar}>
+        {TABS.map((t, i) => (
+          <button key={t.label} style={{ ...sx.tab, ...(activeTab === i ? sx.tabActive : {}) }} onClick={() => setActiveTab(i)}>
+            <t.icon size={15} />
+            {t.label}
+            {i === 1 && subStats.unassigned > 0 && <NotifPill n={subStats.unassigned} tone="warning" />}
+            {i === 2 && pendingRemarks > 0        && <NotifPill n={pendingRemarks}        tone="accent" />}
+            {i === 4 && lockedSessions > 0        && <NotifPill n={lockedSessions}        tone="danger" />}
+          </button>
+        ))}
+      </div>
 
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={sx.select}>
-                <option value="">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </select>
-
-              <div style={{ position: "relative" }}>
-                <button style={sx.bulkBtn} onClick={() => setBulkMenu(!bulkMenu)}>
-                  Bulk Actions <IconChevronDown size={13} />
-                </button>
-                {bulkMenu && (
-                  <div style={sx.dropdown} onMouseLeave={() => setBulkMenu(false)}>
-                    <DropItem icon={<IconTrash size={14} />} onClick={() => { setBulkMenu(false); deleteAssessments(selAssessments); }}>
-                      Delete {selAssessments.length} assessment{selAssessments.length !== 1 ? "s" : ""}
-                    </DropItem>
-                    <DropItem icon={<IconTrash size={14} />} onClick={() => { setBulkMenu(false); deleteAssignments(selAssignments); }}>
-                      Remove {selAssignments.length} assignment{selAssignments.length !== 1 ? "s" : ""}
-                    </DropItem>
-                    <DropItem icon={<IconDownload size={14} />} onClick={() => { setBulkMenu(false); exportCSV(filtered, "filtered-assessments.csv"); }}>
-                      Export filtered list
-                    </DropItem>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={sx.statsGrid}>
-              <StatCard label="Total"    value={stats.total}    icon={<IconClipboardList size={18} />} />
-              <StatCard label="Approved" value={stats.approved} icon={<IconCheck size={18} />} tone="success" />
-              <StatCard label="Pending"  value={stats.pending}  icon={<IconClock size={18} />} tone="warning" />
-              <StatCard label="Rejected" value={stats.rejected} icon={<IconX size={18} />} tone="danger" />
-            </div>
-
-            <SectionHeader title="Assigned Teachers" />
-            {assignedTeachers.length === 0 ? (
-              <EmptyState icon={<IconUsers size={26} />} text="No teacher assignments yet. Use 'Assign Teacher' above." />
-            ) : (
-              <div style={sx.assignGrid}>
-                {assignedTeachers.map((item) => (
-                  <div key={item.id} style={sx.assignCard}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div>
-                        <p style={{ margin: 0, fontWeight: 700, color: C.textPri, fontSize: 15 }}>{item.teacher_name}</p>
-                        <p style={{ margin: "5px 0 0", fontSize: 12, color: C.textMuted }}>
-                          {item.subject_name} · {item.class_name}
-                        </p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={selAssignments.includes(item.id)}
-                        onChange={() => setSelAssignments((p) =>
-                          p.includes(item.id) ? p.filter((x) => x !== item.id) : [...p, item.id]
-                        )}
-                        style={{ accentColor: C.accent, cursor: "pointer", width: 15, height: 15 }}
-                      />
-                    </div>
-                    <MiniBtn tone="danger" icon={<IconTrash size={12} />} onClick={() => deleteAssignments([item.id])} style={{ marginTop: 14 }}>
-                      Remove
-                    </MiniBtn>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <SectionHeader title={`Assessments (${filtered.length})`} />
-            {filtered.length === 0 ? (
-              <EmptyState icon={<IconInbox size={26} />} text="No assessments match your filters." />
-            ) : (
-              <div style={sx.cardGrid}>
-                {filtered.map((a) => (
-                  <AssessmentCard
-                    key={a.id}
-                    a={a}
-                    selected={selAssessments.includes(a.id)}
-                    onSelect={() => setSelAssessments((p) =>
-                      p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]
-                    )}
-                    onApprove={() => reviewAssessment(a.id, "approved")}
-                    onReject={() => reviewAssessment(a.id, "rejected")}
-                    onStats={() => openQuickStats(a)}
-                    onEdit={() => openEditModal(a)}
-                    onDelete={() => deleteAssessments([a.id])}
-                    onToggle={() => toggleAssessmentActive(a.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ════════════════════════════════════════════
-            TAB 1 — SUBMISSIONS
-        ════════════════════════════════════════════ */}
-        {activeTab === 1 && (
-          <>
-            <div style={sx.statsGrid}>
-              <StatCard label="Total"      value={subStats.total}      icon={<IconClipboardList size={18} />} />
-              <StatCard label="Unassigned" value={subStats.unassigned} icon={<IconAlert size={18} />} tone="warning" />
-              <StatCard label="Marked"     value={subStats.marked}     icon={<IconCheck size={18} />} tone="success" />
-              <StatCard label="Released"   value={subStats.released}   icon={<IconTrendUp size={18} />} />
-            </div>
-
-            <div style={{ ...sx.filterRow, marginBottom: 28 }}>
-              <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)} style={sx.select}>
-                <option value="">All Subjects</option>
-                {Object.keys(submissionsBySubject).map((sub) => (
-                  <option key={sub} value={sub}>{sub}</option>
-                ))}
-              </select>
-
-              {subjectFilter ? (
-                <>
-                  <ActionButton icon={<IconZap size={14} />} onClick={() => bulkAssignBySubject(subjectFilter)}>Distribute Equally</ActionButton>
-                  <ActionButton icon={<IconRocket size={14} />} onClick={() => bulkReleaseMarks(subjectFilter)}>Bulk Release</ActionButton>
-                </>
-              ) : (
-                <ActionButton icon={<IconZap size={14} />} onClick={bulkAssignAll}>Auto-Assign All</ActionButton>
+      {/* ════════════════════════════════════════════
+          TAB 0 — ASSESSMENTS
+      ════════════════════════════════════════════ */}
+      {activeTab === 0 && (
+        <>
+          <div style={sx.filterRow}>
+            <div style={sx.searchWrap}>
+              <IconSearch size={15} style={{ position: "absolute", left: 12, color: C.textMuted }} />
+              <input
+                placeholder="Search title or subject…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={sx.searchInput}
+              />
+              {search && (
+                <button style={sx.clearBtn} onClick={() => setSearch("")}><IconX size={13} /></button>
               )}
-
-              <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
-                submissions.map((s) => ({
-                  student: s.student_name, assessment: s.assessment_title,
-                  subject: s.subject_name, score: s.score, total: s.total_marks,
-                  status: s.status, submitted: s.submitted_at,
-                })), "submissions.csv"
-              )}>Export CSV</ActionButton>
             </div>
 
-            {Object.keys(submissionsBySubject).length === 0 ? (
-              <EmptyState icon={<IconFileText size={26} />} text="No submissions found." />
-            ) : (
-              Object.entries(submissionsBySubject)
-                .filter(([sName]) => !subjectFilter || sName === subjectFilter)
-                .map(([subjectName, subs]) => {
-                  const subjectTeachers = assignedTeachers.filter(
-                    (t) => String(t.subject_name) === String(subjectName)
-                  );
-                  const markedCount   = subs.filter((s) => s.score != null).length;
-                  const releasedCount = subs.filter((s) => s.status === "released").length;
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={sx.select}>
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
 
-                  return (
-                    <div key={subjectName} style={sx.subjectBlock}>
-                      <div style={sx.subjectHead}>
-                        <div>
-                          <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.textPri }}>{subjectName}</p>
-                          <div style={{ marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                            <span style={{ fontSize: 12, color: C.textMuted }}>
-                              {subs.length} submitted · {markedCount} marked · {releasedCount} released
-                            </span>
-                            {subjectTeachers.length > 0
-                              ? subjectTeachers.map((t) => <Chip key={t.id} icon={<IconUsers size={11} />} text={t.teacher_name} tone="success" />)
-                              : <Chip icon={<IconAlert size={11} />} text="No teacher assigned" tone="danger" />}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
-                          <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
-                        </div>
-                      </div>
-
-                      <div style={{ overflowX: "auto" }}>
-                        <table style={sx.table}>
-                          <thead>
-                            <tr>
-                              {["Student","Assessment","Submitted","Assigned To","Mark","Grade","Status","Actions"].map((h) => <Th key={h}>{h}</Th>)}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {subs.map((sub) => (
-                              <tr key={sub.id} className="row-hover">
-                                <Td><span style={{ fontWeight: 600, color: C.textPri }}>{sub.student_name || `#${sub.student_id}`}</span></Td>
-                                <Td style={{ color: C.textSec, fontSize: 13 }}>{sub.assessment_title || "—"}</Td>
-                                <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDate(sub.submitted_at)}</Td>
-                                <Td>
-                                  {sub.assigned_teacher_id
-                                    ? <Chip text={sub.assigned_teacher_name || `#${sub.assigned_teacher_id}`} tone="success" />
-                                    : <Chip text="Unassigned" tone="danger" />}
-                                </Td>
-                                <Td>{sub.score != null ? <ScoreBadge score={sub.score} total={sub.total_marks || 100} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
-                                <Td>{sub.score != null ? <GradeBadge grade={computeGrade(sub.score, sub.total_marks)} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
-                                <Td><MarkPill status={sub.status} score={sub.score} /></Td>
-                                <Td>
-                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                                    {!sub.assigned_teacher_id && subjectTeachers.length > 0 && (
-                                      <select
-                                        style={{ ...sx.select, padding: "5px 8px", fontSize: 12 }}
-                                        defaultValue=""
-                                        onChange={(e) => { if (e.target.value) assignSubmissionToTeacher(sub.id, e.target.value); }}
-                                      >
-                                        <option value="">Assign…</option>
-                                        {subjectTeachers.map((t) => (
-                                          <option key={t.teacher_id} value={t.teacher_id}>{t.teacher_name}</option>
-                                        ))}
-                                      </select>
-                                    )}
-                                    {sub.score != null && sub.status !== "released" && (
-                                      <MiniBtn onClick={() => setReleaseModal(sub)} icon={<IconRocket size={12} />}>Release</MiniBtn>
-                                    )}
-                                    <MiniBtn onClick={() => openAnswerModal(sub)} icon={<IconFileText size={12} />}>Answers</MiniBtn>
-                                    <MiniBtn onClick={() => openQuickStats(sub)} neutral>View</MiniBtn>
-                                  </div>
-                                </Td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })
-            )}
-          </>
-        )}
-
-        {/* ════════════════════════════════════════════
-            TAB 2 — REMARK REQUESTS
-        ════════════════════════════════════════════ */}
-        {activeTab === 2 && (
-          <>
-            <div style={sx.tabTopRow}>
-              <div>
-                <h2 style={sx.tabTitle}>Remark Requests</h2>
-                <p style={sx.tabSub}>Review and action student remark requests</p>
-              </div>
-              <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
-                remarkRequests.map((r) => ({
-                  student: r.student_name, assessment: r.assessment_title,
-                  subject: r.subject_name, score: r.score, status: r.remark_status,
-                  reason: r.remark_reason, submitted: r.submitted_at,
-                })), "remark-requests.csv"
-              )}>Export CSV</ActionButton>
-            </div>
-
-            {remarkRequests.length === 0 ? (
-              <EmptyState icon={<IconCheckCircle size={26} />} text="No remark requests at this time." />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {remarkRequests.map((r) => (
-                  <div key={r.id} style={sx.remarkCard}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                      <div>
-                        <p style={{ margin: 0, fontWeight: 700, color: C.textPri, fontSize: 16 }}>
-                          {r.student_name || `Student #${r.student_id}`}
-                        </p>
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: C.textMuted }}>
-                          {r.assessment_title} · {r.subject_name}
-                        </p>
-                      </div>
-                      <RemarkBadge status={r.remark_status} />
-                    </div>
-
-                    <div style={sx.metaGrid}>
-                      <MetaRow label="Assigned To"  value={r.teacher_name || "Unassigned"} />
-                      <MetaRow label="Current Mark" value={r.score != null ? `${r.score}/${r.total_marks || 100}` : "—"} />
-                      <MetaRow label="Grade"        value={computeGrade(r.score, r.total_marks)} />
-                      <MetaRow label="Submitted"    value={fmtDate(r.submitted_at)} />
-                    </div>
-
-                    {r.remark_reason && (
-                      <div style={sx.reasonBox}><strong>Student reason: </strong>{r.remark_reason}</div>
-                    )}
-                    {r.admin_comment && (
-                      <div style={sx.commentBox}><strong>Admin comment: </strong>{r.admin_comment}</div>
-                    )}
-
-                    {(r.remark_status === "pending" || r.remark_status == null) ? (
-                      <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-                        <MiniBtn tone="success" grow icon={<IconCheck size={13} />} onClick={() => reviewRemarkRequest(r.id, "approved")}>Approve</MiniBtn>
-                        <MiniBtn tone="danger"  grow icon={<IconX size={13} />}     onClick={() => reviewRemarkRequest(r.id, "rejected")}>Reject</MiniBtn>
-                        <MiniBtn tone="warning" grow icon={<IconRefresh size={13} />} onClick={() => reviewRemarkRequest(r.id, "revision")}>Request Revision</MiniBtn>
-                        <MiniBtn grow icon={<IconMessage size={13} />} onClick={() => { setRemarkModal(r); setRemarkComment(""); }}>Comment &amp; Decide</MiniBtn>
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 14 }}>
-                        <p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>
-                          Reviewed {r.reviewed_at ? `on ${r.reviewed_at}` : ""} · Status: <strong style={{ color: C.textPri }}>{r.remark_status}</strong>
-                        </p>
-                        <MiniBtn neutral icon={<IconRefresh size={12} />} onClick={() => reviewRemarkRequest(r.id, "pending")} style={{ marginTop: 10 }}>Reopen</MiniBtn>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ════════════════════════════════════════════
-            TAB 3 — RELEASED MARKS
-        ════════════════════════════════════════════ */}
-        {activeTab === 3 && (
-          <>
-            <div style={sx.tabTopRow}>
-              <div>
-                <h2 style={sx.tabTitle}>Released Marks</h2>
-                <p style={sx.tabSub}>Marks published to student academic records</p>
-              </div>
-              <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
-                releasedMarks.map((m) => ({
-                  student: m.student_name, assessment: m.assessment_title,
-                  subject: m.subject_name, score: m.score, total: m.total_marks,
-                  grade: computeGrade(m.score, m.total_marks), released: m.released_at,
-                })), "released-marks.csv"
-              )}>Export CSV</ActionButton>
-            </div>
-
-            {releasedMarks.length > 0 && <GradeDistribution marks={releasedMarks} />}
-
-            {releasedMarks.length === 0 ? (
-              <EmptyState icon={<IconBarChart size={26} />} text="No marks have been released yet." />
-            ) : (
-              <div style={sx.tableWrap}>
-                <table style={sx.table}>
-                  <thead>
-                    <tr>{["Student","Assessment","Subject","Mark","Pct","Grade","Released"].map((h) => <Th key={h}>{h}</Th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {releasedMarks.map((m) => {
-                      const total = m.total_marks || 100;
-                      const pct   = m.score != null ? Math.round((m.score / total) * 100) : null;
-                      return (
-                        <tr key={m.id} className="row-hover">
-                          <Td><span style={{ fontWeight: 600, color: C.textPri }}>{m.student_name || m.student_id}</span></Td>
-                          <Td style={{ color: C.textSec }}>{m.assessment_title || "—"}</Td>
-                          <Td style={{ color: C.textSec }}>{m.subject_name || "—"}</Td>
-                          <Td><ScoreBadge score={m.score} total={total} /></Td>
-                          <Td style={{ color: pct >= 50 ? C.success : C.danger, fontWeight: 700 }}>{pct != null ? `${pct}%` : "—"}</Td>
-                          <Td><GradeBadge grade={computeGrade(m.score, total)} /></Td>
-                          <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDate(m.released_at)}</Td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ════════════════════════════════════════════
-            TAB 4 — DEVICE LOCKS
-        ════════════════════════════════════════════ */}
-        {activeTab === 4 && (
-          <>
-            <div style={sx.tabTopRow}>
-              <div>
-                <h2 style={sx.tabTitle}>Device Locks</h2>
-                <p style={sx.tabSub}>
-                  Each student's exam token is bound to the first device it's used on. If a token is used
-                  on a second device the session locks automatically — unlock it here once you've confirmed
-                  which device the student should continue on.
-                </p>
-              </div>
-            </div>
-
-            {examSessions.length === 0 ? (
-              <EmptyState icon={<IconUnlock size={26} />} text="No active exam sessions right now." />
-            ) : (
-              <div style={sx.tableWrap}>
-                <table style={sx.table}>
-                  <thead>
-                    <tr>{["Student","Assessment","Token","Status","Device","Last Activity","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {examSessions.map((sess) => (
-                      <tr key={sess.id} className="row-hover">
-                        <Td><span style={{ fontWeight: 600, color: C.textPri }}>{sess.student_name || `#${sess.student_id}`}</span></Td>
-                        <Td style={{ color: C.textSec, fontSize: 13 }}>{sess.assessment_title || "—"}</Td>
-                        <Td><span style={{ fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", color: C.textPri }}>{sess.token}</span></Td>
-                        <Td>
-                          {sess.status === "locked" && <Chip icon={<IconLock size={11} />} text="Locked" tone="danger" />}
-                          {sess.status === "active" && <Chip icon={<IconDot size={7} />} text="Active" tone="success" />}
-                          {sess.status === "issued" && <Chip text="Not started" tone="neutral" />}
-                        </Td>
-                        <Td style={{ color: C.textMuted, fontSize: 12, maxWidth: 220 }}>{sess.device_label || "—"}</Td>
-                        <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(sess.last_heartbeat || sess.activated_at)}</Td>
-                        <Td>
-                          {sess.status === "locked" ? (
-                            <MiniBtn tone="success" icon={<IconUnlock size={12} />} onClick={() => unlockSession(sess.id)}>Unlock</MiniBtn>
-                          ) : (
-                            <span style={{ color: C.textMuted, fontSize: 12 }}>—</span>
-                          )}
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ════════════════════════════════════════════
-            MODALS
-        ════════════════════════════════════════════ */}
-
-        {formOpen && (
-          <Modal title="Create New Assessment" onClose={() => setFormOpen(false)}>
-            <FieldLabel>Assessment Title *</FieldLabel>
-            <ModalInput placeholder="e.g. Mid-Term Mathematics Paper 1" value={form.title}
-              onChange={(v) => setForm({ ...form, title: v })} />
-
-            <FieldLabel>Subject *</FieldLabel>
-            <ModalSelect value={form.subject} onChange={(v) => setForm({ ...form, subject: v })}
-              options={subjects.map((s) => ({ value: s.name || s.subject_name, label: s.name || s.subject_name }))}
-              placeholder="Select Subject" />
-
-            <FieldLabel>Class *</FieldLabel>
-            <ModalSelect value={form.class_id} onChange={(v) => setForm({ ...form, class_id: v })}
-              options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))}
-              placeholder="Select Class" />
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <FieldLabel>Duration (minutes)</FieldLabel>
-                <ModalInput type="number" placeholder="30" value={form.duration_minutes}
-                  onChange={(v) => setForm({ ...form, duration_minutes: v })} />
-              </div>
-              <div>
-                <FieldLabel>Total Marks</FieldLabel>
-                <ModalInput type="number" placeholder="100" value={form.total_marks}
-                  onChange={(v) => setForm({ ...form, total_marks: v })} />
-              </div>
-            </div>
-
-            <FieldLabel>Instructions (optional)</FieldLabel>
-            <textarea
-              placeholder="Any special instructions for students…"
-              value={form.instructions}
-              onChange={(e) => setForm({ ...form, instructions: e.target.value })}
-              style={sx.textarea}
-            />
-            <p style={sx.formHint}>
-              All students in the selected class can take this assessment once it is approved and activated.
-              Each student will receive a unique 6-character exam token bound to their first device.
-            </p>
-            <SaveButton onClick={createAssessment} loading={saving} label="Create Assessment" />
-          </Modal>
-        )}
-
-        {editOpen && (
-          <Modal title="Edit Assessment" onClose={() => setEditOpen(false)}>
-            <FieldLabel>Assessment Title *</FieldLabel>
-            <ModalInput placeholder="Assessment Title" value={editForm.title}
-              onChange={(v) => setEditForm({ ...editForm, title: v })} />
-
-            <FieldLabel>Subject *</FieldLabel>
-            <ModalSelect value={editForm.subject} onChange={(v) => setEditForm({ ...editForm, subject: v })}
-              options={subjects.map((s) => ({ value: s.name || s.subject_name, label: s.name || s.subject_name }))}
-              placeholder="Select Subject" />
-
-            <FieldLabel>Class *</FieldLabel>
-            <ModalSelect value={editForm.class_id} onChange={(v) => setEditForm({ ...editForm, class_id: v })}
-              options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))}
-              placeholder="Select Class" />
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <FieldLabel>Duration (minutes)</FieldLabel>
-                <ModalInput type="number" value={editForm.duration_minutes}
-                  onChange={(v) => setEditForm({ ...editForm, duration_minutes: v })} />
-              </div>
-              <div>
-                <FieldLabel>Total Marks</FieldLabel>
-                <ModalInput type="number" value={editForm.total_marks}
-                  onChange={(v) => setEditForm({ ...editForm, total_marks: v })} />
-              </div>
-            </div>
-
-            <FieldLabel>Instructions</FieldLabel>
-            <textarea value={editForm.instructions}
-              onChange={(e) => setEditForm({ ...editForm, instructions: e.target.value })}
-              style={sx.textarea} />
-            <SaveButton onClick={saveEditAssessment} loading={saving} label="Save Changes" />
-          </Modal>
-        )}
-
-        {assignOpen && (
-          <Modal title="Assign Teacher to Subject & Class" onClose={() => setAssignOpen(false)}>
-            <FieldLabel>Teacher *</FieldLabel>
-            <ModalSelect value={assignForm.teacher_id} onChange={(v) => setAssignForm({ ...assignForm, teacher_id: v })}
-              options={teachers.map((t) => ({ value: t.id, label: t.name }))} placeholder="Select Teacher" />
-
-            <FieldLabel>Subject *</FieldLabel>
-            <ModalSelect value={assignForm.subject_id} onChange={(v) => setAssignForm({ ...assignForm, subject_id: v })}
-              options={subjects.map((s) => ({ value: s.id, label: s.name || s.subject_name }))} placeholder="Select Subject" />
-
-            <FieldLabel>Class *</FieldLabel>
-            <ModalSelect value={assignForm.class_id} onChange={(v) => setAssignForm({ ...assignForm, class_id: v })}
-              options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))} placeholder="Select Class" />
-
-            <SaveButton onClick={assignTeacher} loading={saving} label="Assign Teacher" />
-            <p style={sx.formHint}>
-              After assigning, use <strong style={{ color: C.textPri }}>Distribute Equally</strong> on the Submissions tab to split work across teachers.
-            </p>
-          </Modal>
-        )}
-
-        {selected && (
-          <Modal
-            title={selected.student_name ? "Submission Details" : "Assessment — Quick Stats"}
-            onClose={() => { setSelected(null); setQuickStats(null); }}
-          >
-            {!selected.student_name && quickStats && (
-              <>
-                <div style={sx.statsGrid}>
-                  <StatCard label="Submitted" value={quickStats.submitted_count ?? 0} icon={<IconMail size={18} />} />
-                  <StatCard label="Marked"    value={quickStats.marked_count    ?? 0} icon={<IconCheck size={18} />} tone="success" />
-                  <StatCard label="Released"  value={quickStats.released_count  ?? 0} icon={<IconTrendUp size={18} />} />
-                  <StatCard label="Remarks"   value={quickStats.remark_count    ?? 0} icon={<IconMessage size={18} />} tone="warning" />
+            <div style={{ position: "relative" }}>
+              <button style={sx.bulkBtn} onClick={() => setBulkMenu(!bulkMenu)}>
+                Bulk Actions <IconChevronDown size={13} />
+              </button>
+              {bulkMenu && (
+                <div style={sx.dropdown} onMouseLeave={() => setBulkMenu(false)}>
+                  <DropItem icon={<IconTrash size={14} />} onClick={() => { setBulkMenu(false); deleteAssessments(selAssessments); }}>
+                    Delete {selAssessments.length} assessment{selAssessments.length !== 1 ? "s" : ""}
+                  </DropItem>
+                  <DropItem icon={<IconTrash size={14} />} onClick={() => { setBulkMenu(false); deleteAssignments(selAssignments); }}>
+                    Remove {selAssignments.length} assignment{selAssignments.length !== 1 ? "s" : ""}
+                  </DropItem>
+                  <DropItem icon={<IconDownload size={14} />} onClick={() => { setBulkMenu(false); exportCSV(filtered, "filtered-assessments.csv"); }}>
+                    Export filtered list
+                  </DropItem>
                 </div>
-                {quickStats.average_score != null && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
-                    {[
-                      { label: "Average", value: `${quickStats.average_score}%` },
-                      { label: "Highest", value: quickStats.highest_score ?? "—", tone: "success" },
-                      { label: "Lowest",  value: quickStats.lowest_score  ?? "—", tone: "danger" },
-                    ].map(({ label, value, tone }) => (
-                      <div key={label} style={{ padding: 16, background: C.bgAlt, borderRadius: 10, textAlign: "center", border: `1px solid ${C.border}` }}>
-                        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: tone ? C[tone] : C.textPri }}>{value}</div>
-                      </div>
-                    ))}
+              )}
+            </div>
+          </div>
+
+          <div style={sx.statsGrid}>
+            <StatCard label="Total"    value={stats.total}    icon={<IconClipboardList size={18} />} />
+            <StatCard label="Approved" value={stats.approved} icon={<IconCheck size={18} />} tone="success" />
+            <StatCard label="Pending"  value={stats.pending}  icon={<IconClock size={18} />} tone="warning" />
+            <StatCard label="Rejected" value={stats.rejected} icon={<IconX size={18} />} tone="danger" />
+          </div>
+
+          <SectionHeader title="Assigned Teachers" />
+          {assignedTeachers.length === 0 ? (
+            <EmptyState icon={<IconUsers size={26} />} text="No teacher assignments yet. Use 'Assign Teacher' above." />
+          ) : (
+            <div style={sx.assignGrid}>
+              {assignedTeachers.map((item) => (
+                <div key={item.id} className="dash-card" style={sx.assignCard}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, color: C.textPri, fontSize: 15 }}>{item.teacher_name}</p>
+                      <p style={{ margin: "5px 0 0", fontSize: 12, color: C.textMuted }}>
+                        {item.subject_name} · {item.class_name}
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={selAssignments.includes(item.id)}
+                      onChange={() => setSelAssignments((p) =>
+                        p.includes(item.id) ? p.filter((x) => x !== item.id) : [...p, item.id]
+                      )}
+                      style={{ accentColor: C.accent, cursor: "pointer", width: 15, height: 15 }}
+                    />
                   </div>
-                )}
+                  <MiniBtn tone="danger" icon={<IconTrash size={12} />} onClick={() => deleteAssignments([item.id])} style={{ marginTop: 14 }}>
+                    Remove
+                  </MiniBtn>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <SectionHeader title={`Assessments (${filtered.length})`} />
+          {filtered.length === 0 ? (
+            <EmptyState icon={<IconInbox size={26} />} text="No assessments match your filters." />
+          ) : (
+            <div style={sx.cardGrid}>
+              {filtered.map((a) => (
+                <AssessmentCard
+                  key={a.id}
+                  a={a}
+                  selected={selAssessments.includes(a.id)}
+                  onSelect={() => setSelAssessments((p) =>
+                    p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]
+                  )}
+                  onApprove={() => reviewAssessment(a.id, "approved")}
+                  onReject={() => reviewAssessment(a.id, "rejected")}
+                  onStats={() => openQuickStats(a)}
+                  onEdit={() => openEditModal(a)}
+                  onDelete={() => deleteAssessments([a.id])}
+                  onToggle={() => toggleAssessmentActive(a.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ════════════════════════════════════════════
+          TAB 1 — SUBMISSIONS
+      ════════════════════════════════════════════ */}
+      {activeTab === 1 && (
+        <>
+          <div style={sx.statsGrid}>
+            <StatCard label="Total"      value={subStats.total}      icon={<IconClipboardList size={18} />} />
+            <StatCard label="Unassigned" value={subStats.unassigned} icon={<IconAlert size={18} />} tone="warning" />
+            <StatCard label="Marked"     value={subStats.marked}     icon={<IconCheck size={18} />} tone="success" />
+            <StatCard label="Released"   value={subStats.released}   icon={<IconTrendUp size={18} />} />
+          </div>
+
+          <div style={{ ...sx.filterRow, marginBottom: 28 }}>
+            <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)} style={sx.select}>
+              <option value="">All Subjects</option>
+              {Object.keys(submissionsBySubject).map((sub) => (
+                <option key={sub} value={sub}>{sub}</option>
+              ))}
+            </select>
+
+            {subjectFilter ? (
+              <>
+                <ActionButton icon={<IconZap size={14} />} onClick={() => bulkAssignBySubject(subjectFilter)}>Distribute Equally</ActionButton>
+                <ActionButton icon={<IconRocket size={14} />} onClick={() => bulkReleaseMarks(subjectFilter)}>Bulk Release</ActionButton>
+              </>
+            ) : (
+              <ActionButton icon={<IconZap size={14} />} onClick={bulkAssignAll}>Auto-Assign All</ActionButton>
+            )}
+
+            <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
+              submissions.map((s) => ({
+                student: s.student_name, assessment: s.assessment_title,
+                subject: s.subject_name, score: s.score, total: s.total_marks,
+                status: s.status, submitted: s.submitted_at,
+              })), "submissions.csv"
+            )}>Export CSV</ActionButton>
+          </div>
+
+          {Object.keys(submissionsBySubject).length === 0 ? (
+            <EmptyState icon={<IconFileText size={26} />} text="No submissions found." />
+          ) : (
+            Object.entries(submissionsBySubject)
+              .filter(([sName]) => !subjectFilter || sName === subjectFilter)
+              .map(([subjectName, subs]) => {
+                const subjectTeachers = assignedTeachers.filter(
+                  (t) => String(t.subject_name) === String(subjectName)
+                );
+                const markedCount   = subs.filter((s) => s.score != null).length;
+                const releasedCount = subs.filter((s) => s.status === "released").length;
+
+                return (
+                  <div key={subjectName} className="dash-card" style={sx.subjectBlock}>
+                    <div style={sx.subjectHead}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.textPri }}>{subjectName}</p>
+                        <div style={{ marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                          <span style={{ fontSize: 12, color: C.textMuted }}>
+                            {subs.length} submitted · {markedCount} marked · {releasedCount} released
+                          </span>
+                          {subjectTeachers.length > 0
+                            ? subjectTeachers.map((t) => <Chip key={t.id} icon={<IconUsers size={11} />} text={t.teacher_name} tone="success" />)
+                            : <Chip icon={<IconAlert size={11} />} text="No teacher assigned" tone="danger" />}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
+                        <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
+                      </div>
+                    </div>
+
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={sx.table}>
+                        <thead>
+                          <tr>
+                            {["Student","Assessment","Submitted","Assigned To","Mark","Grade","Status","Actions"].map((h) => <Th key={h}>{h}</Th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {subs.map((sub) => (
+                            <tr key={sub.id} className="row-hover">
+                              <Td><span style={{ fontWeight: 600, color: C.textPri }}>{sub.student_name || `#${sub.student_id}`}</span></Td>
+                              <Td style={{ color: C.textSec, fontSize: 13 }}>{sub.assessment_title || "—"}</Td>
+                              <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDate(sub.submitted_at)}</Td>
+                              <Td>
+                                {sub.assigned_teacher_id
+                                  ? <Chip text={sub.assigned_teacher_name || `#${sub.assigned_teacher_id}`} tone="success" />
+                                  : <Chip text="Unassigned" tone="danger" />}
+                              </Td>
+                              <Td>{sub.score != null ? <ScoreBadge score={sub.score} total={sub.total_marks || 100} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
+                              <Td>{sub.score != null ? <GradeBadge grade={computeGrade(sub.score, sub.total_marks)} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
+                              <Td><MarkPill status={sub.status} score={sub.score} /></Td>
+                              <Td>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                                  {!sub.assigned_teacher_id && subjectTeachers.length > 0 && (
+                                    <select
+                                      style={{ ...sx.select, padding: "5px 8px", fontSize: 12 }}
+                                      defaultValue=""
+                                      onChange={(e) => { if (e.target.value) assignSubmissionToTeacher(sub.id, e.target.value); }}
+                                    >
+                                      <option value="">Assign…</option>
+                                      {subjectTeachers.map((t) => (
+                                        <option key={t.teacher_id} value={t.teacher_id}>{t.teacher_name}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                  {sub.score != null && sub.status !== "released" && (
+                                    <MiniBtn onClick={() => setReleaseModal(sub)} icon={<IconRocket size={12} />}>Release</MiniBtn>
+                                  )}
+                                  <MiniBtn onClick={() => openAnswerModal(sub)} icon={<IconFileText size={12} />}>Answers</MiniBtn>
+                                  <MiniBtn onClick={() => openQuickStats(sub)} neutral>View</MiniBtn>
+                                </div>
+                              </Td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })
+          )}
+        </>
+      )}
+
+      {/* ════════════════════════════════════════════
+          TAB 2 — REMARK REQUESTS
+      ════════════════════════════════════════════ */}
+      {activeTab === 2 && (
+        <>
+          <div style={sx.tabTopRow}>
+            <div>
+              <h2 style={sx.tabTitle}>Remark Requests</h2>
+              <p style={sx.tabSub}>Review and action student remark requests</p>
+            </div>
+            <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
+              remarkRequests.map((r) => ({
+                student: r.student_name, assessment: r.assessment_title,
+                subject: r.subject_name, score: r.score, status: r.remark_status,
+                reason: r.remark_reason, submitted: r.submitted_at,
+              })), "remark-requests.csv"
+            )}>Export CSV</ActionButton>
+          </div>
+
+          {remarkRequests.length === 0 ? (
+            <EmptyState icon={<IconCheckCircle size={26} />} text="No remark requests at this time." />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {remarkRequests.map((r) => (
+                <div key={r.id} className="dash-card" style={sx.remarkCard}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, color: C.textPri, fontSize: 16 }}>
+                        {r.student_name || `Student #${r.student_id}`}
+                      </p>
+                      <p style={{ margin: "4px 0 0", fontSize: 12, color: C.textMuted }}>
+                        {r.assessment_title} · {r.subject_name}
+                      </p>
+                    </div>
+                    <RemarkBadge status={r.remark_status} />
+                  </div>
+
+                  <div style={sx.metaGrid}>
+                    <MetaRow label="Assigned To"  value={r.teacher_name || "Unassigned"} />
+                    <MetaRow label="Current Mark" value={r.score != null ? `${r.score}/${r.total_marks || 100}` : "—"} />
+                    <MetaRow label="Grade"        value={computeGrade(r.score, r.total_marks)} />
+                    <MetaRow label="Submitted"    value={fmtDate(r.submitted_at)} />
+                  </div>
+
+                  {r.remark_reason && (
+                    <div style={sx.reasonBox}><strong>Student reason: </strong>{r.remark_reason}</div>
+                  )}
+                  {r.admin_comment && (
+                    <div style={sx.commentBox}><strong>Admin comment: </strong>{r.admin_comment}</div>
+                  )}
+
+                  {(r.remark_status === "pending" || r.remark_status == null) ? (
+                    <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+                      <MiniBtn tone="success" grow icon={<IconCheck size={13} />} onClick={() => reviewRemarkRequest(r.id, "approved")}>Approve</MiniBtn>
+                      <MiniBtn tone="danger"  grow icon={<IconX size={13} />}     onClick={() => reviewRemarkRequest(r.id, "rejected")}>Reject</MiniBtn>
+                      <MiniBtn tone="warning" grow icon={<IconRefresh size={13} />} onClick={() => reviewRemarkRequest(r.id, "revision")}>Request Revision</MiniBtn>
+                      <MiniBtn grow icon={<IconMessage size={13} />} onClick={() => { setRemarkModal(r); setRemarkComment(""); }}>Comment &amp; Decide</MiniBtn>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 14 }}>
+                      <p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>
+                        Reviewed {r.reviewed_at ? `on ${r.reviewed_at}` : ""} · Status: <strong style={{ color: C.textPri }}>{r.remark_status}</strong>
+                      </p>
+                      <MiniBtn neutral icon={<IconRefresh size={12} />} onClick={() => reviewRemarkRequest(r.id, "pending")} style={{ marginTop: 10 }}>Reopen</MiniBtn>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ════════════════════════════════════════════
+          TAB 3 — RELEASED MARKS
+      ════════════════════════════════════════════ */}
+      {activeTab === 3 && (
+        <>
+          <div style={sx.tabTopRow}>
+            <div>
+              <h2 style={sx.tabTitle}>Released Marks</h2>
+              <p style={sx.tabSub}>Marks published to student academic records</p>
+            </div>
+            <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
+              releasedMarks.map((m) => ({
+                student: m.student_name, assessment: m.assessment_title,
+                subject: m.subject_name, score: m.score, total: m.total_marks,
+                grade: computeGrade(m.score, m.total_marks), released: m.released_at,
+              })), "released-marks.csv"
+            )}>Export CSV</ActionButton>
+          </div>
+
+          {releasedMarks.length > 0 && <GradeDistribution marks={releasedMarks} />}
+
+          {releasedMarks.length === 0 ? (
+            <EmptyState icon={<IconBarChart size={26} />} text="No marks have been released yet." />
+          ) : (
+            <div className="dash-card" style={sx.tableWrap}>
+              <table style={sx.table}>
+                <thead>
+                  <tr>{["Student","Assessment","Subject","Mark","Pct","Grade","Released"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                </thead>
+                <tbody>
+                  {releasedMarks.map((m) => {
+                    const total = m.total_marks || 100;
+                    const pct   = m.score != null ? Math.round((m.score / total) * 100) : null;
+                    return (
+                      <tr key={m.id} className="row-hover">
+                        <Td><span style={{ fontWeight: 600, color: C.textPri }}>{m.student_name || m.student_id}</span></Td>
+                        <Td style={{ color: C.textSec }}>{m.assessment_title || "—"}</Td>
+                        <Td style={{ color: C.textSec }}>{m.subject_name || "—"}</Td>
+                        <Td><ScoreBadge score={m.score} total={total} /></Td>
+                        <Td style={{ color: pct >= 50 ? C.success : C.danger, fontWeight: 700 }}>{pct != null ? `${pct}%` : "—"}</Td>
+                        <Td><GradeBadge grade={computeGrade(m.score, total)} /></Td>
+                        <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDate(m.released_at)}</Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ════════════════════════════════════════════
+          TAB 4 — DEVICE LOCKS
+      ════════════════════════════════════════════ */}
+      {activeTab === 4 && (
+        <>
+          <div style={sx.tabTopRow}>
+            <div>
+              <h2 style={sx.tabTitle}>Device Locks</h2>
+              <p style={sx.tabSub}>
+                Each student's exam token is bound to the first device it's used on. If a token is used
+                on a second device the session locks automatically — unlock it here once you've confirmed
+                which device the student should continue on.
+              </p>
+            </div>
+          </div>
+
+          {examSessions.length === 0 ? (
+            <EmptyState icon={<IconUnlock size={26} />} text="No active exam sessions right now." />
+          ) : (
+            <div className="dash-card" style={sx.tableWrap}>
+              <table style={sx.table}>
+                <thead>
+                  <tr>{["Student","Assessment","Token","Status","Device","Last Activity","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                </thead>
+                <tbody>
+                  {examSessions.map((sess) => (
+                    <tr key={sess.id} className="row-hover">
+                      <Td><span style={{ fontWeight: 600, color: C.textPri }}>{sess.student_name || `#${sess.student_id}`}</span></Td>
+                      <Td style={{ color: C.textSec, fontSize: 13 }}>{sess.assessment_title || "—"}</Td>
+                      <Td><span style={{ fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", color: C.textPri }}>{sess.token}</span></Td>
+                      <Td>
+                        {sess.status === "locked" && <Chip icon={<IconLock size={11} />} text="Locked" tone="danger" />}
+                        {sess.status === "active" && <Chip icon={<IconDot size={7} />} text="Active" tone="success" />}
+                        {sess.status === "issued" && <Chip text="Not started" tone="neutral" />}
+                      </Td>
+                      <Td style={{ color: C.textMuted, fontSize: 12, maxWidth: 220 }}>{sess.device_label || "—"}</Td>
+                      <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(sess.last_heartbeat || sess.activated_at)}</Td>
+                      <Td>
+                        {sess.status === "locked" ? (
+                          <MiniBtn tone="success" icon={<IconUnlock size={12} />} onClick={() => unlockSession(sess.id)}>Unlock</MiniBtn>
+                        ) : (
+                          <span style={{ color: C.textMuted, fontSize: 12 }}>—</span>
+                        )}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ════════════════════════════════════════════
+          MODALS
+      ════════════════════════════════════════════ */}
+
+      {formOpen && (
+        <Modal title="Create New Assessment" onClose={() => setFormOpen(false)}>
+          <FieldLabel>Assessment Title *</FieldLabel>
+          <ModalInput placeholder="e.g. Mid-Term Mathematics Paper 1" value={form.title}
+            onChange={(v) => setForm({ ...form, title: v })} />
+
+          <FieldLabel>Subject *</FieldLabel>
+          <ModalSelect value={form.subject} onChange={(v) => setForm({ ...form, subject: v })}
+            options={subjects.map((s) => ({ value: s.name || s.subject_name, label: s.name || s.subject_name }))}
+            placeholder="Select Subject" />
+
+          <FieldLabel>Class *</FieldLabel>
+          <ModalSelect value={form.class_id} onChange={(v) => setForm({ ...form, class_id: v })}
+            options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))}
+            placeholder="Select Class" />
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <FieldLabel>Duration (minutes)</FieldLabel>
+              <ModalInput type="number" placeholder="30" value={form.duration_minutes}
+                onChange={(v) => setForm({ ...form, duration_minutes: v })} />
+            </div>
+            <div>
+              <FieldLabel>Total Marks</FieldLabel>
+              <ModalInput type="number" placeholder="100" value={form.total_marks}
+                onChange={(v) => setForm({ ...form, total_marks: v })} />
+            </div>
+          </div>
+
+          <FieldLabel>Instructions (optional)</FieldLabel>
+          <textarea
+            placeholder="Any special instructions for students…"
+            value={form.instructions}
+            onChange={(e) => setForm({ ...form, instructions: e.target.value })}
+            style={sx.textarea}
+          />
+          <p style={sx.formHint}>
+            All students in the selected class can take this assessment once it is approved and activated.
+            Each student will receive a unique 6-character exam token bound to their first device.
+          </p>
+          <SaveButton onClick={createAssessment} loading={saving} label="Create Assessment" />
+        </Modal>
+      )}
+
+      {editOpen && (
+        <Modal title="Edit Assessment" onClose={() => setEditOpen(false)}>
+          <FieldLabel>Assessment Title *</FieldLabel>
+          <ModalInput placeholder="Assessment Title" value={editForm.title}
+            onChange={(v) => setEditForm({ ...editForm, title: v })} />
+
+          <FieldLabel>Subject *</FieldLabel>
+          <ModalSelect value={editForm.subject} onChange={(v) => setEditForm({ ...editForm, subject: v })}
+            options={subjects.map((s) => ({ value: s.name || s.subject_name, label: s.name || s.subject_name }))}
+            placeholder="Select Subject" />
+
+          <FieldLabel>Class *</FieldLabel>
+          <ModalSelect value={editForm.class_id} onChange={(v) => setEditForm({ ...editForm, class_id: v })}
+            options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))}
+            placeholder="Select Class" />
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <FieldLabel>Duration (minutes)</FieldLabel>
+              <ModalInput type="number" value={editForm.duration_minutes}
+                onChange={(v) => setEditForm({ ...editForm, duration_minutes: v })} />
+            </div>
+            <div>
+              <FieldLabel>Total Marks</FieldLabel>
+              <ModalInput type="number" value={editForm.total_marks}
+                onChange={(v) => setEditForm({ ...editForm, total_marks: v })} />
+            </div>
+          </div>
+
+          <FieldLabel>Instructions</FieldLabel>
+          <textarea value={editForm.instructions}
+            onChange={(e) => setEditForm({ ...editForm, instructions: e.target.value })}
+            style={sx.textarea} />
+          <SaveButton onClick={saveEditAssessment} loading={saving} label="Save Changes" />
+        </Modal>
+      )}
+
+      {assignOpen && (
+        <Modal title="Assign Teacher to Subject & Class" onClose={() => setAssignOpen(false)}>
+          <FieldLabel>Teacher *</FieldLabel>
+          <ModalSelect value={assignForm.teacher_id} onChange={(v) => setAssignForm({ ...assignForm, teacher_id: v })}
+            options={teachers.map((t) => ({ value: t.id, label: t.name }))} placeholder="Select Teacher" />
+
+          <FieldLabel>Subject *</FieldLabel>
+          <ModalSelect value={assignForm.subject_id} onChange={(v) => setAssignForm({ ...assignForm, subject_id: v })}
+            options={subjects.map((s) => ({ value: s.id, label: s.name || s.subject_name }))} placeholder="Select Subject" />
+
+          <FieldLabel>Class *</FieldLabel>
+          <ModalSelect value={assignForm.class_id} onChange={(v) => setAssignForm({ ...assignForm, class_id: v })}
+            options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))} placeholder="Select Class" />
+
+          <SaveButton onClick={assignTeacher} loading={saving} label="Assign Teacher" />
+          <p style={sx.formHint}>
+            After assigning, use <strong style={{ color: C.textPri }}>Distribute Equally</strong> on the Submissions tab to split work across teachers.
+          </p>
+        </Modal>
+      )}
+
+      {selected && (
+        <Modal
+          title={selected.student_name ? "Submission Details" : "Assessment — Quick Stats"}
+          onClose={() => { setSelected(null); setQuickStats(null); }}
+        >
+          {!selected.student_name && quickStats && (
+            <>
+              <div style={sx.statsGrid}>
+                <StatCard label="Submitted" value={quickStats.submitted_count ?? 0} icon={<IconMail size={18} />} />
+                <StatCard label="Marked"    value={quickStats.marked_count    ?? 0} icon={<IconCheck size={18} />} tone="success" />
+                <StatCard label="Released"  value={quickStats.released_count  ?? 0} icon={<IconTrendUp size={18} />} />
+                <StatCard label="Remarks"   value={quickStats.remark_count    ?? 0} icon={<IconMessage size={18} />} tone="warning" />
+              </div>
+              {quickStats.average_score != null && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
+                  {[
+                    { label: "Average", value: `${quickStats.average_score}%` },
+                    { label: "Highest", value: quickStats.highest_score ?? "—", tone: "success" },
+                    { label: "Lowest",  value: quickStats.lowest_score  ?? "—", tone: "danger" },
+                  ].map(({ label, value, tone }) => (
+                    <div key={label} style={{ padding: 16, background: C.bgAlt, borderRadius: 10, textAlign: "center", border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: tone ? C[tone] : C.textPri }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {!selected.student_name && !quickStats && (
+            <p style={{ color: C.textMuted, fontSize: 13, marginBottom: 16 }}>No stats available yet for this assessment.</p>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {selected.student_name && (
+              <>
+                <DetailRow label="Student" value={selected.student_name} />
+                <DetailRow label="Mark"    value={selected.score != null ? `${selected.score}/${selected.total_marks || 100}` : "Not marked"} />
+                <DetailRow label="Grade"   value={computeGrade(selected.score, selected.total_marks)} />
               </>
             )}
-            {!selected.student_name && !quickStats && (
-              <p style={{ color: C.textMuted, fontSize: 13, marginBottom: 16 }}>No stats available yet for this assessment.</p>
-            )}
+            <DetailRow label="Title"        value={selected.title || selected.assessment_title || "—"} />
+            <DetailRow label="Subject"      value={selected.subject || selected.subject_name || "—"} />
+            <DetailRow label="Class"        value={selected.class_name || selected.class_id || "—"} />
+            <DetailRow label="Duration"     value={selected.duration_minutes ? `${selected.duration_minutes} min` : "—"} />
+            <DetailRow label="Total Marks"  value={selected.total_marks || 100} />
+            <DetailRow label="Status"       value={selected.status || "—"} />
+            {selected.instructions && <DetailRow label="Instructions" value={selected.instructions} />}
+          </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {selected.student_name && (
-                <>
-                  <DetailRow label="Student" value={selected.student_name} />
-                  <DetailRow label="Mark"    value={selected.score != null ? `${selected.score}/${selected.total_marks || 100}` : "Not marked"} />
-                  <DetailRow label="Grade"   value={computeGrade(selected.score, selected.total_marks)} />
-                </>
-              )}
-              <DetailRow label="Title"        value={selected.title || selected.assessment_title || "—"} />
-              <DetailRow label="Subject"      value={selected.subject || selected.subject_name || "—"} />
-              <DetailRow label="Class"        value={selected.class_name || selected.class_id || "—"} />
-              <DetailRow label="Duration"     value={selected.duration_minutes ? `${selected.duration_minutes} min` : "—"} />
-              <DetailRow label="Total Marks"  value={selected.total_marks || 100} />
-              <DetailRow label="Status"       value={selected.status || "—"} />
-              {selected.instructions && <DetailRow label="Instructions" value={selected.instructions} />}
-            </div>
+          {selected.score != null && selected.status !== "released" && (
+            <button
+              style={{ ...sx.saveBtn, marginTop: 20 }}
+              onClick={() => { setSelected(null); setQuickStats(null); setReleaseModal(selected); }}
+            >
+              <IconRocket size={15} /> Release Marks
+            </button>
+          )}
+        </Modal>
+      )}
 
-            {selected.score != null && selected.status !== "released" && (
-              <button
-                style={{ ...sx.saveBtn, marginTop: 20 }}
-                onClick={() => { setSelected(null); setQuickStats(null); setReleaseModal(selected); }}
-              >
-                <IconRocket size={15} /> Release Marks
-              </button>
-            )}
-          </Modal>
-        )}
+      {answerModal && (
+        <Modal title={`Answers — ${answerModal.sub?.student_name || "Student"}`} onClose={() => setAnswerModal(null)}>
+          <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
+            <ScoreBadge score={answerModal.sub?.score} total={answerModal.sub?.total_marks || 100} />
+            <GradeBadge grade={computeGrade(answerModal.sub?.score, answerModal.sub?.total_marks)} />
+          </div>
 
-        {answerModal && (
-          <Modal title={`Answers — ${answerModal.sub?.student_name || "Student"}`} onClose={() => setAnswerModal(null)}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
-              <ScoreBadge score={answerModal.sub?.score} total={answerModal.sub?.total_marks || 100} />
-              <GradeBadge grade={computeGrade(answerModal.sub?.score, answerModal.sub?.total_marks)} />
-            </div>
+          {(answerModal.answers || []).length === 0 ? (
+            <p style={{ color: C.textMuted, fontSize: 13 }}>No answers found for this submission.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {answerModal.answers.map((a, i) => {
+                const isMCQ    = a.question_type === "mcq";
+                const correct  = isMCQ
+                  ? String(a.selected_answer || "").toUpperCase() === String(a.correct_answer || "").toUpperCase()
+                  : null;
 
-            {(answerModal.answers || []).length === 0 ? (
-              <p style={{ color: C.textMuted, fontSize: 13 }}>No answers found for this submission.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {answerModal.answers.map((a, i) => {
-                  const isMCQ    = a.question_type === "mcq";
-                  const correct  = isMCQ
-                    ? String(a.selected_answer || "").toUpperCase() === String(a.correct_answer || "").toUpperCase()
-                    : null;
+                return (
+                  <div key={a.id} style={{
+                    padding: 16, background: C.bgAlt, borderRadius: 10,
+                    border: `1px solid ${isMCQ && correct === false ? C.danger : C.border}`,
+                  }}>
+                    <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: C.textPri }}>
+                      Q{i + 1}. {a.question_text}
+                      <span style={{ marginLeft: 10, fontSize: 11, color: C.textMuted, fontWeight: 400 }}>
+                        [{a.question_type} · {a.max_marks} mark{a.max_marks !== 1 ? "s" : ""}]
+                      </span>
+                    </p>
 
-                  return (
-                    <div key={a.id} style={{
-                      padding: 16, background: C.bgAlt, borderRadius: 10,
-                      border: `1px solid ${isMCQ && correct === false ? C.danger : C.border}`,
-                    }}>
-                      <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: C.textPri }}>
-                        Q{i + 1}. {a.question_text}
-                        <span style={{ marginLeft: 10, fontSize: 11, color: C.textMuted, fontWeight: 400 }}>
-                          [{a.question_type} · {a.max_marks} mark{a.max_marks !== 1 ? "s" : ""}]
+                    {isMCQ ? (
+                      <div style={{ display: "flex", gap: 10, fontSize: 13, alignItems: "center" }}>
+                        <span style={{ color: C.textMuted }}>Answer:</span>
+                        <span style={{ color: correct ? C.success : C.danger, fontWeight: 700 }}>
+                          {a.selected_answer || "No answer"}
                         </span>
+                        {correct === false && (
+                          <span style={{ color: C.textMuted }}>
+                            · Correct: <strong style={{ color: C.success }}>{a.correct_answer}</strong>
+                          </span>
+                        )}
+                        <span style={{ marginLeft: "auto" }}>
+                          {correct ? <IconCheck size={16} style={{ color: C.success }} /> : <IconX size={16} style={{ color: C.danger }} />}
+                        </span>
+                      </div>
+                    ) : (
+                      <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textSec, lineHeight: 1.7 }}>
+                        {a.essay_answer || <em style={{ color: C.textMuted }}>No answer provided.</em>}
                       </p>
+                    )}
 
-                      {isMCQ ? (
-                        <div style={{ display: "flex", gap: 10, fontSize: 13, alignItems: "center" }}>
-                          <span style={{ color: C.textMuted }}>Answer:</span>
-                          <span style={{ color: correct ? C.success : C.danger, fontWeight: 700 }}>
-                            {a.selected_answer || "No answer"}
-                          </span>
-                          {correct === false && (
-                            <span style={{ color: C.textMuted }}>
-                              · Correct: <strong style={{ color: C.success }}>{a.correct_answer}</strong>
-                            </span>
-                          )}
-                          <span style={{ marginLeft: "auto" }}>
-                            {correct ? <IconCheck size={16} style={{ color: C.success }} /> : <IconX size={16} style={{ color: C.danger }} />}
-                          </span>
-                        </div>
-                      ) : (
-                        <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textSec, lineHeight: 1.7 }}>
-                          {a.essay_answer || <em style={{ color: C.textMuted }}>No answer provided.</em>}
-                        </p>
-                      )}
+                    {a.marks_awarded != null && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 12, color: C.textMuted }}>
+                        Marks awarded: <strong style={{ color: C.textPri }}>{a.marks_awarded} / {a.max_marks}</strong>
+                        {a.remarks && <span style={{ marginLeft: 10, color: C.textSec }}>· {a.remarks}</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Modal>
+      )}
 
-                      {a.marks_awarded != null && (
-                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 12, color: C.textMuted }}>
-                          Marks awarded: <strong style={{ color: C.textPri }}>{a.marks_awarded} / {a.max_marks}</strong>
-                          {a.remarks && <span style={{ marginLeft: 10, color: C.textSec }}>· {a.remarks}</span>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Modal>
-        )}
+      {remarkModal && (
+        <Modal title="Review Remark Request" onClose={() => { setRemarkModal(null); setRemarkComment(""); }}>
+          <div style={sx.infoBox}>
+            Reviewing remark for <strong style={{ color: C.textPri }}>{remarkModal.student_name}</strong>
+            {remarkModal.assessment_title && <> on <strong style={{ color: C.textPri }}>{remarkModal.assessment_title}</strong></>}
+          </div>
+          <FieldLabel>Admin comment (optional)</FieldLabel>
+          <textarea
+            placeholder="Explain your decision to the student…"
+            value={remarkComment}
+            onChange={(e) => setRemarkComment(e.target.value)}
+            style={sx.textarea}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <MiniBtn tone="success" full icon={<IconCheck size={14} />} onClick={() => reviewRemarkRequest(remarkModal.id, "approved", remarkComment)}>
+              {saving ? "…" : "Approve"}
+            </MiniBtn>
+            <MiniBtn tone="danger" full icon={<IconX size={14} />} onClick={() => reviewRemarkRequest(remarkModal.id, "rejected", remarkComment)}>
+              {saving ? "…" : "Reject"}
+            </MiniBtn>
+          </div>
+        </Modal>
+      )}
 
-        {remarkModal && (
-          <Modal title="Review Remark Request" onClose={() => { setRemarkModal(null); setRemarkComment(""); }}>
-            <div style={sx.infoBox}>
-              Reviewing remark for <strong style={{ color: C.textPri }}>{remarkModal.student_name}</strong>
-              {remarkModal.assessment_title && <> on <strong style={{ color: C.textPri }}>{remarkModal.assessment_title}</strong></>}
-            </div>
-            <FieldLabel>Admin comment (optional)</FieldLabel>
-            <textarea
-              placeholder="Explain your decision to the student…"
-              value={remarkComment}
-              onChange={(e) => setRemarkComment(e.target.value)}
-              style={sx.textarea}
-            />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <MiniBtn tone="success" full icon={<IconCheck size={14} />} onClick={() => reviewRemarkRequest(remarkModal.id, "approved", remarkComment)}>
-                {saving ? "…" : "Approve"}
-              </MiniBtn>
-              <MiniBtn tone="danger" full icon={<IconX size={14} />} onClick={() => reviewRemarkRequest(remarkModal.id, "rejected", remarkComment)}>
-                {saving ? "…" : "Reject"}
-              </MiniBtn>
-            </div>
-          </Modal>
-        )}
-
-        {releaseModal && (
-          <Modal title="Confirm Mark Release" onClose={() => setReleaseModal(null)}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-              <DetailRow label="Student"    value={releaseModal.student_name || releaseModal.student_id} />
-              <DetailRow label="Assessment" value={releaseModal.assessment_title || `Assessment #${releaseModal.e_assessment_id}`} />
-              <DetailRow label="Subject"    value={releaseModal.subject_name || "—"} />
-              <DetailRow label="Mark"       value={`${releaseModal.score} / ${releaseModal.total_marks || 100}`} />
-              <DetailRow label="Grade"      value={computeGrade(releaseModal.score, releaseModal.total_marks)} />
-            </div>
-            <div style={sx.warningBox}>
-              <IconAlert size={15} style={{ color: C.warning, flexShrink: 0 }} />
-              This will copy the mark to the student's official Marks record. This cannot be undone.
-            </div>
-            <SaveButton
-              onClick={() => releaseMarks(releaseModal.id)}
-              loading={saving}
-              label="Confirm Release"
-              icon={<IconRocket size={15} />}
-            />
-          </Modal>
-        )}
-      </div>
-    </ColorContext.Provider>
+      {releaseModal && (
+        <Modal title="Confirm Mark Release" onClose={() => setReleaseModal(null)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+            <DetailRow label="Student"    value={releaseModal.student_name || releaseModal.student_id} />
+            <DetailRow label="Assessment" value={releaseModal.assessment_title || `Assessment #${releaseModal.e_assessment_id}`} />
+            <DetailRow label="Subject"    value={releaseModal.subject_name || "—"} />
+            <DetailRow label="Mark"       value={`${releaseModal.score} / ${releaseModal.total_marks || 100}`} />
+            <DetailRow label="Grade"      value={computeGrade(releaseModal.score, releaseModal.total_marks)} />
+          </div>
+          <div style={sx.warningBox}>
+            <IconAlert size={15} style={{ color: C.warning, flexShrink: 0 }} />
+            This will copy the mark to the student's official Marks record. This cannot be undone.
+          </div>
+          <SaveButton
+            onClick={() => releaseMarks(releaseModal.id)}
+            loading={saving}
+            label="Confirm Release"
+            icon={<IconRocket size={15} />}
+          />
+        </Modal>
+      )}
+    </div>
   );
 }
 
@@ -1294,6 +1364,7 @@ function ThemeToggle({ theme, onToggle }) {
   return (
     <button
       onClick={onToggle}
+      className="dash-icon-btn"
       style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.textSec, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
       title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       aria-label="Toggle color theme"
@@ -1310,7 +1381,7 @@ function AssessmentCard({ a, selected, onSelect, onApprove, onReject, onStats, o
   const C = useC();
   const isActive = a.active_status !== "Inactive";
   return (
-    <div style={{ background: C.card, borderRadius: 12, padding: 18, border: `1px solid ${selected ? C.accent : C.border}` }}>
+    <div className="dash-card" style={{ background: C.card, borderRadius: 12, padding: 18, border: `1px solid ${selected ? C.accent : C.border}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 15, color: C.textPri, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1368,7 +1439,7 @@ function GradeDistribution({ marks }) {
   const max = Math.max(...Object.values(counts), 1);
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 24 }}>
+    <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 24 }}>
       <p style={{ margin: "0 0 18px", fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>
         Grade Distribution — {marks.length} Release{marks.length !== 1 ? "s" : ""}
       </p>
@@ -1399,7 +1470,7 @@ function StatCard({ label, value, icon, tone }) {
   const C = useC();
   const tint = tone ? C[tone] : C.textPri;
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <div>
         <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 7 }}>{label}</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: C.textPri, lineHeight: 1 }}>{value}</div>
@@ -1431,7 +1502,6 @@ function ToggleSwitch({ checked, onChange }) {
 }
 
 function StatusBadge({ status }) {
-  const C = useC();
   const tone = { approved: "success", rejected: "danger", pending: "warning" }[String(status || "").toLowerCase()] || "warning";
   return <Chip text={status || "pending"} tone={tone} uppercase />;
 }
@@ -1494,7 +1564,7 @@ function NotifPill({ n, tone = "accent" }) {
 function EmptyState({ icon, text }) {
   const C = useC();
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "56px 24px", textAlign: "center", marginBottom: 24 }}>
+    <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "56px 24px", textAlign: "center", marginBottom: 24 }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 14, color: C.textMuted }}>{icon}</div>
       <p style={{ color: C.textSec, fontSize: 14, margin: 0 }}>{text}</p>
     </div>
@@ -1643,12 +1713,12 @@ function ModalSelect({ value, onChange, options, placeholder }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   STYLES  (theme-aware, computed from the current palette)
+   STYLES  (token-driven — reads the static C map above)
 ═══════════════════════════════════════════════════════════ */
 function s(C) {
   return {
-    page:       { minHeight: "100vh", background: C.bg, color: C.textPri, padding: "28px 28px 80px", fontFamily: "'Inter', system-ui, sans-serif", maxWidth: 1400, margin: "0 auto", transition: "background .15s ease, color .15s ease" },
-    spinner:    { width: 38, height: 38, border: `3px solid ${C.border}`, borderTop: `3px solid ${C.accent}`, borderRadius: "50%", animation: "spin 0.8s linear infinite" },
+    page:       { minHeight: "100vh", background: C.bg, color: C.textPri, padding: "28px 28px 80px", fontFamily: "'Inter', system-ui, sans-serif", maxWidth: "100%", margin: "0 auto", transition: "background .15s ease, color .15s ease" },
+    spinner:    { width: 38, height: 38, border: `3px solid ${C.border}`, borderTop: `3px solid ${C.accent}`, borderRadius: "50%" },
     toast:      { position: "fixed", top: 22, right: 22, zIndex: 999, padding: "12px 16px", borderRadius: 10, border: "1px solid", background: C.card, display: "flex", alignItems: "center", gap: 10, boxShadow: "0 10px 30px rgba(0,0,0,.3)", minWidth: 220 },
     header:     { display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 20, marginBottom: 32 },
     pageTitle:  { margin: "10px 0 4px", fontSize: 25, fontWeight: 800, color: C.textPri, letterSpacing: "-0.01em" },
@@ -1688,18 +1758,14 @@ function s(C) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GLOBAL STYLES — keyframes, focus rings, hover states,
-   scrollbar, reduced-motion
+   PAGE-LOCAL STYLES — hover states, table row highlight,
+   scrollbar/reduced-motion handled globally by dash-tokens
 ═══════════════════════════════════════════════════════════ */
 const globalStyles = `
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .row-hover:hover td { background: rgba(128,128,128,0.06); }
+  .row-hover:hover td { background: var(--bg); }
   .btn-hover:hover { filter: brightness(1.08); }
   .btn-hover:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid #5b8def;
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; }
   }
 `;
