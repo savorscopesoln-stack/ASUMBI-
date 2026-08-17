@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../../api";
+import { useTheme } from "../../context/ThemeContext";
+import {
+  KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
+  ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert,
+} from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
    IMPORTANT — HONEST SCOPE NOTE
@@ -32,11 +37,108 @@ import API from "../../api";
         across refresh (via localStorage) for this device.
    ═════════════════════════════════════════════════════════ */
 
-const C = {
-  bg: "#07111f", bgAlt: "#0b1929", surface: "#0f2035", card: "#122541",
-  border: "#1a3356", borderHi: "#2a507a", textPri: "#e8f2ff", textSec: "#7aaacf",
-  textMuted: "#3d5f82", blue: "#3d82f8", blueHi: "#6aa0ff", green: "#22d46e",
-  amber: "#f5a623", red: "#f04545", teal: "#14c9b8", white: "#ffffff",
+/* ─── shared design-token stylesheet ───
+   Identical id/contents to the dashboard's token sheet, so this
+   page inherits the same palette + dark-mode support. Injecting
+   twice is a no-op if the dashboard already mounted it.
+*/
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:translateY(0);} }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes softPulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
+
+    .dash-spin { animation: spin 0.8s linear infinite; }
+    .dash-skeleton { background: linear-gradient(90deg, var(--border) 25%, var(--card-elevated) 50%, var(--border) 75%); background-size: 200% 100%; animation: softPulse 1.4s ease-in-out infinite; border-radius: 8px; }
+
+    .dash-card:hover { box-shadow: var(--shadow); }
+    .dash-icon-btn:hover { background: var(--bg); }
+
+    button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .dash-main { padding: 20px 16px 48px !important; }
+      .dash-two-col { grid-template-columns: 1fr !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── page-specific additive rules ─── */
+const injectExamStyles = () => {
+  if (document.getElementById("exam-page-styles")) return;
+  const el = document.createElement("style");
+  el.id = "exam-page-styles";
+  el.textContent = `
+    @media (max-width: 640px) {
+      .exam-top-bar { flex-direction: column !important; align-items: flex-start !important; }
+      .exam-top-bar > div:last-child { align-self: stretch !important; justify-content: space-between !important; }
+    }
+    .exam-option-row:hover { border-color: var(--primary) !important; }
+  `;
+  document.head.appendChild(el);
 };
 
 const HEARTBEAT_MS = 10000;
@@ -55,8 +157,12 @@ const getDeviceId = () => {
 const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
 
 export default function TakeEAssessment() {
+  injectStyles();
+  injectExamStyles();
+
   const { id } = useParams();
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const deviceId = useMemo(() => getDeviceId(), []);
 
   // loading | reveal | verify | active | locked | ended | error
@@ -334,46 +440,78 @@ export default function TakeEAssessment() {
     return `${m}:${s}`;
   };
 
+  const ThemeToggle = () => (
+    <button
+      onClick={toggleTheme}
+      className="dash-icon-btn"
+      style={S.themeToggle}
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      aria-pressed={theme === "dark"}
+      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+    </button>
+  );
+
   /* ═══════════════════════════════════════════════════════════
      RENDER — states
   ═══════════════════════════════════════════════════════════ */
   if (phase === "loading") {
     return (
-      <div style={s.stateWrap}>
-        <div style={s.spinner} />
-        <p style={{ color: C.textSec }}>Preparing your exam session…</p>
+      <div className="dash-main" style={S.stateWrap}>
+        <div className="dash-spin" style={S.spinner} />
+        <p style={{ color: "var(--text-secondary)", fontWeight: 600, fontSize: 13.5 }}>Preparing your exam session…</p>
+        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
     );
   }
 
   if (phase === "error") {
     return (
-      <div style={s.stateWrap}>
-        <p style={{ fontSize: 40 }}>⚠</p>
-        <p style={{ color: C.red, fontWeight: 700, maxWidth: 420, textAlign: "center" }}>{errorMsg}</p>
-        <button style={s.secondaryBtn} onClick={() => navigate(-1)}>Go Back</button>
+      <div className="dash-main" style={S.stateWrap}>
+        <div className="dash-card" style={S.panelCard}>
+          <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
+            <AlertTriangle size={26} color="var(--destructive)" />
+          </div>
+          <p style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", lineHeight: 1.6, margin: "16px 0 0" }}>{errorMsg}</p>
+          <button style={S.secondaryBtn} onClick={() => navigate(-1)}>
+            <ArrowLeft size={15} /> Go Back
+          </button>
+        </div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
     );
   }
 
   if (phase === "ended") {
     return (
-      <div style={s.stateWrap}>
-        <p style={{ fontSize: 44 }}>✅</p>
-        <p style={{ color: C.textPri, fontWeight: 700, fontSize: 18 }}>{errorMsg || "This assessment is complete."}</p>
-        <button style={s.secondaryBtn} onClick={() => navigate("/student/e-assessments")}>Back to Assessments</button>
+      <div className="dash-main" style={S.stateWrap}>
+        <div className="dash-card" style={S.panelCard}>
+          <div style={{ ...S.iconCircle, background: "var(--success-tint)" }}>
+            <CheckCircle2 size={26} color="var(--success)" />
+          </div>
+          <p style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", margin: "16px 0 0" }}>
+            {errorMsg || "This assessment is complete."}
+          </p>
+          <button style={S.primaryBtn} onClick={() => navigate("/student/e-assessments")}>
+            Back to Assessments
+          </button>
+        </div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
     );
   }
 
   if (phase === "locked") {
     return (
-      <div style={s.lockOverlay}>
-        <div style={s.lockCard}>
-          <p style={{ fontSize: 48, margin: "0 0 10px" }}>🔒</p>
-          <h2 style={{ margin: "0 0 12px", color: C.red, fontSize: 22 }}>Device Locked</h2>
-          <p style={{ color: C.textSec, lineHeight: 1.7, marginBottom: 18 }}>{lockReason}</p>
-          <p style={{ color: C.textMuted, fontSize: 13, lineHeight: 1.6 }}>
+      <div style={S.lockOverlay}>
+        <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}>
+          <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
+            <Lock size={26} color="var(--destructive)" />
+          </div>
+          <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Device Locked</h2>
+          <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>{lockReason}</p>
+          <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.6, textAlign: "center" }}>
             This screen will stay locked until an administrator clears it, or the exam ends.
             Please contact your invigilator or school admin.
           </p>
@@ -385,24 +523,27 @@ export default function TakeEAssessment() {
   /* ── step 1: reveal the token, force a minimum reading time ── */
   if (phase === "reveal") {
     return (
-      <div style={s.stateWrap}>
-        <div style={s.tokenCard}>
-          <p style={{ fontSize: 40, margin: "0 0 6px" }}>🔑</p>
-          <h2 style={{ margin: "0 0 8px", color: C.textPri, fontSize: 20 }}>Your Exam Token</h2>
-          <p style={{ color: C.textSec, fontSize: 13, lineHeight: 1.7, margin: "0 0 18px" }}>
+      <div className="dash-main" style={S.stateWrap}>
+        <div className="dash-card" style={S.panelCard}>
+          <div style={{ ...S.iconCircle, background: "var(--primary-tint)" }}>
+            <KeyRound size={26} color="var(--primary)" />
+          </div>
+          <h2 style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Your Exam Token</h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
             This token belongs only to you for this assessment. Write it down or save it somewhere
             safe — you'll need to type it again on the next screen to open your paper, and it will
             lock to whichever device you use first.
           </p>
-          <div style={s.tokenDisplay}>{token}</div>
+          <div style={S.tokenDisplay}>{token}</div>
           <button
-            style={{ ...s.primaryBtn, opacity: revealCountdown > 0 ? 0.5 : 1, cursor: revealCountdown > 0 ? "not-allowed" : "pointer" }}
+            style={{ ...S.primaryBtn, opacity: revealCountdown > 0 ? 0.55 : 1, cursor: revealCountdown > 0 ? "not-allowed" : "pointer" }}
             onClick={confirmSaved}
             disabled={revealCountdown > 0}
           >
             {revealCountdown > 0 ? `I've saved my token (${revealCountdown}s)` : "I've saved my token — Continue"}
           </button>
         </div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
     );
   }
@@ -410,16 +551,18 @@ export default function TakeEAssessment() {
   /* ── step 2: re-enter the token to prove it was saved, then activate ── */
   if (phase === "verify") {
     return (
-      <div style={s.stateWrap}>
-        <form style={s.tokenCard} onSubmit={handleVerifySubmit}>
-          <p style={{ fontSize: 40, margin: "0 0 6px" }}>✍️</p>
-          <h2 style={{ margin: "0 0 8px", color: C.textPri, fontSize: 20 }}>Enter Your Token to Begin</h2>
-          <p style={{ color: C.textSec, fontSize: 13, lineHeight: 1.7, margin: "0 0 18px" }}>
+      <div className="dash-main" style={S.stateWrap}>
+        <form className="dash-card" style={S.panelCard} onSubmit={handleVerifySubmit}>
+          <div style={{ ...S.iconCircle, background: "var(--primary-tint)" }}>
+            <PenLine size={26} color="var(--primary)" />
+          </div>
+          <h2 style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Enter Your Token to Begin</h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
             Type the token you just saved. Once it's accepted, your paper opens and this device
             locks to the exam until you submit.
           </p>
           <input
-            style={s.verifyInput}
+            style={S.verifyInput}
             value={verifyInput}
             onChange={(e) => { setVerifyInput(e.target.value); setVerifyError(""); }}
             placeholder="Enter token"
@@ -427,55 +570,65 @@ export default function TakeEAssessment() {
             autoComplete="off"
             autoCapitalize="characters"
           />
-          {verifyError && <p style={{ color: C.red, fontSize: 13, margin: "10px 0 0" }}>{verifyError}</p>}
-          <button style={{ ...s.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim()}>
+          {verifyError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{verifyError}</p>}
+          <button style={{ ...S.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim()}>
             {activating ? "Starting…" : "Start Exam"}
           </button>
           <button
             type="button"
-            style={{ ...s.secondaryBtn, marginTop: 10 }}
+            style={{ ...S.secondaryBtn, marginTop: 10, width: "100%", justifyContent: "center" }}
             onClick={() => setPhase("reveal")}
             disabled={activating}
           >
             Show token again
           </button>
         </form>
+        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
     );
   }
 
   /* ── active exam ── */
   return (
-    <div style={s.page}>
-      <div style={s.topBar}>
+    <main className="dash-main" style={S.page}>
+      <div className="exam-top-bar" style={S.topBar}>
         <div>
-          <h1 style={s.examTitle}>{assessment?.title}</h1>
-          <p style={s.examMeta}>{assessment?.subject} · Token <strong style={{ color: C.blueHi }}>{token}</strong></p>
+          <h1 style={S.examTitle}>{assessment?.title}</h1>
+          <p style={S.examMeta}>{assessment?.subject} · Token <strong style={{ color: "var(--primary)" }}>{token}</strong></p>
         </div>
-        <div style={{ ...s.timer, color: secondsLeft < 60 ? C.red : C.textPri }}>⏱ {mmss(secondsLeft)}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ ...S.timer, color: secondsLeft < 60 ? "var(--destructive)" : "var(--text)" }}>
+            <Timer size={16} /> {mmss(secondsLeft)}
+          </div>
+          <ThemeToggle />
+        </div>
       </div>
 
       {violations > 0 && (
-        <div style={s.warningStrip}>
-          ⚠ Warning {violations}/{MAX_VIOLATIONS}: suspicious activity detected on this device. Reaching {MAX_VIOLATIONS} will lock your exam.
+        <div style={S.warningStrip}>
+          <ShieldAlert size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
+          <span>Warning {violations}/{MAX_VIOLATIONS}: suspicious activity detected on this device. Reaching {MAX_VIOLATIONS} will lock your exam.</span>
         </div>
       )}
 
       {assessment?.instructions && (
-        <div style={s.instructionsBox}><strong>Instructions:</strong> {assessment.instructions}</div>
+        <div className="dash-card" style={S.instructionsBox}>
+          <ClipboardList size={16} color="var(--text-secondary)" style={{ flexShrink: 0, marginTop: 1 }} />
+          <span><strong>Instructions:</strong> {assessment.instructions}</span>
+        </div>
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {questions.map((q, i) => (
-          <div key={q.id} style={s.qCard}>
-            <p style={s.qText}>
-              <span style={{ color: C.blueHi, marginRight: 8 }}>Q{i + 1}.</span>{q.question_text}
-              <span style={s.qMarks}>{q.marks} mark{q.marks !== 1 ? "s" : ""}</span>
+          <div key={q.id} className="dash-card" style={S.qCard}>
+            <p style={S.qText}>
+              <span style={{ color: "var(--primary)", marginRight: 8 }}>Q{i + 1}.</span>{q.question_text}
+              <span style={S.qMarks}>{q.marks} mark{q.marks !== 1 ? "s" : ""}</span>
             </p>
 
             {q.question_type === "essay" ? (
               <textarea
-                style={s.essayInput}
+                style={S.essayInput}
                 placeholder="Type your answer here…"
                 value={answers[q.id] || ""}
                 onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
@@ -483,20 +636,20 @@ export default function TakeEAssessment() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {q.options.map((o) => (
-                  <label key={o.option_label} style={{
-                    ...s.optionRow,
-                    borderColor: answers[q.id] === o.option_label ? C.blue : C.border,
-                    background: answers[q.id] === o.option_label ? C.blue + "18" : C.surface,
+                  <label key={o.option_label} className="exam-option-row" style={{
+                    ...S.optionRow,
+                    borderColor: answers[q.id] === o.option_label ? "var(--primary)" : "var(--border)",
+                    background: answers[q.id] === o.option_label ? "var(--primary-tint)" : "var(--bg)",
                   }}>
                     <input
                       type="radio"
                       name={`q_${q.id}`}
                       checked={answers[q.id] === o.option_label}
                       onChange={() => setAnswers({ ...answers, [q.id]: o.option_label })}
-                      style={{ accentColor: C.blue }}
+                      style={{ accentColor: "var(--primary)" }}
                     />
-                    <span style={{ fontWeight: 700, color: C.blueHi }}>{o.option_label}.</span>
-                    <span style={{ color: C.textPri }}>{o.option_text}</span>
+                    <span style={{ fontWeight: 700, color: "var(--primary)" }}>{o.option_label}.</span>
+                    <span style={{ color: "var(--text)" }}>{o.option_text}</span>
                   </label>
                 ))}
               </div>
@@ -505,37 +658,130 @@ export default function TakeEAssessment() {
         ))}
       </div>
 
-      <button style={s.submitBtn} onClick={() => handleSubmit(false)} disabled={submitting}>
+      <button style={S.submitBtn} onClick={() => handleSubmit(false)} disabled={submitting}>
         {submitting ? "Submitting…" : "Submit Assessment"}
       </button>
-    </div>
+    </main>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   STYLES
-═══════════════════════════════════════════════════════════ */
-const s = {
-  page:            { minHeight: "100vh", background: C.bg, color: C.textPri, padding: "24px 24px 90px", fontFamily: "'Inter', system-ui, sans-serif", maxWidth: 900, margin: "0 auto" },
-  topBar:          { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, flexWrap: "wrap", gap: 12, position: "sticky", top: 0, background: C.bg, paddingTop: 8, paddingBottom: 8, zIndex: 5 },
-  examTitle:       { margin: "0 0 4px", fontSize: 22, fontWeight: 800 },
-  examMeta:        { margin: 0, color: C.textSec, fontSize: 13 },
-  timer:           { fontSize: 22, fontWeight: 800, fontFamily: "monospace", background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 16px" },
-  warningStrip:    { background: "#3d280033", border: `1px solid ${C.amber}55`, color: C.amber, borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 },
-  instructionsBox: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", fontSize: 13, color: C.textSec, lineHeight: 1.7, marginBottom: 20 },
-  qCard:           { background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 },
-  qText:           { margin: "0 0 14px", fontSize: 15, fontWeight: 600, color: C.textPri, lineHeight: 1.6 },
-  qMarks:          { float: "right", fontSize: 11, color: C.textMuted, fontWeight: 400 },
-  optionRow:       { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "1px solid", cursor: "pointer" },
-  essayInput:      { width: "100%", minHeight: 120, padding: "12px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, color: C.textPri, fontSize: 14, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" },
-  submitBtn:       { width: "100%", padding: 16, marginTop: 24, border: "none", borderRadius: 12, background: "linear-gradient(135deg,#15803d,#22c55e)", color: C.white, fontSize: 16, fontWeight: 800, cursor: "pointer" },
-  stateWrap:       { minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 24 },
-  spinner:         { width: 46, height: 46, border: `4px solid ${C.border}`, borderTop: `4px solid ${C.blue}`, borderRadius: "50%", animation: "spin 0.8s linear infinite" },
-  secondaryBtn:    { marginTop: 10, padding: "10px 20px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, color: C.textSec, cursor: "pointer", fontWeight: 600 },
-  lockOverlay:     { position: "fixed", inset: 0, zIndex: 9999, background: "#050b14ee", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" },
-  lockCard:        { background: C.card, border: `1px solid ${C.red}55`, borderRadius: 20, padding: "40px 36px", maxWidth: 440, textAlign: "center", boxShadow: "0 30px 90px #000c" },
-  tokenCard:       { background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: "36px 32px", maxWidth: 420, width: "100%", textAlign: "center", boxShadow: "0 30px 90px #000c" },
-  tokenDisplay:    { background: C.surface, border: `1px dashed ${C.borderHi}`, borderRadius: 12, padding: "18px 14px", fontFamily: "monospace", fontSize: 32, fontWeight: 800, letterSpacing: 6, color: C.blueHi, margin: "0 0 22px" },
-  verifyInput:     { width: "100%", padding: "14px 16px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, color: C.textPri, fontSize: 20, fontWeight: 700, letterSpacing: 4, textAlign: "center", fontFamily: "monospace", boxSizing: "border-box" },
-  primaryBtn:      { width: "100%", padding: "14px 18px", border: "none", borderRadius: 12, background: "linear-gradient(135deg,#1d4ed8,#3d82f8)", color: C.white, fontSize: 15, fontWeight: 800, cursor: "pointer" },
+/* ════════════════════════════════
+   STYLES — token-driven, mirrors
+   the dashboard's "D" style object
+════════════════════════════════ */
+const S = {
+  page: {
+    padding: "24px 32px 90px",
+    background: "var(--bg)",
+    color: "var(--text)",
+    minHeight: "100vh",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    maxWidth: 900,
+    margin: "0 auto",
+    boxSizing: "border-box",
+  },
+  topBar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 20,
+    flexWrap: "wrap",
+    gap: 14,
+    position: "sticky",
+    top: 0,
+    background: "var(--bg)",
+    paddingTop: 8,
+    paddingBottom: 12,
+    zIndex: 5,
+  },
+  examTitle: { margin: "0 0 4px", fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
+  examMeta: { margin: 0, color: "var(--text-secondary)", fontSize: 13, fontWeight: 500 },
+  timer: {
+    display: "flex", alignItems: "center", gap: 7,
+    fontSize: 16, fontWeight: 800, fontFamily: "monospace",
+    background: "var(--card)", border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)", padding: "9px 16px",
+    boxShadow: "var(--shadow-sm)",
+  },
+  themeToggle: {
+    background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-secondary)",
+    width: 34, height: 34, borderRadius: 9, display: "flex", alignItems: "center",
+    justifyContent: "center", cursor: "pointer",
+  },
+  warningStrip: {
+    display: "flex", alignItems: "center", gap: 10,
+    background: "var(--warning-tint)", border: "1px solid var(--warning)",
+    color: "var(--warning)", borderRadius: "var(--radius-sm)",
+    padding: "10px 14px", fontSize: 13, fontWeight: 600, marginBottom: 16,
+  },
+  instructionsBox: {
+    display: "flex", gap: 10,
+    border: "1px solid var(--border)", borderRadius: "var(--radius)",
+    padding: "14px 16px", fontSize: 13, color: "var(--text-secondary)",
+    lineHeight: 1.7, marginBottom: 20, boxShadow: "var(--shadow-sm)",
+  },
+  qCard: {
+    border: "1px solid var(--border)", borderRadius: "var(--radius)",
+    padding: 20, boxShadow: "var(--shadow-sm)", transition: "box-shadow 0.15s ease",
+  },
+  qText: { margin: "0 0 14px", fontSize: 15, fontWeight: 600, color: "var(--text)", lineHeight: 1.6 },
+  qMarks: { float: "right", fontSize: 11, color: "var(--text-muted)", fontWeight: 700 },
+  optionRow: {
+    display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+    borderRadius: "var(--radius-sm)", border: "1px solid", cursor: "pointer",
+    transition: "border-color 0.15s ease, background 0.15s ease",
+  },
+  essayInput: {
+    width: "100%", minHeight: 120, padding: "12px 14px", borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)",
+    fontSize: 14, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit",
+  },
+  submitBtn: {
+    width: "100%", padding: 15, marginTop: 24, border: "none", borderRadius: "var(--radius-sm)",
+    background: "var(--success)", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer",
+    boxShadow: "var(--shadow-sm)",
+  },
+
+  stateWrap: {
+    minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column",
+    alignItems: "center", justifyContent: "center", gap: 16, padding: 24, position: "relative",
+    fontFamily: "'Inter', system-ui, sans-serif",
+  },
+  spinner: {
+    width: 40, height: 40, border: "4px solid var(--border)", borderTop: "4px solid var(--primary)",
+    borderRadius: "50%",
+  },
+  panelCard: {
+    background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
+    padding: "34px 30px", maxWidth: 420, width: "100%", display: "flex", flexDirection: "column",
+    alignItems: "center", boxShadow: "var(--shadow)",
+  },
+  iconCircle: {
+    width: 54, height: 54, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+  },
+  primaryBtn: {
+    width: "100%", padding: "13px 18px", border: "none", borderRadius: "var(--radius-sm)",
+    background: "var(--primary)", color: "#fff", fontSize: 14.5, fontWeight: 800, cursor: "pointer",
+    marginTop: 8,
+  },
+  secondaryBtn: {
+    display: "flex", alignItems: "center", gap: 6, justifyContent: "center",
+    padding: "10px 20px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
+    background: "var(--bg)", color: "var(--text-secondary)", cursor: "pointer", fontWeight: 700,
+    fontSize: 13.5, marginTop: 14,
+  },
+  tokenDisplay: {
+    background: "var(--bg)", border: "1px dashed var(--border)", borderRadius: "var(--radius-sm)",
+    padding: "18px 14px", fontFamily: "monospace", fontSize: 30, fontWeight: 800, letterSpacing: 6,
+    color: "var(--primary)", margin: "0 0 20px", width: "100%", textAlign: "center", boxSizing: "border-box",
+  },
+  verifyInput: {
+    width: "100%", padding: "13px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
+    background: "var(--bg)", color: "var(--text)", fontSize: 19, fontWeight: 700, letterSpacing: 4,
+    textAlign: "center", fontFamily: "monospace", boxSizing: "border-box",
+  },
+  lockOverlay: {
+    position: "fixed", inset: 0, zIndex: 9999, background: "rgba(5,8,14,0.85)",
+    display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", padding: 24,
+  },
 };

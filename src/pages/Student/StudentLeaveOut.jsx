@@ -1,24 +1,132 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../api";
+import { useTheme } from "../../context/ThemeContext";
+import {
+  ArrowLeft, Sun, Moon, DoorOpen, CheckCircle2, Clock, Archive,
+  Printer, AlertTriangle, Inbox, FileEdit,
+} from "lucide-react";
+
+/* ─── shared design-token stylesheet ───
+   Same id/contents as the dashboard's token sheet, so this page
+   inherits the same palette + dark-mode support. Injecting twice
+   is a no-op if the dashboard already mounted it.
+*/
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:translateY(0);} }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes softPulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
+
+    .dash-spin { animation: spin 0.8s linear infinite; }
+    .dash-skeleton { background: linear-gradient(90deg, var(--border) 25%, var(--card-elevated) 50%, var(--border) 75%); background-size: 200% 100%; animation: softPulse 1.4s ease-in-out infinite; border-radius: 8px; }
+
+    .dash-card:hover { box-shadow: var(--shadow); }
+    .dash-icon-btn:hover { background: var(--bg); }
+
+    button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .dash-main { padding: 20px 16px 48px !important; }
+      .dash-two-col { grid-template-columns: 1fr !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── page-specific additive rules ─── */
+const injectLeaveStyles = () => {
+  if (document.getElementById("leave-page-styles")) return;
+  const el = document.createElement("style");
+  el.id = "leave-page-styles";
+  el.textContent = `
+    @media (max-width: 640px) {
+      .leave-row { flex-direction: column !important; align-items: flex-start !important; gap: 10px !important; }
+      .leave-form-row { flex-direction: column !important; }
+    }
+    .leave-input:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3px var(--primary-tint) !important; }
+  `;
+  document.head.appendChild(el);
+};
 
 export default function StudentLeaveOut() {
+  injectStyles();
+  injectLeaveStyles();
+
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  const [theme, setTheme] = useState("dark");
-  const [form, setForm] = useState({
-    reason: "",
-    date: "",
-    time: ""
-  });
+  const [form, setForm] = useState({ reason: "", date: "", time: "" });
   const [leaves, setLeaves] = useState([]);
 
   /* ================= LOAD ================= */
   const loadLeaves = async () => {
     try {
       const res = await API.get("/leave-outs/student", {
-        params: { studentId: user.id }
+        params: { studentId: user.id },
       });
       setLeaves(res.data || []);
     } catch (err) {
@@ -28,6 +136,7 @@ export default function StudentLeaveOut() {
 
   useEffect(() => {
     if (user.id) loadLeaves();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
 
   /* ================= SUBMIT ================= */
@@ -47,15 +156,10 @@ export default function StudentLeaveOut() {
         student_id: user.id,
         reason: form.reason,
         request_date: requestDate,
-        duration: 120
+        duration: 120,
       });
 
-      setForm({
-        reason: "",
-        date: "",
-        time: ""
-      });
-
+      setForm({ reason: "", date: "", time: "" });
       loadLeaves();
       alert("Leave request submitted");
     } catch (err) {
@@ -119,7 +223,7 @@ export default function StudentLeaveOut() {
             transform: translate(-50%, -50%) rotate(-25deg);
             font-size: 80px;
             font-weight: 900;
-            color: rgba(153, 27, 27, 0.03);
+            color: rgba(139, 30, 45, 0.03);
             letter-spacing: 10px;
             z-index: 1;
             pointer-events: none;
@@ -127,7 +231,7 @@ export default function StudentLeaveOut() {
           }
           .topbar {
             height: 8px;
-            background: linear-gradient(90deg, #7f1d1d, #b91c1c, #dc2626);
+            background: linear-gradient(90deg, #6F1725, #8B1E2D, #B45A64);
           }
           .header {
             display: flex;
@@ -142,8 +246,8 @@ export default function StudentLeaveOut() {
             width: 80px;
             height: 80px;
             border-radius: 14px;
-            background: rgba(153, 27, 27, 0.05);
-            border: 1px solid rgba(153, 27, 27, 0.15);
+            background: rgba(139, 30, 45, 0.05);
+            border: 1px solid rgba(139, 30, 45, 0.15);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -156,7 +260,7 @@ export default function StudentLeaveOut() {
           }
           .school {
             margin: 0;
-            color: #7f1d1d;
+            color: #8B1E2D;
             font-size: 26px;
             font-weight: 800;
             letter-spacing: 0.5px;
@@ -178,7 +282,7 @@ export default function StudentLeaveOut() {
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 1px;
-            color: #7f1d1d;
+            color: #8B1E2D;
             text-transform: uppercase;
           }
           .meta {
@@ -327,11 +431,11 @@ export default function StudentLeaveOut() {
             width: 110px;
             height: 110px;
             border-radius: 50%;
-            border: 3px dashed rgba(153, 27, 27, 0.2);
+            border: 3px dashed rgba(139, 30, 45, 0.2);
             display: flex;
             align-items: center;
             justify-content: center;
-            color: rgba(153, 27, 27, 0.35);
+            color: rgba(139, 30, 45, 0.35);
             font-weight: 800;
             font-size: 14px;
             transform: rotate(-12deg);
@@ -432,519 +536,422 @@ export default function StudentLeaveOut() {
     ["denied", "expired", "revoked"].includes(l.status)
   );
 
-  const isDark = theme === "dark";
+  const statCards = [
+    { label: "Active Permits", value: active.length, Icon: CheckCircle2, tint: "success" },
+    { label: "Pending Review", value: pending.length, Icon: Clock, tint: "warning" },
+    { label: "Archived", value: history.length, Icon: Archive, tint: "neutral" },
+  ];
+  const tintStyles = {
+    success: { bg: "var(--success-tint)", fg: "var(--success)" },
+    warning: { bg: "var(--warning-tint)", fg: "var(--warning)" },
+    neutral: { bg: "var(--bg)", fg: "var(--text-secondary)" },
+  };
 
   return (
-    <div 
-      style={{
-        ...styles.page,
-        "--bg": isDark ? "#0b0f19" : "#f8fafc",
-        "--card": isDark ? "#131926" : "#ffffff",
-        "--border": isDark ? "#222c41" : "#e2e8f0",
-        "--text": isDark ? "#f8fafc" : "#0f172a",
-        "--subtext": isDark ? "#94a3b8" : "#64748b",
-        "--input-bg": isDark ? "#0b0f19" : "#f1f5f9",
-        backgroundColor: "var(--bg)",
-        color: "var(--text)"
-      }}
-    >
-      {/* EXCAPSULATED GLOBAL INTERACTION INTERFACE STYLES */}
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes pageEntrance {
-          0% { opacity: 0; transform: translateY(10px); }
-          100% { opacity: 1; transform: translateY(0); }
-        }
-        .dashboard-container-animate {
-          animation: pageEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        .interactive-btn { transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important; }
-        .interactive-btn:hover { transform: translateY(-1px); filter: brightness(1.15); box-shadow: 0 4px 12px rgba(185, 28, 28, 0.25); }
-        .interactive-btn:active { transform: translateY(0); }
-        .interactive-card { transition: transform 0.2s ease, border-color 0.2s ease !important; }
-        .interactive-card:hover { border-color: #b91c1c !important; }
-        .interactive-input { transition: all 0.2s ease !important; }
-        .interactive-input:focus { border-color: #b91c1c !important; box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.15) !important; }
-      `}} />
+    <main className="dash-main" style={D.main}>
 
-      <div style={styles.contentWidthFrame} className="dashboard-container-animate">
-        
-        {/* TOP NAVBAR LAYER */}
-        <div style={styles.topBar}>
-          <button style={styles.backBtn} onClick={() => navigate(-1)} className="interactive-btn">
-            <span style={{ marginRight: 6 }}>←</span> Back
+      {/* ── Header ── */}
+      <header style={D.pageHeader}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button style={D.backBtn} className="dash-icon-btn" onClick={() => navigate(-1)} aria-label="Go back">
+            <ArrowLeft size={16} />
           </button>
-
-          <button
-            style={styles.toggle}
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="interactive-btn"
-          >
-            {isDark ? "🎚️ Light UI" : "🕋 Dark UI"}
-          </button>
-        </div>
-
-        {/* PROFILE CRIMSOM BANNER HERO */}
-        <div style={styles.hero}>
-          <div style={styles.heroGlowOverlay}></div>
-          <div style={styles.heroContentFrame}>
-            <div style={styles.heroBadgeBox}>Institutional Portal</div>
-            <h1 style={styles.heroTitle}>Student Leave Registry</h1>
-            <p style={styles.heroSub}>
-              Submit leave requests, check authorization states, and generate certified printed gate passes.
-            </p>
+          <div>
+            <h1 style={D.pageTitle}>Leave &amp; Gate Pass</h1>
+            <p style={D.pageSub}>Submit requests and print certified permits once approved</p>
           </div>
         </div>
+        <button
+          onClick={toggleTheme}
+          className="dash-icon-btn"
+          style={D.themeToggle}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          aria-pressed={theme === "dark"}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+        </button>
+      </header>
 
-        {/* METADATA ANALYTIC COUNTERS GRID */}
-        <div style={styles.statsGrid}>
-          <div style={styles.statCard}>
-            <div style={styles.statLabelHeader}>
-              <span style={{...styles.statusDotDot, backgroundColor: "#10b981"}} /> Active Permits
+      {/* ── Stat cards ── */}
+      <section className="dash-stats-grid" style={D.statsGrid} aria-label="Leave summary">
+        {statCards.map((sc) => {
+          const t = tintStyles[sc.tint];
+          return (
+            <div key={sc.label} className="dash-card" style={D.statCard}>
+              <div style={{ ...D.statIconWrap, background: t.bg }}>
+                <sc.Icon size={20} color={t.fg} strokeWidth={2} />
+              </div>
+              <div style={D.statInfo}>
+                <div style={D.statLabel}>{sc.label}</div>
+                <div style={D.statValue}>{sc.value}</div>
+              </div>
             </div>
-            <div style={styles.statNumber}>{active.length}</div>
+          );
+        })}
+      </section>
+
+      {/* ── Main split: form + records ── */}
+      <div className="dash-two-col" style={D.twoCol}>
+
+        {/* Request form */}
+        <section className="dash-card" style={D.panel} aria-label="New leave request">
+          <div style={D.panelHeader}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <FileEdit size={17} color="var(--text-secondary)" />
+              <h3 style={D.panelTitle}>New Request</h3>
+            </div>
+          </div>
+          <p style={D.formHelp}>Fill in the details below to file a leave request.</p>
+
+          <div style={D.fieldGroup}>
+            <label style={D.fieldLabel}>Reason for Leave</label>
+            <input
+              placeholder="e.g. Medical appointment, family visit…"
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              style={D.input}
+              className="leave-input"
+            />
           </div>
 
-          <div style={styles.statCard}>
-            <div style={styles.statLabelHeader}>
-              <span style={{...styles.statusDotDot, backgroundColor: "#f59e0b"}} /> Pending Review
-            </div>
-            <div style={styles.statNumber}>{pending.length}</div>
-          </div>
-
-          <div style={styles.statCard}>
-            <div style={styles.statLabelHeader}>
-              <span style={{...styles.statusDotDot, backgroundColor: "#64748b"}} /> Archived Audits
-            </div>
-            <div style={styles.statNumber}>{history.length}</div>
-          </div>
-        </div>
-
-        {/* CENTRAL LAYOUT SPLITTER */}
-        <div style={styles.mainDashboardGridSplitter}>
-          
-          {/* APPLICATION INTERFACE CARD */}
-          <div style={styles.card}>
-            <h2 style={styles.sectionTitle}>📝 File Authorization Request</h2>
-            <p style={styles.formDescriptorText}>Provide comprehensive institutional data parameters below.</p>
-            
-            <div style={styles.formInputGroupSpacer}>
-              <label style={styles.controlInputLabel}>Justification / Reason for Leave</label>
+          <div className="leave-form-row" style={D.formRow}>
+            <div style={{ ...D.fieldGroup, flex: 1 }}>
+              <label style={D.fieldLabel}>Date</label>
               <input
-                placeholder="Specify precise context or medical/official reason..."
-                value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                style={styles.input}
-                className="interactive-input"
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+                style={D.input}
+                className="leave-input"
               />
             </div>
-
-            <div style={styles.formRowFieldsFlex}>
-              <div style={{ ...styles.formInputGroupSpacer, flex: 1 }}>
-                <label style={styles.controlInputLabel}>Departure Date</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
-                  style={styles.input}
-                  className="interactive-input"
-                />
-              </div>
-
-              <div style={{ ...styles.formInputGroupSpacer, flex: 1 }}>
-                <label style={styles.controlInputLabel}>Departure Time</label>
-                <input
-                  type="time"
-                  value={form.time}
-                  onChange={(e) => setForm({ ...form, time: e.target.value })}
-                  style={styles.input}
-                  className="interactive-input"
-                />
-              </div>
+            <div style={{ ...D.fieldGroup, flex: 1 }}>
+              <label style={D.fieldLabel}>Time</label>
+              <input
+                type="time"
+                value={form.time}
+                onChange={(e) => setForm({ ...form, time: e.target.value })}
+                style={D.input}
+                className="leave-input"
+              />
             </div>
-
-            <button style={styles.btn} onClick={submit} className="interactive-btn">
-              Dispatch Request Parameters
-            </button>
           </div>
 
-          {/* DYNAMIC LEAVE RECORD ARRAYS CONTAINER */}
-          <div style={styles.recordsLayoutColumn}>
-            
-            {/* ACTIVE PERMIT FEED */}
-            <div style={styles.card}>
-              <h2 style={styles.sectionTitle}>🟢 Approved Active Clearances</h2>
-              {active.length === 0 ? (
-                <div style={styles.emptyFeedPlaceholder}>No active operational clearances found.</div>
-              ) : (
-                active.map((l) => (
-                  <div key={l.id} style={styles.row} className="interactive-card">
-                    <div style={styles.rowMetadataBlock}>
-                      <div style={styles.rowJustificationTitle}>{l.reason}</div>
-                      <div style={styles.rowTimestampMetric}>
-                        <strong>Authorized:</strong> {new Date(l.approved_at).toLocaleString()}
-                      </div>
-                      <div style={styles.rowTimestampMetric}>
-                        <strong>Allocation Frame:</strong> {formatDuration(l.duration)}
-                      </div>
+          <button style={D.submitBtn} onClick={submit}>Submit Request</button>
+        </section>
+
+        {/* Records */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+          <section className="dash-card" style={D.panel} aria-label="Active permits">
+            <div style={D.panelHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <CheckCircle2 size={17} color="var(--success)" />
+                <h3 style={D.panelTitle}>Active Permits</h3>
+              </div>
+              <span style={D.panelBadge}>{active.length}</span>
+            </div>
+
+            {active.length === 0 ? (
+              <div style={D.emptyState}>
+                <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
+                <div>No active permits</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {active.map((l) => (
+                  <div key={l.id} className="leave-row" style={D.row}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={D.rowTitle}>{l.reason}</div>
+                      <div style={D.rowMeta}>Authorized {new Date(l.approved_at).toLocaleString()}</div>
+                      <div style={D.rowMeta}>Duration: {formatDuration(l.duration)}</div>
                     </div>
-                    <button onClick={() => printLeave(l)} style={styles.printBtn} className="interactive-btn">
-                      🖨 Document
+                    <button onClick={() => printLeave(l)} style={D.printBtn}>
+                      <Printer size={13} /> Print
                     </button>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="dash-card" style={D.panel} aria-label="Pending requests">
+            <div style={D.panelHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Clock size={17} color="var(--warning)" />
+                <h3 style={D.panelTitle}>Pending Review</h3>
+              </div>
+              <span style={D.panelBadge}>{pending.length}</span>
             </div>
 
-            {/* PENDING PERMIT FEED */}
-            <div style={styles.card}>
-              <h2 style={styles.sectionTitle}>🟡 Pending Academic Approvals</h2>
-              {pending.length === 0 ? (
-                <div style={styles.emptyFeedPlaceholder}>No outstanding request payloads pending overview.</div>
-              ) : (
-                pending.map((l) => (
-                  <div key={l.id} style={styles.row} className="interactive-card">
-                    <div style={styles.rowMetadataBlock}>
-                      <div style={styles.rowJustificationTitle}>{l.reason}</div>
-                      <div style={styles.rowTimestampMetric}>
-                        <strong>Dispatched:</strong> {new Date(l.request_date).toLocaleString()}
-                      </div>
+            {pending.length === 0 ? (
+              <div style={D.emptyState}>
+                <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
+                <div>No pending requests</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {pending.map((l) => (
+                  <div key={l.id} className="leave-row" style={D.row}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={D.rowTitle}>{l.reason}</div>
+                      <div style={D.rowMeta}>Submitted {new Date(l.request_date).toLocaleString()}</div>
                     </div>
-                    <div style={{ ...styles.badge, background: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.25)" }}>
-                      Under Review
-                    </div>
+                    <span style={{ ...D.badge, background: "var(--warning-tint)", color: "var(--warning)" }}>
+                      <Clock size={12} /> Pending
+                    </span>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="dash-card" style={D.panel} aria-label="Leave history">
+            <div style={D.panelHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Archive size={17} color="var(--text-secondary)" />
+                <h3 style={D.panelTitle}>History</h3>
+              </div>
+              <span style={D.panelBadge}>{history.length}</span>
             </div>
 
-            {/* HISTORICAL PERMIT FEED */}
-            <div style={styles.card}>
-              <h2 style={styles.sectionTitle}>📜 Historical Clearance Registry</h2>
-              {history.length === 0 ? (
-                <div style={styles.emptyFeedPlaceholder}>No previous log registries archived.</div>
-              ) : (
-                history.map((l) => (
-                  <div key={l.id} style={styles.row} className="interactive-card">
-                    <div style={styles.rowMetadataBlock}>
-                      <div style={styles.rowJustificationTitle}>{l.reason}</div>
+            {history.length === 0 ? (
+              <div style={D.emptyState}>
+                <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
+                <div>No past records</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {history.map((l) => (
+                  <div key={l.id} className="leave-row" style={D.row}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={D.rowTitle}>{l.reason}</div>
                       {l.status === "revoked" && (
-                        <div style={styles.revocationCriticalBanner}>
-                          ⚠ Revocation Mandate issued by Management. Report immediately.
+                        <div style={D.revokedNote}>
+                          <AlertTriangle size={12} /> Revoked by management — report immediately
                         </div>
                       )}
                     </div>
-                    <div 
-                      style={{ 
-                        ...styles.badge, 
-                        background: l.status === "denied" ? "rgba(239, 68, 68, 0.12)" : "rgba(100, 116, 139, 0.12)", 
-                        color: l.status === "denied" ? "#f87171" : "#94a3b8",
-                        border: l.status === "denied" ? "1px solid rgba(239, 68, 68, 0.2)" : "1px solid rgba(100, 116, 139, 0.2)",
-                        textTransform: "uppercase"
-                      }}
-                    >
+                    <span style={{
+                      ...D.badge,
+                      background: l.status === "denied" ? "var(--destructive-tint)" : "var(--bg)",
+                      color: l.status === "denied" ? "var(--destructive)" : "var(--text-secondary)",
+                      border: l.status === "denied" ? "none" : "1px solid var(--border)",
+                      textTransform: "uppercase",
+                    }}>
                       {l.status}
-                    </div>
+                    </span>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
+          </section>
 
-          </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
-/* ================= THEME ARCHITECTURAL INTERACTION ENGINE ================= */
-const styles = {
-  page: {
+/* ════════════════════════════════
+   STYLES — token-driven, mirrors
+   the dashboard's "D" style object
+════════════════════════════════ */
+const D = {
+  main: {
+    padding: "24px 32px 56px",
+    background: "var(--bg)",
+    color: "var(--text)",
     minHeight: "100vh",
-    padding: "24px 16px",
-    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-    transition: "background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-    boxSizing: "border-box"
+    fontFamily: "'Inter', system-ui, sans-serif",
+    boxSizing: "border-box",
   },
 
-  contentWidthFrame: {
-    maxWidth: "100%",
-    margin: "0 auto",
-    display: "flex",
-    flexDirection: "column"
-  },
-
-  topBar: {
+  pageHeader: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "24px"
+    alignItems: "flex-start",
+    marginBottom: 26,
+    flexWrap: "wrap",
+    gap: 14,
   },
-
   backBtn: {
-    background: "transparent",
-    color: "var(--text)",
-    border: "1px solid var(--border)",
-    padding: "8px 16px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontWeight: "600",
-    fontSize: "13px"
-  },
-
-  toggle: {
     background: "var(--card)",
-    color: "var(--text)",
     border: "1px solid var(--border)",
-    padding: "8px 16px",
-    borderRadius: "8px",
+    color: "var(--text-secondary)",
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
-    fontWeight: "600",
-    fontSize: "13px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+    flexShrink: 0,
+  },
+  pageTitle: { margin: 0, fontSize: 26, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
+  pageSub: { margin: "4px 0 0", fontSize: 13.5, color: "var(--text-secondary)", fontWeight: 500 },
+  themeToggle: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
   },
 
-  hero: {
-    background: "linear-gradient(135deg, #450a0a 0%, #7f1d1d 50%, #991b1b 100%)",
-    padding: "40px 32px",
-    borderRadius: "16px",
-    marginBottom: "32px",
-    color: "#ffffff",
-    boxShadow: "0 12px 40px -10px rgba(127, 29, 29, 0.35)",
-    position: "relative",
-    overflow: "hidden"
-  },
-
-  heroGlowOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: "radial-gradient(circle at top right, rgba(220, 38, 38, 0.3), transparent 60%)",
-    pointerEvents: "none"
-  },
-
-  heroContentFrame: {
-    position: "relative",
-    zIndex: 2
-  },
-
-  heroBadgeBox: {
-    display: "inline-block",
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    border: "1px solid rgba(255, 255, 255, 0.15)",
-    padding: "4px 10px",
-    borderRadius: "6px",
-    fontSize: "11px",
-    fontWeight: "700",
-    letterSpacing: "0.5px",
-    textTransform: "uppercase",
-    marginBottom: "12px"
-  },
-
-  heroTitle: {
-    fontSize: "28px",
-    fontWeight: "800",
-    margin: "0 0 8px 0",
-    letterSpacing: "-0.5px"
-  },
-
-  heroSub: {
-    opacity: 0.85,
-    fontSize: "14px",
-    lineHeight: "1.5",
-    maxWidth: "600px",
-    margin: 0
-  },
-
+  /* ── stat cards ── */
   statsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-    gap: "20px",
-    marginBottom: "32px"
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 14,
+    marginBottom: 26,
   },
-
   statCard: {
     background: "var(--card)",
     border: "1px solid var(--border)",
-    borderRadius: "12px",
-    padding: "20px",
-    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.02)"
-  },
-
-  statLabelHeader: {
-    fontSize: "13px",
-    fontWeight: "600",
-    color: "var(--subtext)",
+    borderRadius: "var(--radius)",
+    padding: "16px",
     display: "flex",
     alignItems: "center",
-    gap: "8px"
+    gap: 12,
+    boxShadow: "var(--shadow-sm)",
+    transition: "box-shadow 0.15s ease",
   },
-
-  statusDotDot: {
-    width: "6px",
-    height: "6px",
-    borderRadius: "50%"
+  statIconWrap: {
+    width: 42,
+    height: 42,
+    minWidth: 42,
+    borderRadius: 11,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
+  statInfo: { flex: 1, minWidth: 0 },
+  statLabel: { fontSize: 12, color: "var(--text-secondary)", fontWeight: 700, marginBottom: 3 },
+  statValue: { fontSize: 24, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
 
-  statNumber: {
-    fontSize: "32px",
-    fontWeight: "700",
-    marginTop: "12px",
-    letterSpacing: "-1px"
-  },
-
-  mainDashboardGridSplitter: {
+  /* ── layout ── */
+  twoCol: {
     display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: "32px",
+    gridTemplateColumns: "380px 1fr",
+    gap: 20,
     alignItems: "start",
-    // Standard layout design matrix mapping
-    "@media(minWidth: 860px)": {
-      gridTemplateColumns: "400px 1fr"
-    }
   },
 
-  card: {
+  /* ── panels ── */
+  panel: {
     background: "var(--card)",
     border: "1px solid var(--border)",
-    borderRadius: "16px",
-    padding: "24px",
-    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.02)",
-    marginBottom: "24px"
+    borderRadius: "var(--radius)",
+    padding: "20px 22px",
+    boxShadow: "var(--shadow-sm)",
   },
-
-  sectionTitle: {
-    margin: "0 0 6px 0",
-    fontSize: "16px",
-    fontWeight: "700",
-    letterSpacing: "-0.2px"
-  },
-
-  formDescriptorText: {
-    color: "var(--subtext)",
-    fontSize: "13px",
-    margin: "0 0 20px 0"
-  },
-
-  formInputGroupSpacer: {
+  panelHeader: {
     display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-    marginBottom: "16px"
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    gap: 12,
+  },
+  panelTitle: { margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" },
+  panelBadge: {
+    background: "var(--primary-tint)",
+    color: "var(--primary)",
+    borderRadius: 20,
+    padding: "3px 10px",
+    fontSize: 11,
+    fontWeight: 700,
+    flexShrink: 0,
   },
 
-  controlInputLabel: {
-    fontSize: "11px",
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    color: "var(--subtext)"
-  },
-
-  formRowFieldsFlex: {
-    display: "flex",
-    gap: "16px"
-  },
-
+  /* ── form ── */
+  formHelp: { color: "var(--text-secondary)", fontSize: 13, margin: "0 0 18px" },
+  fieldGroup: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 },
+  fieldLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-muted)" },
+  formRow: { display: "flex", gap: 16 },
   input: {
     width: "100%",
     padding: "11px 14px",
-    borderRadius: "8px",
+    borderRadius: "var(--radius-sm)",
     border: "1px solid var(--border)",
-    background: "var(--input-bg)",
+    background: "var(--bg)",
     color: "var(--text)",
     outline: "none",
-    fontSize: "14px",
-    boxSizing: "border-box"
+    fontSize: 14,
+    fontFamily: "inherit",
+    boxSizing: "border-box",
+    transition: "border-color 0.15s ease, box-shadow 0.15s ease",
   },
-
-  btn: {
+  submitBtn: {
     width: "100%",
-    background: "#b91c1c",
-    color: "#ffffff",
+    background: "var(--primary)",
+    color: "#fff",
     border: "none",
     padding: "12px 18px",
-    borderRadius: "8px",
+    borderRadius: "var(--radius-sm)",
     cursor: "pointer",
-    fontWeight: "600",
-    fontSize: "14px",
-    marginTop: "8px",
-    boxShadow: "0 2px 4px rgba(185, 28, 28, 0.1)"
+    fontWeight: 700,
+    fontSize: 14,
+    marginTop: 4,
+    boxShadow: "var(--shadow-sm)",
   },
 
-  recordsLayoutColumn: {
-    display: "flex",
-    flexDirection: "column"
-  },
-
-  emptyFeedPlaceholder: {
-    padding: "32px 12px",
+  /* ── record rows ── */
+  emptyState: {
+    padding: "28px 0",
     textAlign: "center",
-    color: "var(--subtext)",
-    fontSize: "13px"
+    color: "var(--text-secondary)",
+    fontSize: 13,
+    fontWeight: 600,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
   },
-
   row: {
-    background: "var(--input-bg)",
-    border: "1px solid var(--border)",
-    borderRadius: "10px",
-    padding: "16px",
-    marginBottom: "12px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: "16px"
+    padding: 14,
+    borderRadius: "var(--radius-sm)",
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    gap: 12,
   },
-
-  rowMetadataBlock: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px"
+  rowTitle: { fontWeight: 700, color: "var(--text)", fontSize: 13.5, marginBottom: 3 },
+  rowMeta: { color: "var(--text-muted)", fontSize: 12 },
+  revokedNote: {
+    display: "flex", alignItems: "center", gap: 5,
+    color: "var(--destructive)", fontSize: 12, fontWeight: 600, marginTop: 4,
   },
-
-  rowJustificationTitle: {
-    fontWeight: "600",
-    fontSize: "14px"
-  },
-
-  rowTimestampMetric: {
-    color: "var(--subtext)",
-    fontSize: "12px"
-  },
-
   badge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 20,
     padding: "4px 10px",
-    borderRadius: "6px",
-    fontSize: "11px",
-    fontWeight: "700",
-    whiteSpace: "nowrap"
+    fontSize: 11.5,
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+    flexShrink: 0,
   },
-
   printBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
     background: "var(--card)",
     color: "var(--text)",
     border: "1px solid var(--border)",
     padding: "8px 14px",
-    borderRadius: "8px",
+    borderRadius: "var(--radius-sm)",
     cursor: "pointer",
-    fontWeight: "600",
-    fontSize: "12px",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+    fontWeight: 700,
+    fontSize: 12,
+    boxShadow: "var(--shadow-sm)",
+    flexShrink: 0,
   },
-
-  revocationCriticalBanner: {
-    color: "#ef4444",
-    marginTop: "6px",
-    fontSize: "12px",
-    fontWeight: "600"
-  }
 };
-
-// Injection fix for dynamic inline responsive layouts mapping parameters
-if (typeof window !== "undefined") {
-  const widthValue = window.innerWidth;
-  if (widthValue >= 860) {
-    styles.mainDashboardGridSplitter.gridTemplateColumns = "400px 1fr";
-  }
-}

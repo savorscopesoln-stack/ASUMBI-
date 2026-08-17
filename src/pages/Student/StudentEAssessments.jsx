@@ -1,27 +1,97 @@
-import React, {
-  useEffect,
-  useState,
-} from "react";
-
-import {
-  useNavigate,
-} from "react-router-dom";
-
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import API from "../../api";
+import { MonitorCheck, Clock, UserRound, Loader2, Inbox, AlertTriangle } from "lucide-react";
+
+/* ─── shared design-token stylesheet — identical id/tokens to the
+   rest of the app; a no-op if already mounted by the layout or
+   another page. ─── */
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dash-spin { animation: spin 0.8s linear infinite; }
+
+    .assess-card:hover { box-shadow: var(--shadow); border-color: var(--primary) !important; }
+    .assess-take-btn:hover { filter: brightness(0.95); }
+
+    button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .dash-main { padding: 20px 16px 48px !important; }
+    }
+    @media (max-width: 640px) {
+      .assess-grid { grid-template-columns: 1fr !important; }
+      .assess-info { flex-direction: column !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
 
 export default function StudentEAssessments() {
-  const navigate =
-    useNavigate();
+  injectStyles();
 
-  const [assessments, setAssessments] =
-    useState([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  /* =====================================================
-     FETCH ASSESSMENTS
-  ===================================================== */
+  const navigate = useNavigate();
+  const [assessments, setAssessments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetchAssessments();
@@ -30,311 +100,234 @@ export default function StudentEAssessments() {
   const fetchAssessments = async () => {
     try {
       setLoading(true);
+      setError("");
+      const token = localStorage.getItem("token");
 
-      const token =
-        localStorage.getItem("token");
+      const res = await API.get("/e-assessments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      const res = await API.get(
-        "/e-assessments",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+      const data = res.data?.assessments || res.data?.data || res.data || [];
+
+      const approved = data.filter(
+        (a) => String(a.status || "").toLowerCase() === "approved"
       );
-
-      console.log(
-        "ASSESSMENTS:",
-        res.data
-      );
-
-      const data =
-        res.data?.assessments ||
-        res.data?.data ||
-        res.data ||
-        [];
-
-      /* =========================================
-         ONLY APPROVED
-      ========================================= */
-
-      const approved =
-        data.filter(
-          (a) =>
-            String(
-              a.status || ""
-            ).toLowerCase() ===
-            "approved"
-        );
 
       setAssessments(approved);
-
     } catch (err) {
       console.log(err);
-
-      alert(
-        err?.response?.data
-          ?.message ||
-          "Failed to load assessments"
-      );
+      setError(err?.response?.data?.message || "Failed to load assessments");
     } finally {
       setLoading(false);
     }
   };
 
-  /* =====================================================
-     LOADING
-  ===================================================== */
-
-  if (loading) {
-    return (
-      <div style={styles.loaderWrap}>
-        <div style={styles.loader}></div>
-
-        <h2>
-          Loading Assessments...
-        </h2>
-      </div>
-    );
-  }
-
-  /* =====================================================
-     EMPTY
-  ===================================================== */
-
-  if (assessments.length === 0) {
-    return (
-      <div style={styles.empty}>
-        No available assessments
-      </div>
-    );
-  }
-
-  /* =====================================================
-     UI
-  ===================================================== */
-
   return (
-    <div style={styles.page}>
-      <div style={styles.top}>
-        <h1 style={styles.title}>
-          Student E-Assessments
-        </h1>
-
-        <p style={styles.subtitle}>
-          Available exams and tests
-        </p>
-      </div>
-
-      <div style={styles.grid}>
-        {assessments.map((a) => (
-          <div
-            key={a.id}
-            style={styles.card}
-          >
-            <div style={styles.cardTop}>
-              <div>
-                <h2 style={styles.cardTitle}>
-                  {a.title}
-                </h2>
-
-                <p style={styles.subject}>
-                  {a.subject}
-                </p>
-              </div>
-
-              <div style={styles.badge}>
-                {a.status}
-              </div>
-            </div>
-
-            <div style={styles.info}>
-              <div style={styles.infoBox}>
-                <span
-                  style={styles.infoLabel}
-                >
-                  Duration
-                </span>
-
-                <strong>
-                  {
-                    a.duration_minutes
-                  }{" "}
-                  mins
-                </strong>
-              </div>
-
-              <div style={styles.infoBox}>
-                <span
-                  style={styles.infoLabel}
-                >
-                  Teacher
-                </span>
-
-                <strong>
-                  {a.teacher_name ||
-                    "Teacher"}
-                </strong>
-              </div>
-            </div>
-
-            <button
-              style={styles.takeBtn}
-              onClick={() =>
-                navigate(
-                  `/student/e-assessments/${a.id}`
-                )
-              }
-            >
-              Take Assessment
-            </button>
+    <main className="dash-main" style={D.main}>
+      <header style={D.pageHeader}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <MonitorCheck size={20} color="var(--primary)" />
+          <div>
+            <h1 style={D.pageTitle}>E-Assessments</h1>
+            <p style={D.pageSub}>Available exams and tests</p>
           </div>
-        ))}
-      </div>
-    </div>
+        </div>
+      </header>
+
+      {error && !loading && (
+        <div style={D.errorBanner} role="alert">
+          <AlertTriangle size={16} color="var(--destructive)" style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>{error}</span>
+          <button onClick={fetchAssessments} style={D.retryBtn}>Retry</button>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={D.loadingState}>
+          <Loader2 size={18} className="dash-spin" />
+          Loading assessments…
+        </div>
+      ) : assessments.length === 0 ? (
+        <section style={D.panel}>
+          <div style={D.emptyState}>
+            <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
+            <div>No available assessments</div>
+          </div>
+        </section>
+      ) : (
+        <div className="assess-grid" style={D.grid}>
+          {assessments.map((a) => (
+            <div key={a.id} className="assess-card" style={D.card}>
+              <div style={D.cardTop}>
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={D.cardTitle}>{a.title}</h2>
+                  <p style={D.subject}>{a.subject}</p>
+                </div>
+                <span style={D.badge}>{a.status}</span>
+              </div>
+
+              <div className="assess-info" style={D.info}>
+                <div style={D.infoBox}>
+                  <span style={D.infoLabel}>
+                    <Clock size={12} /> Duration
+                  </span>
+                  <strong style={D.infoValue}>{a.duration_minutes} mins</strong>
+                </div>
+                <div style={D.infoBox}>
+                  <span style={D.infoLabel}>
+                    <UserRound size={12} /> Teacher
+                  </span>
+                  <strong style={D.infoValue}>{a.teacher_name || "Teacher"}</strong>
+                </div>
+              </div>
+
+              <button
+                className="assess-take-btn"
+                style={D.takeBtn}
+                onClick={() => navigate(`/student/e-assessments/${a.id}`)}
+              >
+                Take Assessment
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </main>
   );
 }
 
 /* =========================================================
-   STYLES
+   STYLES — token-driven, mirrors the panel/card patterns
+   used across the rest of the app
 ========================================================= */
+const D = {
+  main: {
+    padding: "24px 32px 56px",
+    background: "var(--bg)",
+    color: "var(--text)",
+    minHeight: "100vh",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    boxSizing: "border-box",
+  },
+  pageHeader: { marginBottom: 22 },
+  pageTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
+  pageSub: { margin: "3px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
 
-const styles = {
-  page: {
-    minHeight: "100%",
-    maxWidth: "100%",
-    padding: 30,
-    background:
-      "linear-gradient(135deg,#020617,#0f172a,#111827)",
-    color: "#fff",
+  errorBanner: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    background: "var(--destructive-tint)",
+    border: "1px solid var(--destructive)",
+    borderRadius: 10,
+    padding: "10px 14px",
+    fontSize: 13,
+    color: "var(--text)",
+    marginBottom: 18,
+  },
+  retryBtn: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text)",
+    borderRadius: 8,
+    padding: "5px 12px",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    flexShrink: 0,
   },
 
-  top: {
-    marginBottom: 30,
+  loadingState: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "36px 0",
+    color: "var(--text-secondary)",
+    fontSize: 13.5,
+    fontWeight: 600,
   },
 
-  title: {
-    fontSize: 38,
-    fontWeight: 800,
-    marginBottom: 10,
+  panel: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: "20px 22px",
+    boxShadow: "var(--shadow-sm)",
   },
-
-  subtitle: {
-    color: "#94a3b8",
-    fontSize: 16,
+  emptyState: {
+    padding: "36px 0",
+    textAlign: "center",
+    color: "var(--text-secondary)",
+    fontSize: 13.5,
+    fontWeight: 600,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
   },
 
   grid: {
     display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit,minmax(320px,1fr))",
-    gap: 24,
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 16,
   },
-
   card: {
-    background:
-      "rgba(255,255,255,0.05)",
-    borderRadius: 24,
-    padding: 24,
-    border:
-      "1px solid rgba(255,255,255,0.08)",
-    backdropFilter: "blur(10px)",
-    transition: "0.3s",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: 20,
+    boxShadow: "var(--shadow-sm)",
+    transition: "box-shadow 0.15s ease, border-color 0.15s ease",
   },
-
   cardTop: {
     display: "flex",
-    justifyContent:
-      "space-between",
-    gap: 20,
-    marginBottom: 20,
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 16,
   },
-
-  cardTitle: {
-    margin: 0,
-    fontSize: 24,
-    fontWeight: 800,
-  },
-
-  subject: {
-    color: "#93c5fd",
-    marginTop: 8,
-  },
-
+  cardTitle: { margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" },
+  subject: { margin: "6px 0 0", fontSize: 12.5, color: "var(--text-secondary)", fontWeight: 600 },
   badge: {
-    background:
-      "linear-gradient(135deg,#15803d,#22c55e)",
-    padding: "8px 14px",
-    borderRadius: 999,
-    fontSize: 13,
+    background: "var(--success-tint)",
+    color: "var(--success)",
+    padding: "4px 10px",
+    borderRadius: 20,
+    fontSize: 11,
     fontWeight: 700,
     height: "fit-content",
     textTransform: "capitalize",
+    flexShrink: 0,
   },
-
-  info: {
-    display: "flex",
-    gap: 16,
-    marginBottom: 24,
-  },
-
+  info: { display: "flex", gap: 10, marginBottom: 18 },
   infoBox: {
     flex: 1,
-    background:
-      "rgba(255,255,255,0.04)",
-    padding: 16,
-    borderRadius: 16,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    padding: 12,
+    borderRadius: "var(--radius-sm)",
+    minWidth: 0,
   },
-
   infoLabel: {
-    display: "block",
-    color: "#94a3b8",
-    fontSize: 13,
-    marginBottom: 8,
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    color: "var(--text-secondary)",
+    fontSize: 11,
+    fontWeight: 700,
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: "0.03em",
   },
-
+  infoValue: { fontSize: 13, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" },
   takeBtn: {
     width: "100%",
-    padding: 16,
-    borderRadius: 16,
+    padding: 12,
+    borderRadius: "var(--radius-sm)",
     border: "none",
-    background:
-      "linear-gradient(135deg,#2563eb,#3b82f6)",
+    background: "var(--primary)",
     color: "#fff",
-    fontSize: 16,
+    fontSize: 13.5,
     fontWeight: 700,
     cursor: "pointer",
-  },
-
-  loaderWrap: {
-    minHeight: "100vh",
-    background: "#020617",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-    color: "#fff",
-  },
-
-  loader: {
-    width: 70,
-    height: 70,
-    border:
-      "6px solid rgba(255,255,255,0.1)",
-    borderTop:
-      "6px solid #3b82f6",
-    borderRadius: "50%",
-    marginBottom: 20,
-  },
-
-  empty: {
-    minHeight: "100vh",
-    background: "#020617",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: 700,
+    fontFamily: "inherit",
   },
 };
