@@ -6,7 +6,26 @@ import {
   Settings, ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut,
   Sun, Moon, GraduationCap,
 } from "lucide-react";
-import { useTheme } from "../context/ThemeContext";
+/* ─── self-contained theme hook — no dependency on an external
+   ThemeContext file/path, which varies by project structure.
+   Reads/writes localStorage + the document's data-theme attribute,
+   the same attribute the token stylesheet below keys off of. If
+   your app already has its own ThemeProvider/useTheme elsewhere,
+   swap this out for that import instead so both stay in sync. ─── */
+const useTheme = () => {
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("theme") || "light"
+  );
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
+  return { theme, toggleTheme };
+};
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    admin dashboard so both layouts render from one consistent
@@ -250,12 +269,7 @@ export default function StudentLayout() {
               </div>
             </div>
           ))}
-        </nav>
-
-        <div style={S.divider} />
-
-        {/* logout */}
-        <button
+          <button
           onClick={logout}
           className="dash-btn"
           aria-label="Log out of your account"
@@ -265,6 +279,12 @@ export default function StudentLayout() {
           <LogOut size={17} strokeWidth={2.25} />
           {!sidebarCollapsed && <span>Log out</span>}
         </button>
+        </nav>
+
+        <div style={S.divider} />
+
+        {/* logout */}
+        
       </aside>
 
       {/* ════════ MAIN ════════ */}
