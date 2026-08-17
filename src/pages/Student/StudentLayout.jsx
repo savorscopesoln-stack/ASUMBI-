@@ -112,6 +112,19 @@ const injectStyles = () => {
       .dash-mobile-toggle { display: inline-flex !important; }
       .dash-backdrop.open { display: block; position: fixed; inset: 0; background: rgba(15,17,21,0.45); z-index: 55; }
       .dash-main { padding: 20px 16px 48px !important; }
+
+      /* keep the hamburger reachable while scrolling on mobile —
+         without this the header (and the only way to reopen the
+         sidebar) scrolls away with the rest of the page content */
+      .dash-page-header {
+        position: sticky;
+        top: 0;
+        z-index: 45;
+        margin: -20px -16px 16px !important;
+        padding: 14px 16px !important;
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+      }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -269,7 +282,12 @@ export default function StudentLayout() {
               </div>
             </div>
           ))}
-          <button
+        </nav>
+
+        <div style={S.divider} />
+
+        {/* logout */}
+        <button
           onClick={logout}
           className="dash-btn"
           aria-label="Log out of your account"
@@ -279,17 +297,11 @@ export default function StudentLayout() {
           <LogOut size={17} strokeWidth={2.25} />
           {!sidebarCollapsed && <span>Log out</span>}
         </button>
-        </nav>
-
-        <div style={S.divider} />
-
-        {/* logout */}
-        
       </aside>
 
       {/* ════════ MAIN ════════ */}
       <main className="dash-main" style={S.main}>
-        <header style={S.pageHeader}>
+        <header className="dash-page-header" style={S.pageHeader}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button
               className="dash-mobile-toggle dash-icon-btn"
