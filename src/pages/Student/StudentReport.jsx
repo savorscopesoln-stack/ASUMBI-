@@ -11,6 +11,8 @@ import {
   YAxis,
   Tooltip,
 } from "recharts";
+import { useTheme } from "../../context/ThemeContext";
+import ThemeToggle from "../../components/ThemeToggle";
 
 /* ================= GRADING (unchanged) ================= */
 const getKnecGrade = (score) => {
@@ -48,8 +50,18 @@ const A4_HEIGHT_PX = 1123;
 
 /* ================= GLOBAL / PRINT STYLES =================
    Inline style objects can't express @page, @media print, or
-   @font-face keyframes — those are injected once here. Nothing
-   in this block touches data or computation logic. */
+   @font-face keyframes — those are injected once here.
+
+   Also injects the app's shared design tokens (--bg, --card,
+   --text, --primary, etc. — same values as Dashboard.jsx and
+   Login.jsx) so the SCREEN CHROME around the report follows
+   the app's light/dark theme.
+
+   The printed A4 sheet itself ("sr-sheet") intentionally does
+   NOT use these tokens — it's an official document that gets
+   printed and exported to PDF, so it stays fixed maroon-on-white
+   regardless of the viewer's theme. Nothing in this block touches
+   data or computation logic. */
 function useReportGlobalStyles() {
   useEffect(() => {
     const linkId = "sr-font-link";
@@ -66,13 +78,48 @@ function useReportGlobalStyles() {
       const style = document.createElement("style");
       style.id = styleId;
       style.textContent = `
+        :root {
+          --bg: #F8FAFC;
+          --card: #FFFFFF;
+          --border: #E2E5EA;
+          --text: #0B0F19;
+          --text-secondary: #384152;
+          --text-muted: #64748B;
+          --primary: #8B1E2D;
+          --primary-dark: #6F1725;
+          --primary-tint: #FBEAEC;
+          --success: #15803D;
+          --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+          --shadow: 0 1px 3px rgba(16,24,40,0.06);
+          --radius: 14px;
+          --radius-sm: 10px;
+        }
+        [data-theme='dark'] {
+          --bg: #0F1115;
+          --card: #171A21;
+          --border: #323844;
+          --text: #FFFFFF;
+          --text-secondary: #C7CCD6;
+          --text-muted: #9198A6;
+          --primary: #E8A0A8;
+          --primary-dark: #F3C0C6;
+          --primary-tint: rgba(139,30,45,0.28);
+          --success: #4ADE80;
+          --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+          --shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+
         @keyframes sr-spin { to { transform: rotate(360deg); } }
         @keyframes sr-fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
         .sr-card { animation: sr-fade-up .35s cubic-bezier(.2,.8,.3,1) both; }
-        .sr-btn { transition: transform .15s ease, box-shadow .2s ease, background .2s ease, filter .2s ease; }
+        .sr-btn { transition: transform .15s ease, box-shadow .2s ease, background .2s ease, filter .2s ease, border-color .2s ease; }
         .sr-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
         .sr-btn:active { transform: translateY(0); }
+        .sr-btn:focus-visible, .theme-toggle-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+        .sr-btn-outline:hover { background: var(--bg) !important; }
+        .sr-btn-primary:hover { background: var(--primary-dark) !important; }
 
         /* Force background colours to actually print */
         .sr-sheet, .sr-sheet * {
@@ -84,6 +131,10 @@ function useReportGlobalStyles() {
         @media (max-width: 860px) {
           .sr-stage { justify-content: flex-start !important; }
           .sr-scroll-hint { display: block !important; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .sr-card, .sr-btn { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
         }
 
         @page { size: A4; margin: 0; }
@@ -176,6 +227,7 @@ const getScoreBadgeStyle = (score) => {
 /* ================= MAIN COMPONENT ================= */
 export default function StudentReport() {
   useReportGlobalStyles();
+  const { theme } = useTheme();
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const admissionNo = user.admissionNo || user.id;
@@ -350,12 +402,13 @@ export default function StudentReport() {
           <p style={styles.portalSub}>Official Academic Result Slip Portal</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button onClick={printSlip} className="sr-btn" style={styles.printBtn}>
+          <button onClick={printSlip} className="sr-btn sr-btn-outline" style={styles.printBtn}>
             <IconPrinter size={15} /> Print Slip
           </button>
-          <button onClick={downloadPDF} className="sr-btn" style={styles.downloadBtn}>
+          <button onClick={downloadPDF} className="sr-btn sr-btn-primary" style={styles.downloadBtn}>
             <IconDownload size={15} /> Export PDF
           </button>
+          <ThemeToggle />
         </div>
       </div>
 
@@ -609,19 +662,21 @@ export default function StudentReport() {
 
 /* ═══════════════════════════════════════════════════════════
    STYLES
-   Original maroon/blue/green/amber colour palette restored.
-   Spacing, font sizes, table column widths, header dimensions,
-   and the removed performance-chart section reflect the layout
-   edits made on top of the design, kept intact here.
+   Screen-chrome styles (page, topBar, buttons, loading state)
+   now use the app's shared CSS variable tokens so they follow
+   light/dark mode. The printed A4 sheet ("reportCard" and all
+   its children below) intentionally keeps its original fixed
+   maroon/blue/green/amber palette — see the comment on
+   useReportGlobalStyles for why.
 ═══════════════════════════════════════════════════════════ */
 const styles = {
   /* ── Page shell (screen chrome only, stripped for print) ── */
   page: {
-    background: "#0b1220",
+    background: "var(--bg)",
     minHeight: "100%",
     width: "100%",
     padding: "18px 16px 32px",
-    color: "#fff",
+    color: "var(--text)",
     boxSizing: "border-box",
     fontFamily: "'Inter', 'Segoe UI', sans-serif",
   },
@@ -640,22 +695,22 @@ const styles = {
     margin: 0,
     fontSize: 19,
     fontWeight: 800,
-    color: "#f1f5f9",
+    color: "var(--text)",
     letterSpacing: "0.04em",
   },
   portalSub: {
     marginTop: 4,
-    color: "#94a3b8",
+    color: "var(--text-secondary)",
     fontSize: 13,
   },
   printBtn: {
     display: "inline-flex",
     alignItems: "center",
     gap: 7,
-    background: "transparent",
-    color: "#e2e8f0",
+    background: "var(--card)",
+    color: "var(--text-secondary)",
     padding: "9px 16px",
-    border: "1px solid #334155",
+    border: "1px solid var(--border)",
     borderRadius: 8,
     cursor: "pointer",
     fontWeight: 600,
@@ -665,10 +720,10 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     gap: 7,
-    background: "#15803d",
+    background: "var(--primary)",
     color: "#fff",
     padding: "9px 16px",
-    border: "none",
+    border: "1px solid var(--primary)",
     borderRadius: 8,
     cursor: "pointer",
     fontWeight: 700,
@@ -677,7 +732,7 @@ const styles = {
   scrollHint: {
     display: "none",
     fontSize: 12,
-    color: "#64748b",
+    color: "var(--text-muted)",
     margin: "0 4px 8px",
   },
 
@@ -690,7 +745,8 @@ const styles = {
   },
 
   /* ── The literal A4 sheet — 210mm × 297mm, identical for
-       screen preview, browser print, and PDF export ── */
+       screen preview, browser print, and PDF export. Fixed
+       colours by design (official printed document). ── */
   reportCard: {
     width: "210mm",
     minHeight: "297mm",
@@ -1082,17 +1138,18 @@ const styles = {
     justifyContent: "center",
     minHeight: "40vh",
     gap: 14,
+    background: "var(--bg)",
   },
   loadingSpinner: {
     width: 36,
     height: 36,
-    border: "3px solid #e2e8f0",
-    borderTop: "3px solid #7f1d1d",
+    border: "3px solid var(--border)",
+    borderTop: "3px solid var(--primary)",
     borderRadius: "50%",
     animation: "sr-spin 0.9s linear infinite",
   },
   loadingText: {
-    color: "#64748b",
+    color: "var(--text-secondary)",
     fontSize: 14,
     fontFamily: "Inter, sans-serif",
   },
