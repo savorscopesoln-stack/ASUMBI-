@@ -57,6 +57,20 @@ export default function LeaveOutAdmin() {
     return s ? s.name : `Student ${id}`;
   };
 
+  const LEAVE_TYPE_LABELS = {
+    short_stay: "Short Stay",
+    long: "Long Leave",
+    emergency: "Emergency",
+  };
+
+  const leaveTypeLabel = (t) => LEAVE_TYPE_LABELS[t] || "Short Stay";
+
+  const leaveTypeColor = (t) => {
+    if (t === "emergency") return "#ef4444";
+    if (t === "long") return "#3b82f6";
+    return "#8b5cf6";
+  };
+
   /* ================= ACTIONS ================= */
 
   const approve = async (id) => {
@@ -359,6 +373,24 @@ export default function LeaveOutAdmin() {
                         <div style={styles.studentId}>
                           Student ID: {l.student_id}
                         </div>
+
+                        <span
+                          style={{
+                            display: "inline-block",
+                            marginTop: 4,
+                            marginBottom: 4,
+                            padding: "2px 8px",
+                            borderRadius: 20,
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            letterSpacing: 0.4,
+                            textTransform: "uppercase",
+                            color: leaveTypeColor(l.leave_type),
+                            border: `1px solid ${leaveTypeColor(l.leave_type)}`,
+                          }}
+                        >
+                          {leaveTypeLabel(l.leave_type)}
+                        </span>
 
                         <div style={styles.reason}>
                           {l.reason || "No reason provided"}

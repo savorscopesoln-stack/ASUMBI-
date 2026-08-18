@@ -118,7 +118,7 @@ export default function StudentProfile() {
       setMsg("");
       setSaving(true);
 
-      await API.put("/student/change-password", {
+      await API.put("/auth/change-password", {
         oldPassword,
         newPassword,
       });

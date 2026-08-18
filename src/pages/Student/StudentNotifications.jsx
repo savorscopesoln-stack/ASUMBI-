@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { Bell, Inbox } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import API from "../../api";
+import { Bell, Inbox, CheckCheck, Loader2 } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app; a no-op if already mounted by the layout or
@@ -75,7 +76,60 @@ const injectStyles = () => {
 
 export default function StudentNotifications() {
   injectStyles();
-  const [notifications] = useState([]);
+
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [markingAll, setMarkingAll] = useState(false);
+
+  const loadNotifications = async () => {
+    try {
+      const res = await API.get("/notifications");
+      setNotifications(res.data || []);
+    } catch (err) {
+      console.log(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+  }, []);
+
+  const markRead = async (id) => {
+    // instant UI update
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
+    try {
+      await API.put(`/notifications/${id}/read`);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const markAllRead = async () => {
+    setMarkingAll(true);
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await API.put("/notifications/read-all");
+    } catch (err) {
+      console.log(err);
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const formatTime = (d) => {
+    if (!d) return "";
+    try {
+      return new Date(d).toLocaleString();
+    } catch {
+      return "";
+    }
+  };
 
   return (
     <main className="dash-main" style={D.main}>
@@ -87,17 +141,43 @@ export default function StudentNotifications() {
             <p style={D.pageSub}>Alerts and updates from the campus system</p>
           </div>
         </div>
+
+        {unreadCount > 0 && (
+          <button style={D.markAllBtn} onClick={markAllRead} disabled={markingAll}>
+            <CheckCheck size={14} />
+            {markingAll ? "Marking…" : `Mark all ${unreadCount} as read`}
+          </button>
+        )}
       </header>
 
       <section style={D.panel}>
-        {notifications.length === 0 ? (
+        {loading ? (
+          <div style={D.emptyState}>
+            <Loader2 size={22} className="dash-spin" color="var(--text-muted)" style={{ marginBottom: 8 }} />
+            <div>Loading notifications…</div>
+          </div>
+        ) : notifications.length === 0 ? (
           <div style={D.emptyState}>
             <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
             <div>No notifications yet</div>
           </div>
         ) : (
-          notifications.map((n, i) => (
-            <div key={i} style={D.row}>{n.message}</div>
+          notifications.map((n) => (
+            <div
+              key={n.id}
+              style={{ ...D.row, ...(n.isRead ? {} : D.rowUnread) }}
+              onClick={() => !n.isRead && markRead(n.id)}
+              role={!n.isRead ? "button" : undefined}
+            >
+              <div style={D.rowTop}>
+                <span style={D.rowTitle}>
+                  {!n.isRead && <span style={D.dot} />}
+                  {n.title || "Notification"}
+                </span>
+                <span style={D.rowTime}>{formatTime(n.createdAt)}</span>
+              </div>
+              <div style={D.rowMessage}>{n.message}</div>
+            </div>
           ))
         )}
       </section>
@@ -114,9 +194,29 @@ const D = {
     fontFamily: "'Inter', system-ui, sans-serif",
     boxSizing: "border-box",
   },
-  pageHeader: { marginBottom: 22 },
+  pageHeader: {
+    marginBottom: 22,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 12,
+  },
   pageTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
   pageSub: { margin: "3px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
+  markAllBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    padding: "8px 14px",
+    borderRadius: "var(--radius-sm)",
+    cursor: "pointer",
+    fontWeight: 700,
+    fontSize: 12.5,
+  },
   panel: {
     background: "var(--card)",
     border: "1px solid var(--border)",
@@ -139,5 +239,35 @@ const D = {
     borderBottom: "1px solid var(--border)",
     fontSize: 13.5,
     color: "var(--text)",
+    cursor: "pointer",
+  },
+  rowUnread: {
+    background: "var(--primary-tint)",
+    borderRadius: "var(--radius-sm)",
+    padding: "12px 14px",
+    marginBottom: 2,
+  },
+  rowTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 3,
+  },
+  rowTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontWeight: 700,
+    color: "var(--text)",
+  },
+  rowTime: { fontSize: 11.5, color: "var(--text-muted)", flexShrink: 0 },
+  rowMessage: { color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    background: "var(--primary)",
+    display: "inline-block",
   },
 };

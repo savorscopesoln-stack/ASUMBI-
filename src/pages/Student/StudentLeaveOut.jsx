@@ -4,8 +4,14 @@ import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
 import {
   ArrowLeft, Sun, Moon, DoorOpen, CheckCircle2, Clock, Archive,
-  Printer, AlertTriangle, Inbox, FileEdit,
+  Printer, AlertTriangle, Inbox, FileEdit, Siren,
 } from "lucide-react";
+
+const LEAVE_TYPES = [
+  { value: "short_stay", label: "Short Stay", hint: "A few hours, back the same day" },
+  { value: "long", label: "Long Leave", hint: "Overnight or multi-day" },
+  { value: "emergency", label: "Emergency", hint: "Urgent, needs immediate attention" },
+];
 
 /* ─── shared design-token stylesheet ───
    Same id/contents as the dashboard's token sheet, so this page
@@ -119,7 +125,7 @@ export default function StudentLeaveOut() {
   const { theme, toggleTheme } = useTheme();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  const [form, setForm] = useState({ reason: "", date: "", time: "" });
+  const [form, setForm] = useState({ reason: "", date: "", time: "", leave_type: "short_stay" });
   const [leaves, setLeaves] = useState([]);
 
   /* ================= LOAD ================= */
@@ -156,16 +162,20 @@ export default function StudentLeaveOut() {
         student_id: user.id,
         reason: form.reason,
         request_date: requestDate,
-        duration: 120,
+        leave_type: form.leave_type,
       });
 
-      setForm({ reason: "", date: "", time: "" });
+      setForm({ reason: "", date: "", time: "", leave_type: "short_stay" });
       loadLeaves();
       alert("Leave request submitted");
     } catch (err) {
       console.log(err);
     }
   };
+
+  /* ================= LEAVE TYPE LABEL ================= */
+  const typeLabel = (value) =>
+    LEAVE_TYPES.find((t) => t.value === value)?.label || "Short Stay";
 
   /* ================= FORMAT DURATION ================= */
   const formatDuration = (minutes) => {
@@ -479,6 +489,10 @@ export default function StudentLeaveOut() {
               <div class="value">${l.reason}</div>
             </div>
             <div class="infoCard">
+              <div class="label">Leave Type</div>
+              <div class="value">${typeLabel(l.leave_type)}</div>
+            </div>
+            <div class="infoCard">
               <div class="label">Approved Duration</div>
               <div class="value">${formatDuration(l.duration)}</div>
             </div>
@@ -615,6 +629,34 @@ export default function StudentLeaveOut() {
             />
           </div>
 
+          <div style={D.fieldGroup}>
+            <label style={D.fieldLabel}>Leave Type</label>
+            <div style={D.typeGrid}>
+              {LEAVE_TYPES.map((t) => {
+                const active = form.leave_type === t.value;
+                return (
+                  <button
+                    type="button"
+                    key={t.value}
+                    onClick={() => setForm({ ...form, leave_type: t.value })}
+                    style={{
+                      ...D.typeCard,
+                      ...(active ? D.typeCardActive : {}),
+                    }}
+                  >
+                    {t.value === "emergency" && (
+                      <Siren size={14} color={active ? "#fff" : "var(--destructive)"} />
+                    )}
+                    <span style={D.typeCardLabel}>{t.label}</span>
+                    <span style={{ ...D.typeCardHint, ...(active ? { color: "rgba(255,255,255,0.85)" } : {}) }}>
+                      {t.hint}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="leave-form-row" style={D.formRow}>
             <div style={{ ...D.fieldGroup, flex: 1 }}>
               <label style={D.fieldLabel}>Date</label>
@@ -664,7 +706,7 @@ export default function StudentLeaveOut() {
                   <div key={l.id} className="leave-row" style={D.row}>
                     <div style={{ minWidth: 0 }}>
                       <div style={D.rowTitle}>{l.reason}</div>
-                      <div style={D.rowMeta}>Authorized {new Date(l.approved_at).toLocaleString()}</div>
+                      <div style={D.rowMeta}>{typeLabel(l.leave_type)} · Authorized {new Date(l.approved_at).toLocaleString()}</div>
                       <div style={D.rowMeta}>Duration: {formatDuration(l.duration)}</div>
                     </div>
                     <button onClick={() => printLeave(l)} style={D.printBtn}>
@@ -696,7 +738,7 @@ export default function StudentLeaveOut() {
                   <div key={l.id} className="leave-row" style={D.row}>
                     <div style={{ minWidth: 0 }}>
                       <div style={D.rowTitle}>{l.reason}</div>
-                      <div style={D.rowMeta}>Submitted {new Date(l.request_date).toLocaleString()}</div>
+                      <div style={D.rowMeta}>{typeLabel(l.leave_type)} · Submitted {new Date(l.request_date).toLocaleString()}</div>
                     </div>
                     <span style={{ ...D.badge, background: "var(--warning-tint)", color: "var(--warning)" }}>
                       <Clock size={12} /> Pending
@@ -727,6 +769,7 @@ export default function StudentLeaveOut() {
                   <div key={l.id} className="leave-row" style={D.row}>
                     <div style={{ minWidth: 0 }}>
                       <div style={D.rowTitle}>{l.reason}</div>
+                      <div style={D.rowMeta}>{typeLabel(l.leave_type)}</div>
                       {l.status === "revoked" && (
                         <div style={D.revokedNote}>
                           <AlertTriangle size={12} /> Revoked by management — report immediately
@@ -874,6 +917,27 @@ const D = {
   fieldGroup: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 },
   fieldLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-muted)" },
   formRow: { display: "flex", gap: 16 },
+  typeGrid: { display: "flex", flexDirection: "column", gap: 8 },
+  typeCard: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 2,
+    padding: "10px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--bg)",
+    cursor: "pointer",
+    textAlign: "left",
+    fontFamily: "inherit",
+  },
+  typeCardActive: {
+    background: "var(--primary)",
+    borderColor: "var(--primary)",
+    color: "#fff",
+  },
+  typeCardLabel: { fontSize: 13, fontWeight: 700, color: "inherit" },
+  typeCardHint: { fontSize: 11.5, color: "var(--text-muted)" },
   input: {
     width: "100%",
     padding: "11px 14px",

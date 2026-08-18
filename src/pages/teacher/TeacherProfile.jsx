@@ -17,8 +17,7 @@ export default function TeacherProfile() {
 
     try {
       setLoading(true);
-      await API.post("/auth/change-password", {
-        userId: user.id,
+      await API.put("/auth/change-password", {
         oldPassword: oldPass,
         newPassword: newPass,
       });
@@ -27,7 +26,7 @@ export default function TeacherProfile() {
       setOldPass("");
       setNewPass("");
     } catch (err) {
-      setMsg("❌ Failed to update password");
+      setMsg(`❌ ${err.response?.data?.message || "Failed to update password"}`);
     } finally {
       setLoading(false);
     }
