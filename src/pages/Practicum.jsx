@@ -68,12 +68,20 @@ const THEME_VARS = {
    real @media queries and CSS variables, which inline style objects can't do. */
 const RESPONSIVE_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
-
+.pz-progress { position: sticky; top: 0; height: 3px; width: 100%; overflow: hidden; z-index: 50; }
+.pz-progress .pz-progress-fill { height: 100%; width: 40%; background: var(--accent); opacity: 0; transform: translateX(-100%); }
+.pz-progress.active .pz-progress-fill { opacity: 1; animation: pz-indeterminate 1.1s ease-in-out infinite; }
+@keyframes pz-indeterminate {
+  0%   { transform: translateX(-100%); width: 40%; }
+  50%  { width: 60%; }
+  100% { transform: translateX(250%); width: 40%; }
+}
   .pz-app, .pz-app input, .pz-app select, .pz-app button, .pz-app textarea { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
   .pz-app h1, .pz-app h2, .pz-app h3 { font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 600; letter-spacing: -0.01em; }
   .pz-app *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .pz-topbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 20px; background:var(--surface); border-bottom:1px solid var(--border); }
+
   .pz-layout { display:flex; }
   .pz-sidebar { width:200px; background:var(--surface); border-right:1px solid var(--border); min-height:calc(100vh - 61px); padding:14px 10px; }
   .pz-nav-btn { width:100%; padding:10px 12px; margin-bottom:4px; border:1px solid transparent; border-radius:8px; cursor:pointer; text-align:left; font-size:13.5px; font-weight:500; background:transparent; color:var(--text-muted); transition:background .12s ease, color .12s ease; }
@@ -965,7 +973,9 @@ export default function Practicum() {
 
         {/* MAIN */}
         <div className="pz-main">
-          {loading && <div style={styles.loading}>Loading…</div>}
+          <div className={`pz-progress ${loading ? "active" : ""}`}>
+  <div className="pz-progress-fill" />
+</div>
 
           {/* ===================== DASHBOARD ===================== */}
           {activeTab === "dashboard" && (
