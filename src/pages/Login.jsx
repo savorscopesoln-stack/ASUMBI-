@@ -5,6 +5,7 @@ import { Loader2, AlertTriangle, GraduationCap } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import ThemeToggle from "../components/ThemeToggle";
 import PasswordInput, { authStyles } from "../components/PasswordInput";
+import { getDefaultRoute } from "../permissions";
 
 /* ─── design tokens ───
    Same variable names/values as Dashboard.jsx so the app looks
@@ -139,11 +140,13 @@ export default function Login() {
   const { theme } = useTheme();
 
   /* ================= ROUTE MAP (unchanged) ================= */
+  /* ================= ROUTE MAP =================
+     sub_admin isn't listed here on purpose — getDefaultRoute()
+     below sends it to whichever page was granted at setup. */
   const routes = {
     student: "/student",
     teacher: "/teacher-dashboard",
     admin: "/dashboard",
-    staff: "/dashboard",
   };
 
   /* ================= AUTO REDIRECT (unchanged) ================= */
@@ -160,8 +163,12 @@ export default function Login() {
     }
 
     if (token && user?.role) {
+      if (user.mustChangePassword) {
+        navigate("/force-password-change", { replace: true });
+        return;
+      }
       const role = (user.role || "").toLowerCase();
-      navigate(routes[role] || "/dashboard", { replace: true });
+      navigate(routes[role] || getDefaultRoute(user), { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
@@ -197,7 +204,12 @@ export default function Login() {
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
 
-      navigate(routes[role] || "/dashboard", { replace: true });
+      if (user.mustChangePassword) {
+        navigate("/force-password-change", { replace: true });
+        return;
+      }
+
+      navigate(routes[role] || getDefaultRoute(user), { replace: true });
 
     } catch (err) {
       console.log("LOGIN ERROR:", err);

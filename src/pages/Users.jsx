@@ -36,6 +36,8 @@ export default function Users() {
     switch (role) {
       case "admin":
         return "bg-red-500/20 text-red-300";
+      case "sub_admin":
+        return "bg-amber-500/20 text-amber-300";
       case "teacher":
         return "bg-blue-500/20 text-blue-300";
       default:
@@ -109,6 +111,26 @@ export default function Users() {
                 <p>🆔 ID: {user.id}</p>
                 <p>📧 {user.email || "No email"}</p>
               </div>
+
+              {/* PAGE ACCESS (sub-admins only — admins have full access) */}
+              {user.role === "sub_admin" && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {(Array.isArray(user.permissions) ? user.permissions : []).length > 0 ? (
+                    user.permissions.map((p) => (
+                      <span
+                        key={p}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/70"
+                      >
+                        {p}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300">
+                      No pages granted
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* FOOTER */}
               <div className="mt-3 flex justify-end">

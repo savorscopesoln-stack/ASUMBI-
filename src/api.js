@@ -45,6 +45,18 @@ API.interceptors.response.use(
     const status = error.response?.status;
 
     // ============================
+    // MANDATORY PASSWORD CHANGE
+    // Stay logged in (the token is still valid) but bounce to the
+    // forced change-password screen instead of wiping the session.
+    // ============================
+    if (status === 403 && error.response?.data?.code === "PASSWORD_CHANGE_REQUIRED") {
+      if (window.location.pathname !== "/force-password-change") {
+        window.location.href = "/force-password-change";
+      }
+      return Promise.reject(error);
+    }
+
+    // ============================
     // AUTH ISSUES (401 + 403 FIX)
     // ============================
     if (status === 401 || status === 403) {

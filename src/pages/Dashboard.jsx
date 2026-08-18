@@ -11,9 +11,10 @@ import {
   CalendarCheck, GraduationCap, ChevronLeft, ChevronRight, ChevronDown,
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
-  Award, Activity, Inbox,
+  Award, Activity, Inbox, KeyRound,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { hasPage } from "../permissions";
 
 /* ─── design-token stylesheet (light default, dark override) ───
    Text tokens were bumped up in contrast/saturation — the old
@@ -151,6 +152,7 @@ const NAV_GROUPS = [
     items: [
       { name: "Registration", Icon: ClipboardList },
       { name: "Users", Icon: ShieldCheck },
+      { name: "Password Reset", Icon: KeyRound },
       { name: "Leave-out", Icon: DoorOpen },
       { name: "Meals", Icon: Utensils },
       { name: "AttendanceReport", Icon: CalendarCheck },
@@ -166,7 +168,7 @@ const ROUTES = {
   Teachers:"/teachers", Marks:"/marks", Users:"/users", Assessments:"/assessments",
   "E-Assessments":"/e-assessments", Reports:"/reports", "Leave-out":"/leave-out",
   Practicum:"/practicum", Meals:"/meals", AttendanceReport:"/attendance-report",
-  Graduation:"/graduation",
+  Graduation:"/graduation", "Password Reset":"/password-reset",
 };
 
 const formatYear = (y) => {
@@ -216,6 +218,16 @@ function Dashboard() {
   const user    = JSON.parse(localStorage.getItem("user") || "{}");
   const navigate = useNavigate();
   const location = useLocation();
+
+  /* ─ sidebar nav, filtered to whatever this account was granted ─
+     "admin" passes hasPage() for everything; a sub_admin only sees
+     the pages selected when their account was set up. */
+  const visibleNavGroups = NAV_GROUPS
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => hasPage(user, item.name)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   /* ─ all original state ─ */
   const [activeMenu, setActiveMenu]           = useState(getMenuFromPath(location.pathname));
@@ -521,7 +533,7 @@ function Dashboard() {
 
         {/* Grouped nav */}
         <nav aria-label="Main navigation" style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
-          {NAV_GROUPS.map((group) => (
+          {visibleNavGroups.map((group) => (
             <div key={group.label} style={{ marginBottom: 14 }}>
               {!sidebarCollapsed && <div style={D.groupLabel}>{group.label}</div>}
               <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
@@ -574,14 +586,14 @@ function Dashboard() {
           className="dash-profile-card"
           style={D.profileCard}
           onClick={() => navigate("/profile")}
-          aria-label={`Signed in as ${user.username || "User"}, role ${user.role || "staff"}. Open profile.`}
-          title={sidebarCollapsed ? `${user.username || "User"} · ${user.role || "staff"}` : undefined}
+          aria-label={`Signed in as ${user.username || "User"}, role ${user.role || "sub_admin"}. Open profile.`}
+          title={sidebarCollapsed ? `${user.username || "User"} · ${user.role || "sub_admin"}` : undefined}
         >
           <div style={D.profileAvatar}>{(user.username || "U")[0].toUpperCase()}</div>
           {!sidebarCollapsed && (
             <div style={{ flex:1, minWidth:0, textAlign:"left" }}>
               <div style={D.profileName}>{user.username || "User"}</div>
-              <span style={D.profileRoleBadge}>{user.role || "staff"}</span>
+              <span style={D.profileRoleBadge}>{user.role || "sub_admin"}</span>
             </div>
           )}
           {!sidebarCollapsed && <ChevronDown size={15} color="var(--text-muted)" style={{ flexShrink:0 }} />}

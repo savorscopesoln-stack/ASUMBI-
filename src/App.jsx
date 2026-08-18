@@ -5,6 +5,7 @@ import {
   Navigate,
   useNavigate,
 } from "react-router-dom";
+import { getDefaultRoute, hasPage } from "./permissions";
 
 /* =========================================================
    ADMIN PAGES
@@ -13,6 +14,7 @@ import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import Teachers from "./pages/Teachers";
 import Users from "./pages/Users";
+import AdminPasswordReset from "./pages/AdminPasswordReset";
 import Reports from "./pages/reports";
 import Graduation from "./pages/Graduation";
 import RegistrationPage from "./pages/RegistrationPage";
@@ -28,6 +30,7 @@ import AdminEAssessments from "./pages/AdminEAssessments";
    AUTH
 ========================================================= */
 import Login from "./pages/Login";
+import ForcePasswordChange from "./pages/ForcePasswordChange";
 
 /* =========================================================
    STUDENT
@@ -90,6 +93,7 @@ const isLoggedIn = () => {
 
 const ROLES = {
   ADMIN: "admin",
+  SUB_ADMIN: "sub_admin",
   TEACHER: "teacher",
   STUDENT: "student",
 };
@@ -101,6 +105,7 @@ const ROLES = {
 const ProtectedRoute = ({
   children,
   allowedRoles = [],
+  page, // page key from permissions.js — only enforced for sub_admin
 }) => {
   const user = getUser();
 
@@ -118,8 +123,35 @@ const ProtectedRoute = ({
   }
 
   if (
+    user?.mustChangePassword &&
+    window.location.pathname !== "/force-password-change"
+  ) {
+    return (
+      <Navigate
+        to="/force-password-change"
+        replace
+      />
+    );
+  }
+
+  if (
     allowedRoles.length > 0 &&
     !allowedRoles.includes(role)
+  ) {
+    return (
+      <Navigate
+        to="/unauthorized"
+        replace
+      />
+    );
+  }
+
+  // A sub_admin only gets in if this page was granted at setup.
+  // "admin" is unaffected — hasPage() always returns true for it.
+  if (
+    role === ROLES.SUB_ADMIN &&
+    page &&
+    !hasPage(user, page)
   ) {
     return (
       <Navigate
@@ -140,27 +172,12 @@ const PublicRoute = ({
   children,
 }) => {
   if (isLoggedIn()) {
-    const role = String(
-      getUser()?.role || ""
-    ).toLowerCase();
+    const user = getUser();
 
-    if (
-      role === ROLES.STUDENT
-    ) {
+    if (user?.mustChangePassword) {
       return (
         <Navigate
-          to="/student"
-          replace
-        />
-      );
-    }
-
-    if (
-      role === ROLES.TEACHER
-    ) {
-      return (
-        <Navigate
-          to="/teacher"
+          to="/force-password-change"
           replace
         />
       );
@@ -168,7 +185,7 @@ const PublicRoute = ({
 
     return (
       <Navigate
-        to="/dashboard"
+        to={getDefaultRoute(user)}
         replace
       />
     );
@@ -220,10 +237,6 @@ const Unauthorized = () => {
 ========================================================= */
 
 export default function App() {
-  const role = String(
-    getUser()?.role || ""
-  ).toLowerCase();
-
   return (
     <Routes>
 
@@ -232,22 +245,10 @@ export default function App() {
         path="/"
         element={
           isLoggedIn() ? (
-            role === ROLES.STUDENT ? (
-              <Navigate
-                to="/student"
-                replace
-              />
-            ) : role === ROLES.TEACHER ? (
-              <Navigate
-                to="/teacher"
-                replace
-              />
-            ) : (
-              <Navigate
-                to="/dashboard"
-                replace
-              />
-            )
+            <Navigate
+              to={getDefaultRoute(getUser())}
+              replace
+            />
           ) : (
             <Navigate
               to="/login"
@@ -273,6 +274,18 @@ export default function App() {
         element={<Unauthorized />}
       />
 
+      {/* FORCE PASSWORD CHANGE — any logged-in role, no allowedRoles filter */}
+      <Route
+        path="/force-password-change"
+        element={
+          isLoggedIn() ? (
+            <ForcePasswordChange />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
       {/* =====================================================
           ADMIN
       ===================================================== */}
@@ -281,7 +294,8 @@ export default function App() {
         path="/dashboard"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Dashboard"
           >
             <Dashboard />
           </ProtectedRoute>
@@ -292,7 +306,8 @@ export default function App() {
         path="/e-assessments"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="E-Assessments"
           >
             <AdminEAssessments />
           </ProtectedRoute>
@@ -303,7 +318,8 @@ export default function App() {
         path="/students"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Students"
           >
             <Students />
           </ProtectedRoute>
@@ -314,7 +330,8 @@ export default function App() {
         path="/Assessment"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Assessments"
           >
             <AssessmentFeature />
           </ProtectedRoute>
@@ -324,7 +341,8 @@ export default function App() {
         path="/Marks"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Marks"
           >
             <MarksEntry />
           </ProtectedRoute>
@@ -334,7 +352,8 @@ export default function App() {
         path="/teachers"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Teachers"
           >
             <Teachers />
           </ProtectedRoute>
@@ -345,9 +364,22 @@ export default function App() {
         path="/Users"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Users"
           >
             <Users />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/password-reset"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Password Reset"
+          >
+            <AdminPasswordReset />
           </ProtectedRoute>
         }
       />
@@ -356,7 +388,8 @@ export default function App() {
         path="/reports"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Reports"
           >
             <Reports />
           </ProtectedRoute>
@@ -366,7 +399,8 @@ export default function App() {
         path="/graduation"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Graduation"
           >
             <Graduation />
           </ProtectedRoute>
@@ -376,7 +410,8 @@ export default function App() {
         path="/registration"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Registration"
           >
             <RegistrationPage />
           </ProtectedRoute>
@@ -386,7 +421,8 @@ export default function App() {
         path="/assessment-feature"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Assessments"
           >
             <AssessmentFeature />
           </ProtectedRoute>
@@ -396,7 +432,8 @@ export default function App() {
         path="/practicum"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Practicum"
           >
             <Practicum />
           </ProtectedRoute>
@@ -405,7 +442,8 @@ export default function App() {
         path="/leave-out"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Leave-out"
           >
             <LeaveOut />
           </ProtectedRoute>
@@ -415,7 +453,8 @@ export default function App() {
         path="/meals"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Meals"
           >
             <Meals />
           </ProtectedRoute>
@@ -425,7 +464,8 @@ export default function App() {
         path="/attendance-report"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="AttendanceReport"
           >
             <AttendanceReport />
           </ProtectedRoute>
@@ -435,7 +475,8 @@ export default function App() {
         path="/admin-e-assessments"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="E-Assessments"
           >
             <AdminEAssessments />
           </ProtectedRoute>
@@ -445,7 +486,8 @@ export default function App() {
         path="/ASSESSMENTS"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN]}
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN]}
+            page="Assessments"
           >
             <AssessmentFeature />
           </ProtectedRoute>

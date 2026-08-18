@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import API from "../api";
+import { PAGES } from "../permissions";
 
 /* ================= REGISTRATION PAGE ================= */
 export default function RegistrationPage() {
@@ -19,11 +20,24 @@ export default function RegistrationPage() {
     subject: "",
     phone: "",
     staffId: "",
+    username: "",
+    role: "sub_admin",
+    permissions: [],
+    email: "",
   });
 
   /* ================= HANDLERS ================= */
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const togglePermission = (key) => {
+    setForm((f) => ({
+      ...f,
+      permissions: f.permissions.includes(key)
+        ? f.permissions.filter((p) => p !== key)
+        : [...f.permissions, key],
+    }));
   };
 
   const handleFileChange = (e) => {
@@ -40,11 +54,24 @@ export default function RegistrationPage() {
       subject: "",
       phone: "",
       staffId: "",
+      username: "",
+      role: "sub_admin",
+      permissions: [],
+      email: "",
     });
   };
 
   /* ================= VALIDATION ================= */
   const isValid = () => {
+    if (type === "account") {
+      if (!form.username || !form.role) return false;
+      // Admins get full access automatically; a sub-admin needs at
+      // least one page picked now, since there's no separate step
+      // to grant access later.
+      if (form.role === "sub_admin" && form.permissions.length === 0) return false;
+      return true;
+    }
+
     if (!form.name) return false;
 
     if (type === "student") {
@@ -75,7 +102,7 @@ export default function RegistrationPage() {
       setMessage("");
 
       if (type === "student") {
-        await API.post("/register/student", {
+        const res = await API.post("/register/student", {
           name: form.name,
           admissionNo: form.admissionNo,
           studentClass: form.studentClass,
@@ -83,29 +110,52 @@ export default function RegistrationPage() {
           yearOfStudy: form.yearOfStudy,
         });
 
+        const { username, password } = res.data.credentials;
         setMessage(`✅ Student registered  
-Username: ${form.admissionNo}  
-Password: 1234`);
+Username: ${username}  
+Temporary password: ${password}  
+They'll be required to change it on first login.`);
       }
 
       if (type === "teacher") {
-        await API.post("/register/teacher", {
+        const res = await API.post("/register/teacher", {
           name: form.name,
           subject: form.subject,
           phone: form.phone,
           staffId: form.staffId,
         });
 
+        const { username, password } = res.data.credentials;
         setMessage(`✅ Teacher registered  
-Username: ${form.staffId}  
-Password: 1234`);
+Username: ${username}  
+Temporary password: ${password}  
+They'll be required to change it on first login.`);
+      }
+
+      if (type === "account") {
+        const res = await API.post("/register/user", {
+          username: form.username,
+          role: form.role,
+          email: form.email,
+          permissions: form.role === "sub_admin" ? form.permissions : [],
+        });
+
+        const { username, password, role, permissions } = res.data.credentials;
+        const accessLine =
+          role === "sub_admin"
+            ? `\nPages granted: ${(permissions || []).join(", ") || "none"}`
+            : "";
+        setMessage(`✅ Account created (${role})  
+Username: ${username}  
+Temporary password: ${password}  
+They'll be required to change it on first login — share it with them directly.${accessLine}`);
       }
 
       resetForm();
 
     } catch (err) {
       console.error(err);
-      setMessage("❌ Registration failed");
+      setMessage(`❌ ${err.response?.data?.message || "Registration failed"}`);
     } finally {
       setLoading(false);
     }
@@ -169,6 +219,9 @@ Password: 1234`);
             <button onClick={() => setType("teacher")} style={type === "teacher" ? styles.activeTab : styles.tab}>
               Teacher
             </button>
+            <button onClick={() => { setType("account"); setMode("manual"); }} style={type === "account" ? styles.activeTab : styles.tab}>
+              Admin / Sub-admin
+            </button>
           </div>
 
           {/* MODE SELECT */}
@@ -176,16 +229,20 @@ Password: 1234`);
             <button onClick={() => setMode("manual")} style={mode === "manual" ? styles.activeTab : styles.tab}>
               Manual Entry
             </button>
-            <button onClick={() => setMode("upload")} style={mode === "upload" ? styles.activeTab : styles.tab}>
-              Bulk Upload
-            </button>
+            {type !== "account" && (
+              <button onClick={() => setMode("upload")} style={mode === "upload" ? styles.activeTab : styles.tab}>
+                Bulk Upload
+              </button>
+            )}
           </div>
 
           {/* ================= MANUAL ================= */}
           {mode === "manual" && (
             <div style={styles.card}>
 
-              <input name="name" placeholder="Full Name" value={form.name} onChange={handleChange} style={styles.input} />
+              {type !== "account" && (
+                <input name="name" placeholder="Full Name" value={form.name} onChange={handleChange} style={styles.input} />
+              )}
 
               {type === "student" && (
                 <>
@@ -204,6 +261,48 @@ Password: 1234`);
                 </>
               )}
 
+              {type === "account" && (
+                <>
+                  <input name="username" placeholder="Username" value={form.username} onChange={handleChange} style={styles.input} />
+                  <input name="email" placeholder="Email (optional)" value={form.email} onChange={handleChange} style={styles.input} />
+                  <select name="role" value={form.role} onChange={handleChange} style={styles.input}>
+                    <option value="sub_admin">Sub Admin</option>
+                    <option value="admin">Admin</option>
+                  </select>
+
+                  {form.role === "sub_admin" && (
+                    <div style={styles.permBox}>
+                      <p style={styles.permTitle}>
+                        Pages this sub-admin can access
+                      </p>
+                      <div style={styles.permGrid}>
+                        {PAGES.map((p) => (
+                          <label key={p.key} style={styles.permItem}>
+                            <input
+                              type="checkbox"
+                              checked={form.permissions.includes(p.key)}
+                              onChange={() => togglePermission(p.key)}
+                            />
+                            {p.label}
+                          </label>
+                        ))}
+                      </div>
+                      {form.permissions.length === 0 && (
+                        <p style={styles.permHint}>
+                          Select at least one page — this is the only chance to set access; it isn't editable later without recreating the account.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {form.role === "admin" && (
+                    <p style={styles.permHint}>
+                      Admin accounts always have full access to every page.
+                    </p>
+                  )}
+                </>
+              )}
+
               <button
                 onClick={submit}
                 disabled={loading || !isValid()}
@@ -219,7 +318,7 @@ Password: 1234`);
           )}
 
           {/* ================= UPLOAD ================= */}
-          {mode === "upload" && (
+          {mode === "upload" && type !== "account" && (
             <div style={styles.card}>
 
               <input
@@ -330,5 +429,36 @@ const styles = {
     marginBottom: 10,
     color: "#facc15",
     whiteSpace: "pre-line"
-  }
+  },
+  permBox: {
+    background: "#150000",
+    border: "1px solid #444",
+    borderRadius: 6,
+    padding: 12,
+    marginBottom: 10,
+    textAlign: "left",
+  },
+  permTitle: {
+    margin: "0 0 8px",
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#ddd",
+  },
+  permGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  permItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 13,
+    color: "#ccc",
+  },
+  permHint: {
+    marginTop: 8,
+    fontSize: 11.5,
+    color: "#aaa",
+  },
 };
