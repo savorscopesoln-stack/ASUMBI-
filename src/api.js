@@ -63,8 +63,19 @@ API.interceptors.response.use(
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
-      // avoid redirect loop
-      if (window.location.pathname !== "/login") {
+      // A student on the standalone exam page never went through the
+      // normal /login screen — if their exam-scoped session expires or
+      // gets rejected mid-exam, send them back to that same page (which
+      // re-shows the username + exam-password gate) instead of dumping
+      // them on the full portal login they may not have credentials for.
+      const onExamPage = window.location.pathname.startsWith("/take-assessment/");
+
+      if (onExamPage) {
+        if (!window.location.search.includes("expired=1")) {
+          window.location.href = `${window.location.pathname}?expired=1`;
+        }
+      } else if (window.location.pathname !== "/login") {
+        // avoid redirect loop
         window.location.href = "/login";
       }
     }

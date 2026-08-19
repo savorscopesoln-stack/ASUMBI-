@@ -4,6 +4,7 @@ import {
   Route,
   Navigate,
   useNavigate,
+  useParams,
 } from "react-router-dom";
 import { getDefaultRoute, hasPage } from "./permissions";
 
@@ -44,6 +45,7 @@ import StudentReport from "./pages/Student/StudentReport";
 import StudentNotifications from "./pages/Student/StudentNotifications";
 import StudentMealCard from "./pages/Student/StudentMealCard";
 import TakeAssessment from "./pages/Student/TakeEAssessment";
+
 
 /* ================= NEW ================= */
 import StudentEAssessments from "./pages/Student/StudentEAssessments";
@@ -146,6 +148,22 @@ const ProtectedRoute = ({
     );
   }
 
+  // An exam-only session (issued by /take-assessment/:id's own
+  // username + exam-password gate, not a real portal login) is only
+  // ever allowed on that one standalone exam page — never anywhere
+  // else in the student portal, even though its role is "student".
+  if (
+    user?.examOnly &&
+    window.location.pathname !== `/take-assessment/${user.examAssessmentId}`
+  ) {
+    return (
+      <Navigate
+        to={`/take-assessment/${user.examAssessmentId || ""}`}
+        replace
+      />
+    );
+  }
+
   // A sub_admin only gets in if this page was granted at setup.
   // "admin" is unaffected — hasPage() always returns true for it.
   if (
@@ -233,6 +251,15 @@ const Unauthorized = () => {
 };
 
 /* =========================================================
+   OLD /student/e-assessments/:id LINKS — forward to the new
+   standalone /take-assessment/:id route.
+========================================================= */
+const TakeAssessmentRedirect = () => {
+  const { id } = useParams();
+  return <Navigate to={`/take-assessment/${id}`} replace />;
+};
+
+/* =========================================================
    APP
 ========================================================= */
 
@@ -272,6 +299,21 @@ export default function App() {
       <Route
         path="/unauthorized"
         element={<Unauthorized />}
+      />
+
+      {/* =====================================================
+          STANDALONE EXAM ENTRY POINT
+          Deliberately outside /student and any ProtectedRoute —
+          a student reaches this directly from a link shared by
+          their teacher/admin, and logs in with just their
+          username + this assessment's exam password (set in
+          Admin E-Assessments). No prior /login required.
+          TakeEAssessment itself shows its own login gate when
+          there's no usable session yet for this assessment.
+      ===================================================== */}
+      <Route
+        path="/take-assessment/:id"
+        element={<TakeAssessment />}
       />
 
       {/* FORCE PASSWORD CHANGE — any logged-in role, no allowedRoles filter */}
@@ -637,10 +679,13 @@ export default function App() {
           element={<StudentEAssessments />}
         />
 
-        {/* TAKE EXAM */}
+        {/* TAKE EXAM — moved to the standalone /take-assessment/:id
+            route (outside this ProtectedRoute) so it can be reached
+            without a portal login. This old path just forwards there
+            so any existing links/bookmarks keep working. */}
         <Route
           path="e-assessments/:id"
-          element={<TakeAssessment />}
+          element={<TakeAssessmentRedirect />}
         />
       </Route>
 

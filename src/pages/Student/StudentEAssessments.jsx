@@ -184,7 +184,7 @@ export default function StudentEAssessments() {
               <button
                 className="assess-take-btn"
                 style={D.takeBtn}
-                onClick={() => navigate(`/student/e-assessments/${a.id}`)}
+                onClick={() => navigate(`/take-assessment/${a.id}`)}
               >
                 Take Assessment
               </button>

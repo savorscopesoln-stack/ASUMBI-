@@ -4,7 +4,7 @@ import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
 import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
-  ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert,
+  ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
@@ -156,6 +156,37 @@ const getDeviceId = () => {
 
 const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
 
+/* ─── read the JWT payload without a decode library ───
+   Only used to decide, client-side, whether the token already in
+   localStorage is usable for THIS assessment (a full portal login,
+   or a previously-issued exam-only token scoped to this exact id)
+   — so we can skip straight past the exam-login form instead of
+   always making a round trip that would fail for a mismatched token. */
+const decodeJwtPayload = (token) => {
+  try {
+    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+        .join("")
+    );
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+};
+
+const hasUsableSession = (assessmentId) => {
+  const token = localStorage.getItem("token");
+  if (!token) return false;
+  const payload = decodeJwtPayload(token);
+  if (!payload || payload.role !== "student") return false;
+  if (payload.exp && payload.exp * 1000 < Date.now()) return false;
+  if (payload.examOnly && String(payload.examAssessmentId) !== String(assessmentId)) return false;
+  return true;
+};
+
 export default function TakeEAssessment() {
   injectStyles();
   injectExamStyles();
@@ -165,8 +196,8 @@ export default function TakeEAssessment() {
   const { theme, toggleTheme } = useTheme();
   const deviceId = useMemo(() => getDeviceId(), []);
 
-  // loading | reveal | verify | active | locked | ended | error
-  const [phase, setPhase] = useState("loading");
+  // examlogin | loading | reveal | verify | active | locked | ended | error
+  const [phase, setPhase] = useState("examlogin");
   const [errorMsg, setErrorMsg] = useState("");
   const [token, setToken] = useState("");
 
@@ -177,6 +208,13 @@ export default function TakeEAssessment() {
   const [submitting, setSubmitting] = useState(false);
   const [violations, setViolations] = useState(0);
   const [lockReason, setLockReason] = useState("");
+
+  // exam-login step (username + this assessment's exam password —
+  // no portal account required)
+  const [examUsername, setExamUsername] = useState("");
+  const [examPasswordInput, setExamPasswordInput] = useState("");
+  const [examLoginError, setExamLoginError] = useState("");
+  const [examLoggingIn, setExamLoggingIn] = useState(false);
 
   // reveal step
   const [revealCountdown, setRevealCountdown] = useState(REVEAL_SECONDS);
@@ -226,9 +264,46 @@ export default function TakeEAssessment() {
   useEffect(() => {
     // don't re-fetch a token if we booted straight into a persisted lock
     if (phase === "locked") return;
-    bootStart();
+    // already have a usable session for this exact assessment (a full
+    // portal login, or a previously-issued exam-only token) — skip the
+    // login form and go straight to starting the exam
+    if (hasUsableSession(id)) {
+      bootStart();
+    }
+    // otherwise stay on "examlogin" and wait for handleExamLogin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* ── exam-login: username + this assessment's exam password,
+       no portal account needed ── */
+  const handleExamLogin = async (e) => {
+    e.preventDefault();
+    if (examLoggingIn) return;
+    if (!examUsername.trim() || !examPasswordInput.trim()) {
+      setExamLoginError("Enter both your username and the exam password.");
+      return;
+    }
+    setExamLoginError("");
+    setExamLoggingIn(true);
+    try {
+      const res = await API.post("/e-assessments/exam-login", {
+        assessmentId: Number(id),
+        username: examUsername.trim(),
+        examPassword: examPasswordInput.trim(),
+      });
+      if (!res.data?.success) {
+        setExamLoginError(res.data?.message || "Login failed. Please try again.");
+        return;
+      }
+      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("user", JSON.stringify(res.data.user));
+      await bootStart();
+    } catch (err) {
+      setExamLoginError(err?.response?.data?.message || "Login failed. Check your username and exam password.");
+    } finally {
+      setExamLoggingIn(false);
+    }
+  };
 
   /* ── reveal screen countdown ── */
   useEffect(() => {
@@ -456,6 +531,72 @@ export default function TakeEAssessment() {
   /* ═══════════════════════════════════════════════════════════
      RENDER — states
   ═══════════════════════════════════════════════════════════ */
+
+  /* ── step 0: username + this assessment's exam password —
+       no portal account login required ── */
+  if (phase === "examlogin") {
+    return (
+      <div className="dash-main" style={S.stateWrap}>
+        <form className="dash-card" style={S.panelCard} onSubmit={handleExamLogin}>
+          <div style={{ ...S.iconCircle, background: "var(--primary-tint)" }}>
+            <LogIn size={26} color="var(--primary)" />
+          </div>
+          <h2 style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Sign In to Take This Assessment</h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
+            Enter your username and the exam password your teacher or admin gave you for this
+            assessment. You don't need a student-portal password for this.
+          </p>
+
+          <label style={S.fieldLabel}>Username</label>
+          <div style={S.inputWithIcon}>
+            <User size={15} color="var(--text-muted)" />
+            <input
+              style={S.iconInput}
+              value={examUsername}
+              onChange={(e) => { setExamUsername(e.target.value); setExamLoginError(""); }}
+              placeholder="Your student username"
+              autoFocus
+              autoComplete="username"
+            />
+          </div>
+
+          <label style={{ ...S.fieldLabel, marginTop: 12 }}>Exam Password</label>
+          <div style={S.inputWithIcon}>
+            <KeyRound size={15} color="var(--text-muted)" />
+            <input
+              style={S.iconInput}
+              type="password"
+              value={examPasswordInput}
+              onChange={(e) => { setExamPasswordInput(e.target.value); setExamLoginError(""); }}
+              placeholder="Exam password"
+              autoComplete="off"
+            />
+          </div>
+
+          {examLoginError && (
+            <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "12px 0 0", textAlign: "center" }}>
+              {examLoginError}
+            </p>
+          )}
+
+          <button
+            style={{ ...S.primaryBtn, marginTop: 18 }}
+            type="submit"
+            disabled={examLoggingIn || !examUsername.trim() || !examPasswordInput.trim()}
+          >
+            {examLoggingIn ? "Signing in…" : "Continue to Exam"}
+          </button>
+
+          <p style={{ color: "var(--text-muted)", fontSize: 11.5, margin: "14px 0 0", textAlign: "center" }}>
+            Already have a student portal account?{" "}
+            <a href="/login" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>Log in instead</a>
+          </p>
+        </form>
+        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+      </div>
+    );
+  }
+
   if (phase === "loading") {
     return (
       <div className="dash-main" style={S.stateWrap}>
@@ -484,6 +625,11 @@ export default function TakeEAssessment() {
   }
 
   if (phase === "ended") {
+    const currentUser = (() => {
+      try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; }
+    })();
+    const wasExamOnly = !!currentUser.examOnly;
+
     return (
       <div className="dash-main" style={S.stateWrap}>
         <div className="dash-card" style={S.panelCard}>
@@ -493,9 +639,15 @@ export default function TakeEAssessment() {
           <p style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", margin: "16px 0 0" }}>
             {errorMsg || "This assessment is complete."}
           </p>
-          <button style={S.primaryBtn} onClick={() => navigate("/student/e-assessments")}>
-            Back to Assessments
-          </button>
+          {wasExamOnly ? (
+            <p style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "center", margin: "12px 0 0" }}>
+              You can close this tab now.
+            </p>
+          ) : (
+            <button style={S.primaryBtn} onClick={() => navigate("/student/e-assessments")}>
+              Back to Assessments
+            </button>
+          )}
         </div>
         <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
@@ -779,6 +931,18 @@ const S = {
     width: "100%", padding: "13px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
     background: "var(--bg)", color: "var(--text)", fontSize: 19, fontWeight: 700, letterSpacing: 4,
     textAlign: "center", fontFamily: "monospace", boxSizing: "border-box",
+  },
+  fieldLabel: {
+    display: "block", fontSize: 11.5, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 6,
+  },
+  inputWithIcon: {
+    display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "11px 14px",
+    borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg)",
+    boxSizing: "border-box",
+  },
+  iconInput: {
+    flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--text)",
+    fontSize: 14, fontFamily: "inherit",
   },
   lockOverlay: {
     position: "fixed", inset: 0, zIndex: 9999, background: "rgba(5,8,14,0.85)",

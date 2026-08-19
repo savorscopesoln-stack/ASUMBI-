@@ -243,7 +243,7 @@ export default function AdminEAssessments() {
   const [selAssignments, setSelAssignments] = useState([]);
 
   /* forms */
-  const blank = { title: "", subject: "", class_id: "", duration_minutes: 30, instructions: "", total_marks: 100 };
+  const blank = { title: "", subject: "", class_id: "", duration_minutes: 30, instructions: "", total_marks: 100, exam_password: "" };
   const [form,          setForm]          = useState(blank);
   const [editForm,      setEditForm]      = useState(blank);
   const [assignForm,    setAssignForm]    = useState({ teacher_id: "", subject_id: "", class_id: "" });
@@ -307,6 +307,7 @@ export default function AdminEAssessments() {
         duration_minutes: Number(form.duration_minutes),
         instructions:     form.instructions,
         total_marks:      Number(form.total_marks) || 100,
+        exam_password:    form.exam_password,
       });
       setForm(blank); setFormOpen(false);
       showToast("Assessment created successfully");
@@ -321,6 +322,7 @@ export default function AdminEAssessments() {
       id: a.id, title: a.title || "", subject: a.subject || "",
       class_id: a.class_id || "", duration_minutes: a.duration_minutes || 30,
       instructions: a.instructions || "", total_marks: a.total_marks || 100,
+      exam_password: a.exam_password || "",
     });
     setEditOpen(true);
   };
@@ -338,6 +340,7 @@ export default function AdminEAssessments() {
         duration_minutes: Number(editForm.duration_minutes),
         instructions:     editForm.instructions,
         total_marks:      Number(editForm.total_marks) || 100,
+        exam_password:    editForm.exam_password,
       });
       setEditOpen(false);
       showToast("Assessment updated successfully");
@@ -1116,6 +1119,16 @@ export default function AdminEAssessments() {
             onChange={(e) => setForm({ ...form, instructions: e.target.value })}
             style={sx.textarea}
           />
+
+          <FieldLabel>Exam Password (optional)</FieldLabel>
+          <ModalInput placeholder="e.g. MATHS2026" value={form.exam_password}
+            onChange={(v) => setForm({ ...form, exam_password: v })} />
+          <p style={sx.formHint}>
+            Set this to let students join this exam directly at a shared link, using just their
+            username + this password — no student-portal login needed. Leave blank if students
+            should only reach it by logging into the portal as usual.
+          </p>
+
           <p style={sx.formHint}>
             All students in the selected class can take this assessment once it is approved and activated.
             Each student will receive a unique 6-character exam token bound to their first device.
@@ -1157,6 +1170,15 @@ export default function AdminEAssessments() {
           <textarea value={editForm.instructions}
             onChange={(e) => setEditForm({ ...editForm, instructions: e.target.value })}
             style={sx.textarea} />
+
+          <FieldLabel>Exam Password (optional)</FieldLabel>
+          <ModalInput placeholder="e.g. MATHS2026" value={editForm.exam_password}
+            onChange={(v) => setEditForm({ ...editForm, exam_password: v })} />
+          <p style={sx.formHint}>
+            Lets students join at a shared link with just their username + this password, no
+            portal login needed. Leave blank to require the normal student-portal login instead.
+          </p>
+
           <SaveButton onClick={saveEditAssessment} loading={saving} label="Save Changes" />
         </Modal>
       )}
@@ -1230,6 +1252,12 @@ export default function AdminEAssessments() {
             <DetailRow label="Total Marks"  value={selected.total_marks || 100} />
             <DetailRow label="Status"       value={selected.status || "—"} />
             {selected.instructions && <DetailRow label="Instructions" value={selected.instructions} />}
+            {selected.exam_password && (
+              <DetailRow
+                label="Direct Exam Link"
+                value={`${window.location.origin}/take-assessment/${selected.id}`}
+              />
+            )}
           </div>
 
           {selected.score != null && selected.status !== "released" && (
