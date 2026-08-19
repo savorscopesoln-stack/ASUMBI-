@@ -158,10 +158,10 @@ const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
 
 /* ─── read the JWT payload without a decode library ───
    Only used to decide, client-side, whether the token already in
-   localStorage is usable for THIS assessment (a full portal login,
-   or a previously-issued exam-only token scoped to this exact id)
-   — so we can skip straight past the exam-login form instead of
-   always making a round trip that would fail for a mismatched token. */
+   localStorage is a previously-issued exam-only token scoped to this
+   exact assessment id — so we can skip straight past the exam-login
+   form instead of always making a round trip that would fail for a
+   mismatched token. */
 const decodeJwtPayload = (token) => {
   try {
     const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
@@ -177,13 +177,20 @@ const decodeJwtPayload = (token) => {
   }
 };
 
+/* A regular student-portal login must NEVER be enough to open an exam —
+   only the username + this-assessment's exam password (set by the admin
+   in E-Assessments) may. So the only session we treat as "usable" here
+   is an exam-only token that was already issued, by the exam-login form
+   below, specifically for THIS assessment id. Any other token — including
+   a perfectly valid student-portal session — falls through to the
+   exam-login form. */
 const hasUsableSession = (assessmentId) => {
   const token = localStorage.getItem("token");
   if (!token) return false;
   const payload = decodeJwtPayload(token);
   if (!payload || payload.role !== "student") return false;
   if (payload.exp && payload.exp * 1000 < Date.now()) return false;
-  if (payload.examOnly && String(payload.examAssessmentId) !== String(assessmentId)) return false;
+  if (!payload.examOnly || String(payload.examAssessmentId) !== String(assessmentId)) return false;
   return true;
 };
 
@@ -423,6 +430,39 @@ export default function TakeEAssessment() {
       return next;
     });
   }, [triggerLock]);
+
+  /* ── block the browser "Back" button once there is an active
+       assessment in progress (reveal → verify → active). We trap it
+       by keeping an extra history entry in front of the exam page and
+       re-pushing it every time the student tries to pop back — so the
+       "Back" gesture never actually leaves this page. Leaving via
+       "locked" / "ended" / "error" is still allowed, since the exam is
+       no longer in progress at that point. During the active exam,
+       trying to go back also counts as a suspicious action, same as
+       switching tabs. ── */
+  useEffect(() => {
+    const blocking = ["loading", "reveal", "verify", "active"].includes(phase);
+    if (!blocking) return;
+
+    window.history.pushState(null, "", window.location.href);
+    const onPopState = () => {
+      window.history.pushState(null, "", window.location.href);
+      if (phase === "active") registerViolation("tried to navigate back");
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [phase, registerViolation]);
+
+  /* ── warn on tab close / refresh while an assessment is in progress ── */
+  useEffect(() => {
+    if (phase !== "active") return;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "active") return;
