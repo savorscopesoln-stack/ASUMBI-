@@ -299,6 +299,11 @@ function AssessmentCard({ a, navigate }) {
           <span style={{ ...S.activeBadge, color: isActive ? C.textPri : C.textMuted }}>
             <span style={{ fontSize: 8 }}>{isActive ? "●" : "○"}</span> {isActive ? "Active" : "Inactive"}
           </span>
+          {Number(a.assigned_only) === 1 && (
+            <span style={{ ...S.activeBadge, color: C.textPri, border: `1px solid ${C.border}` }}>
+              Assigned to you
+            </span>
+          )}
         </div>
       </div>
 
