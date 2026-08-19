@@ -45,6 +45,7 @@ import StudentReport from "./pages/Student/StudentReport";
 import StudentNotifications from "./pages/Student/StudentNotifications";
 import StudentMealCard from "./pages/Student/StudentMealCard";
 import TakeAssessment from "./pages/Student/TakeEAssessment";
+import TakeAssessmentPicker from "./pages/Student/TakeAssessmentPicker";
 
 
 /* ================= NEW ================= */
@@ -299,6 +300,20 @@ export default function App() {
       <Route
         path="/unauthorized"
         element={<Unauthorized />}
+      />
+
+      {/* =====================================================
+          STANDALONE EXAM ENTRY POINT — PICKER
+          A student can just go to /take-assessment (no id needed),
+          log in with their student account, and choose from the
+          list of available assessments instead of needing a
+          teacher/admin to send them a specific /take-assessment/:id
+          link. Deliberately outside any ProtectedRoute — it does
+          its own lightweight login gate.
+      ===================================================== */}
+      <Route
+        path="/take-assessment"
+        element={<TakeAssessmentPicker />}
       />
 
       {/* =====================================================
