@@ -627,7 +627,10 @@ export default function TakeEAssessment() {
             {examLoggingIn ? "Signing in…" : "Continue to Exam"}
           </button>
 
-          
+          <p style={{ color: "var(--text-muted)", fontSize: 11.5, margin: "14px 0 0", textAlign: "center" }}>
+            Already have a student portal account?{" "}
+            <a href="/login" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>Log in instead</a>
+          </p>
         </form>
         <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
