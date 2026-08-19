@@ -87,25 +87,7 @@ const injectStyles = () => {
   document.head.appendChild(el);
 };
 
-/* Only a full portal session (not an exam-only token scoped to a single
-   assessment) can browse the full list of assessments — an exam-only
-   token has no business seeing exams other than the one it was issued
-   for, so we treat it as "not logged in" here and ask for real
-   portal credentials instead. */
-const decodeJwtPayload = (token) => {
-  try {
-    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    const json = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join("")
-    );
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-};
+
 
 const hasUsablePortalSession = () => {
   const token = localStorage.getItem("token");
