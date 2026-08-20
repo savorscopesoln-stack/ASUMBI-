@@ -7,6 +7,13 @@ import {
   Printer, AlertTriangle, Inbox, FileEdit, Siren,
 } from "lucide-react";
 
+const PENDING_STAGE_LABEL = {
+  pending: "Pending",
+  pending_subadmin2: "Pending Sub-Admin 2",
+  pending_final: "Pending Final Approval",
+  pending_admin: "Pending Admin",
+};
+
 const LEAVE_TYPES = [
   { value: "short_stay", label: "Short Stay", hint: "A few hours, back the same day" },
   { value: "long", label: "Long Leave", hint: "Overnight or multi-day" },
@@ -543,11 +550,18 @@ export default function StudentLeaveOut() {
     win.print();
   };
 
-  /* ================= FILTERS ================= */
-  const active = leaves.filter((l) => l.status === "approved");
-  const pending = leaves.filter((l) => l.status === "pending");
+  /* ================= FILTERS =================
+     Emergency/Long-Stay now move through extra stages
+     (pending_subadmin2 / pending_final / pending_admin) before landing
+     on "approved", and an Admin can grant a leave directly
+     ("admin_granted") with no stages at all — both count as an active
+     permit alongside a plain "approved" short-stay leave. */
+  const active = leaves.filter((l) => l.status === "approved" || l.status === "admin_granted");
+  const pending = leaves.filter((l) =>
+    ["pending", "pending_subadmin2", "pending_final", "pending_admin"].includes(l.status)
+  );
   const history = leaves.filter((l) =>
-    ["denied", "expired", "revoked"].includes(l.status)
+    ["denied", "rejected", "expired", "revoked", "cancelled"].includes(l.status)
   );
 
   const statCards = [
@@ -707,6 +721,11 @@ export default function StudentLeaveOut() {
                     <div style={{ minWidth: 0 }}>
                       <div style={D.rowTitle}>{l.reason}</div>
                       <div style={D.rowMeta}>{typeLabel(l.leave_type)} · Authorized {new Date(l.approved_at).toLocaleString()}</div>
+                      {(l.final_approver_name || l.granted_by_name) && (
+                        <div style={D.rowMeta}>
+                          {l.is_admin_granted ? `Granted by ${l.granted_by_name}` : `Approved by ${l.final_approver_name}`}
+                        </div>
+                      )}
                       <div style={D.rowMeta}>Duration: {formatDuration(l.duration)}</div>
                     </div>
                     <button onClick={() => printLeave(l)} style={D.printBtn}>
@@ -739,9 +758,20 @@ export default function StudentLeaveOut() {
                     <div style={{ minWidth: 0 }}>
                       <div style={D.rowTitle}>{l.reason}</div>
                       <div style={D.rowMeta}>{typeLabel(l.leave_type)} · Submitted {new Date(l.request_date).toLocaleString()}</div>
+                      {l.status === "pending_subadmin2" && (
+                        <div style={D.rowMeta}>Awaiting Sub-Admin 2 approval</div>
+                      )}
+                      {l.status === "pending_final" && (
+                        <div style={D.rowMeta}>
+                          Approved by {l.subadmin2_approver_name || "Sub-Admin 2"} · awaiting final approval
+                        </div>
+                      )}
+                      {l.status === "pending_admin" && (
+                        <div style={D.rowMeta}>Awaiting Admin approval</div>
+                      )}
                     </div>
                     <span style={{ ...D.badge, background: "var(--warning-tint)", color: "var(--warning)" }}>
-                      <Clock size={12} /> Pending
+                      <Clock size={12} /> {PENDING_STAGE_LABEL[l.status] || "Pending"}
                     </span>
                   </div>
                 ))}
@@ -765,28 +795,34 @@ export default function StudentLeaveOut() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {history.map((l) => (
-                  <div key={l.id} className="leave-row" style={D.row}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={D.rowTitle}>{l.reason}</div>
-                      <div style={D.rowMeta}>{typeLabel(l.leave_type)}</div>
-                      {l.status === "revoked" && (
-                        <div style={D.revokedNote}>
-                          <AlertTriangle size={12} /> Revoked by management — report immediately
-                        </div>
-                      )}
+                {history.map((l) => {
+                  const isRejected = l.status === "denied" || l.status === "rejected";
+                  return (
+                    <div key={l.id} className="leave-row" style={D.row}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={D.rowTitle}>{l.reason}</div>
+                        <div style={D.rowMeta}>{typeLabel(l.leave_type)}</div>
+                        {isRejected && l.rejected_by_name && (
+                          <div style={D.rowMeta}>Rejected by {l.rejected_by_name}{l.deny_reason ? ` — ${l.deny_reason}` : ""}</div>
+                        )}
+                        {l.status === "revoked" && (
+                          <div style={D.revokedNote}>
+                            <AlertTriangle size={12} /> Revoked by management — report immediately
+                          </div>
+                        )}
+                      </div>
+                      <span style={{
+                        ...D.badge,
+                        background: isRejected ? "var(--destructive-tint)" : "var(--bg)",
+                        color: isRejected ? "var(--destructive)" : "var(--text-secondary)",
+                        border: isRejected ? "none" : "1px solid var(--border)",
+                        textTransform: "uppercase",
+                      }}>
+                        {isRejected ? "Rejected" : l.status}
+                      </span>
                     </div>
-                    <span style={{
-                      ...D.badge,
-                      background: l.status === "denied" ? "var(--destructive-tint)" : "var(--bg)",
-                      color: l.status === "denied" ? "var(--destructive)" : "var(--text-secondary)",
-                      border: l.status === "denied" ? "none" : "1px solid var(--border)",
-                      textTransform: "uppercase",
-                    }}>
-                      {l.status}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>

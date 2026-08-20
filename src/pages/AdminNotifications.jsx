@@ -7,6 +7,7 @@ import {
   ArrowLeft, Send, Clock, Users, GraduationCap, ShieldCheck, UserRound,
   Layers, Search, X, Mail, MessageSquare, Smartphone, Bell, RefreshCw,
   CheckCircle2, XCircle, AlertTriangle, Trash2, ChevronDown, Inbox as InboxIcon,
+  Settings,
 } from "lucide-react";
 import NotificationInbox from "../components/NotificationInbox";
 
@@ -78,6 +79,7 @@ const sx = {
     padding: "0 5px", borderRadius: 999, background: C.accent, color: C.white, fontSize: 10.5, fontWeight: 800,
   },
   backBtn: { display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "6px 0", marginBottom: 8 },
+  gearBtn: { display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 9, border: `1px solid ${C.border}`, background: C.card, color: C.textSec, cursor: "pointer", textDecoration: "none" },
   pageTitle: { margin: 0, fontSize: 26, fontWeight: 800, color: C.textPri, letterSpacing: "-0.02em" },
   pageSub: { margin: "6px 0 0", fontSize: 14, color: C.textMuted },
   twoCol: { display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24, alignItems: "start" },
@@ -136,6 +138,8 @@ export default function AdminNotifications() {
   injectStyles();
   const navigate = useNavigate();
   const { theme } = useTheme();
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const isFullAdmin = String(user?.role || "").toLowerCase() === "admin";
 
   // Inbox (received) vs Compose (send/broadcast) — this page used to be
   // compose-only, with nowhere for admin/sub-admin accounts to see
@@ -332,7 +336,20 @@ export default function AdminNotifications() {
               : "Send or schedule a broadcast to any group — in-system, email, SMS, and WhatsApp."}
           </p>
         </div>
-        <ThemeToggle />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isFullAdmin && (
+            <a
+              href="/notification-settings"
+              style={sx.gearBtn}
+              className="dash-icon-btn"
+              title="Notification Settings"
+              onClick={(e) => { e.preventDefault(); navigate("/notification-settings"); }}
+            >
+              <Settings size={16} />
+            </a>
+          )}
+          <ThemeToggle />
+        </div>
       </div>
 
       <div style={sx.tabBar}>

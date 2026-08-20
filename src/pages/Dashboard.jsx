@@ -11,7 +11,7 @@ import {
   CalendarCheck, GraduationCap, ChevronLeft, ChevronRight, ChevronDown,
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
-  Award, Activity, Inbox, KeyRound, Bell,
+  Award, Activity, Inbox, KeyRound, Bell, Settings, Vote,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
@@ -160,6 +160,14 @@ const NAV_GROUPS = [
       { name: "Reports", Icon: FolderOpen },
       { name: "Graduation", Icon: GraduationCap },
       { name: "Notifications", Icon: Bell },
+      { name: "Student Council", Icon: Vote },
+      // Not part of the grantable sub-admin PAGE_KEYS list (see
+      // permissions.js) on purpose — hasPage() only returns true for
+      // this key when role === "admin" (its unconditional bypass), so
+      // a sub_admin can never see or reach it even if granted every
+      // other page. API credentials are more sensitive than the
+      // broadcast-notifications feature itself.
+      { name: "Notification Settings", Icon: Settings },
     ],
   },
 ];
@@ -171,7 +179,8 @@ const ROUTES = {
   "E-Assessments":"/e-assessments", Reports:"/reports", "Leave-out":"/leave-out",
   Practicum:"/practicum", Meals:"/meals", AttendanceReport:"/attendance-report",
   Graduation:"/graduation", "Password Reset":"/password-reset",
-  Notifications:"/notifications",
+  Notifications:"/notifications", "Notification Settings":"/notification-settings",
+  "Student Council":"/student-council",
 };
 
 const formatYear = (y) => {

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, UserRound, Bell, BarChart3, FileText, MonitorCheck,
   Trophy, CalendarDays, CalendarCheck, Wallet, Utensils, DoorOpen,
   Settings, ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut,
-  Sun, Moon, GraduationCap,
+  Sun, Moon, GraduationCap, Vote,
 } from "lucide-react";
 /* ─── self-contained theme hook — no dependency on an external
    ThemeContext file/path, which varies by project structure.
@@ -161,6 +161,7 @@ const NAV_GROUPS = [
       { name: "Fees & Finance",  path: "/student/fees",              Icon: Wallet },
       { name: "Meals & Dining",  path: "/student/meals",             Icon: Utensils },
       { name: "Leave Requests",  path: "/student/leave",             Icon: DoorOpen },
+      { name: "Student Council", path: "/student/council",           Icon: Vote },
       { name: "Settings",        path: "/student/settings",          Icon: Settings },
     ],
   },

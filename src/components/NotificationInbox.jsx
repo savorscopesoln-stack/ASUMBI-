@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import API from "../api";
 import { Inbox, CheckCheck, Loader2 } from "lucide-react";
 
@@ -12,6 +13,7 @@ import { Inbox, CheckCheck, Loader2 } from "lucide-react";
    supplies the title/subtitle/back-button so this stays a drop-in
    list for any portal. */
 export default function NotificationInbox({ onCountChange }) {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
@@ -44,6 +46,14 @@ export default function NotificationInbox({ onCountChange }) {
     } catch (err) {
       console.log(err);
     }
+  };
+
+  // Clicking a notification marks it read (if needed) and, when it
+  // carries a link back to the relevant leave/record, takes the user
+  // straight there.
+  const handleRowClick = (n) => {
+    if (!n.isRead) markRead(n.id);
+    if (n.link) navigate(n.link);
   };
 
   const markAllRead = async () => {
@@ -95,9 +105,9 @@ export default function NotificationInbox({ onCountChange }) {
           notifications.map((n) => (
             <div
               key={n.id}
-              style={{ ...S.row, ...(n.isRead ? {} : S.rowUnread) }}
-              onClick={() => !n.isRead && markRead(n.id)}
-              role={!n.isRead ? "button" : undefined}
+              style={{ ...S.row, ...(n.isRead ? {} : S.rowUnread), ...(n.link ? S.rowClickable : {}) }}
+              onClick={() => handleRowClick(n)}
+              role={!n.isRead || n.link ? "button" : undefined}
             >
               <div style={S.rowTop}>
                 <span style={S.rowTitle}>
@@ -107,6 +117,9 @@ export default function NotificationInbox({ onCountChange }) {
                 <span style={S.rowTime}>{formatTime(n.createdAt)}</span>
               </div>
               <div style={S.rowMessage}>{n.message}</div>
+              {n.createdByName && (
+                <div style={S.rowSender}>From {n.createdByName}</div>
+              )}
             </div>
           ))
         )}
@@ -131,10 +144,12 @@ const S = {
     display: "flex", flexDirection: "column", alignItems: "center",
   },
   row: { padding: "12px 0", borderBottom: "1px solid var(--border)", fontSize: 13.5, color: "var(--text)", cursor: "pointer" },
+  rowClickable: { cursor: "pointer" },
   rowUnread: { background: "var(--primary-tint)", borderRadius: "var(--radius-sm)", padding: "12px 14px", marginBottom: 2 },
   rowTop: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 3 },
   rowTitle: { display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "var(--text)" },
   rowTime: { fontSize: 11.5, color: "var(--text-muted)", flexShrink: 0 },
   rowMessage: { color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 },
+  rowSender: { color: "var(--text-muted)", fontSize: 11.5, fontWeight: 600, marginTop: 4 },
   dot: { width: 7, height: 7, borderRadius: "50%", background: "var(--primary)", display: "inline-block" },
 };

@@ -24,6 +24,7 @@ export const PAGES = [
   { key: "Reports",          label: "Reports",             route: "/reports" },
   { key: "Graduation",       label: "Graduation",         route: "/graduation" },
   { key: "Notifications",    label: "Notifications",      route: "/notifications" },
+  { key: "Student Council",  label: "Student Council",    route: "/student-council" },
 ];
 
 export const PAGE_KEYS = PAGES.map((p) => p.key);

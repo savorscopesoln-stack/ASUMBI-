@@ -27,6 +27,8 @@ import Meals from "./pages/Meals";
 import AttendanceReport from "./pages/AttendanceReport";
 import AdminEAssessments from "./pages/AdminEAssessments";
 import AdminNotifications from "./pages/AdminNotifications";
+import AdminNotificationSettings from "./pages/AdminNotificationSettings";
+import StudentCouncil from "./pages/StudentCouncil";
 
 /* =========================================================
    AUTH
@@ -45,6 +47,7 @@ import StudentProfile from "./pages/Student/StudentProfile";
 import StudentReport from "./pages/Student/StudentReport";
 import StudentNotifications from "./pages/Student/StudentNotifications";
 import StudentMealCard from "./pages/Student/StudentMealCard";
+import StudentCouncilPortal from "./pages/Student/StudentCouncil";
 import TakeAssessment from "./pages/Student/TakeEAssessment";
 import TakeAssessmentPicker from "./pages/Student/TakeAssessmentPicker";
 
@@ -555,6 +558,30 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      <Route
+        path="/student-council"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="Student Council"
+          >
+            <StudentCouncil />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin-only (never gated by page="Notifications" — a sub_admin
+          granted the broadcast page still shouldn't be able to see/edit
+          the SMTP/Twilio API credentials this page manages). */}
+      <Route
+        path="/notification-settings"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+            <AdminNotificationSettings />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/ASSESSMENTS"
         element={
@@ -705,6 +732,11 @@ export default function App() {
         <Route
           path="meals"
           element={<StudentMealCard />}
+        />
+
+        <Route
+          path="council"
+          element={<StudentCouncilPortal />}
         />
 
         {/* ================= FIXED E-ASSESSMENTS ================= */}
