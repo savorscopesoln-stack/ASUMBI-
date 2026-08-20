@@ -60,6 +60,7 @@ import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import TeacherReports from "./pages/teacher/TeacherReports";
 import TeacherStudents from "./pages/teacher/TeacherStudents";
 import TeacherProfile from "./pages/teacher/TeacherProfile";
+import TeacherNotifications from "./pages/teacher/TeacherNotifications";
 import TeacherAssessments from "./pages/teacher/Teacherassessments";
 import TeacherAttendance from "./pages/teacher/Teacherattendance";
 import TeacherEAssessments from "./pages/teacher/TeacherEAssessments";
@@ -598,6 +599,11 @@ export default function App() {
         <Route
           path="profile"
           element={<TeacherProfile />}
+        />
+
+        <Route
+          path="notifications"
+          element={<TeacherNotifications />}
         />
 
         <Route
