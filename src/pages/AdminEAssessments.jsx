@@ -174,6 +174,15 @@ const extract = (res) => {
   return [];
 };
 
+// Converts a server DATETIME (ISO string) to the value a
+// <input type="datetime-local"> needs (local time, no seconds/zone).
+const toDatetimeLocal = (isoString) => {
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 const computeGrade = (score, total = 100) => {
   if (score == null) return "—";
   const pct = (score / (total || 100)) * 100;
@@ -243,7 +252,7 @@ export default function AdminEAssessments() {
   const [selAssignments, setSelAssignments] = useState([]);
 
   /* forms */
-  const blank = { title: "", subject: "", class_id: "", duration_minutes: 30, instructions: "", total_marks: 100, exam_password: "" };
+  const blank = { title: "", subject: "", class_id: "", duration_minutes: 30, instructions: "", total_marks: 100, exam_password: "", questions_deadline: "", question_setter_teacher_ids: [] };
   const [form,          setForm]          = useState(blank);
   const [editForm,      setEditForm]      = useState(blank);
   const [assignForm,    setAssignForm]    = useState({ teacher_id: "", subject_id: "", class_id: "" });
@@ -308,6 +317,8 @@ export default function AdminEAssessments() {
         instructions:     form.instructions,
         total_marks:      Number(form.total_marks) || 100,
         exam_password:    form.exam_password,
+        questions_deadline: form.questions_deadline || null,
+        question_setter_teacher_ids: form.question_setter_teacher_ids,
       });
       setForm(blank); setFormOpen(false);
       showToast("Assessment created successfully");
@@ -323,6 +334,8 @@ export default function AdminEAssessments() {
       class_id: a.class_id || "", duration_minutes: a.duration_minutes || 30,
       instructions: a.instructions || "", total_marks: a.total_marks || 100,
       exam_password: a.exam_password || "",
+      questions_deadline: a.questions_deadline ? toDatetimeLocal(a.questions_deadline) : "",
+      question_setter_teacher_ids: Array.isArray(a.question_setter_teacher_ids) ? a.question_setter_teacher_ids : [],
     });
     setEditOpen(true);
   };
@@ -341,6 +354,8 @@ export default function AdminEAssessments() {
         instructions:     editForm.instructions,
         total_marks:      Number(editForm.total_marks) || 100,
         exam_password:    editForm.exam_password,
+        questions_deadline: editForm.questions_deadline || null,
+        question_setter_teacher_ids: editForm.question_setter_teacher_ids,
       });
       setEditOpen(false);
       showToast("Assessment updated successfully");
@@ -1129,6 +1144,30 @@ export default function AdminEAssessments() {
             should only reach it by logging into the portal as usual.
           </p>
 
+          <FieldLabel>Add-Questions Deadline (optional)</FieldLabel>
+          <input
+            type="datetime-local"
+            value={form.questions_deadline}
+            onChange={(e) => setForm({ ...form, questions_deadline: e.target.value })}
+            style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bgAlt, color: C.textPri, fontSize: 14, outline: "none", marginBottom: 6, boxSizing: "border-box" }}
+          />
+          <p style={sx.formHint}>
+            After this date/time, the "Add Question" button is disabled for every teacher on this
+            assessment — questions already added are unaffected. Leave blank for no deadline.
+          </p>
+
+          <FieldLabel>Teachers allowed to add questions (optional)</FieldLabel>
+          <TeacherMultiSelect
+            value={form.question_setter_teacher_ids}
+            onChange={(ids) => setForm({ ...form, question_setter_teacher_ids: ids })}
+            teachers={teachers}
+          />
+          <p style={sx.formHint}>
+            Pick the teacher(s) who should be able to open this assessment and add questions —
+            this also makes the assessment appear on their E-Assessments page. Leave empty if
+            only you (admin) will add questions.
+          </p>
+
           <p style={sx.formHint}>
             All students in the selected class can take this assessment once it is approved and activated.
             Each student will receive a unique 6-character exam token bound to their first device.
@@ -1177,6 +1216,29 @@ export default function AdminEAssessments() {
           <p style={sx.formHint}>
             Lets students join at a shared link with just their username + this password, no
             portal login needed. Leave blank to require the normal student-portal login instead.
+          </p>
+
+          <FieldLabel>Add-Questions Deadline (optional)</FieldLabel>
+          <input
+            type="datetime-local"
+            value={editForm.questions_deadline}
+            onChange={(e) => setEditForm({ ...editForm, questions_deadline: e.target.value })}
+            style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bgAlt, color: C.textPri, fontSize: 14, outline: "none", marginBottom: 6, boxSizing: "border-box" }}
+          />
+          <p style={sx.formHint}>
+            After this date/time, the "Add Question" button is disabled for every teacher on this
+            assessment. Leave blank for no deadline.
+          </p>
+
+          <FieldLabel>Teachers allowed to add questions (optional)</FieldLabel>
+          <TeacherMultiSelect
+            value={editForm.question_setter_teacher_ids}
+            onChange={(ids) => setEditForm({ ...editForm, question_setter_teacher_ids: ids })}
+            teachers={teachers}
+          />
+          <p style={sx.formHint}>
+            Pick the teacher(s) who should be able to add questions to this assessment — this also
+            makes it appear on their E-Assessments page.
           </p>
 
           <SaveButton onClick={saveEditAssessment} loading={saving} label="Save Changes" />
@@ -1737,6 +1799,34 @@ function ModalSelect({ value, onChange, options, placeholder }) {
       <option value="">{placeholder}</option>
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
+  );
+}
+
+function TeacherMultiSelect({ value, onChange, teachers }) {
+  const C = useC();
+  const toggle = (id) => {
+    const has = value.includes(id);
+    onChange(has ? value.filter((v) => v !== id) : [...value, id]);
+  };
+  return (
+    <div style={{
+      maxHeight: 160, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8,
+      background: C.bgAlt, marginBottom: 6, padding: teachers.length ? "4px 0" : "10px 13px",
+    }}>
+      {!teachers.length && <span style={{ fontSize: 13, color: C.textMuted }}>No teachers found</span>}
+      {teachers.map((t) => {
+        const checked = value.includes(t.id);
+        return (
+          <label key={t.id} style={{
+            display: "flex", alignItems: "center", gap: 9, padding: "7px 13px",
+            cursor: "pointer", fontSize: 13.5, color: C.textPri,
+          }}>
+            <input type="checkbox" checked={checked} onChange={() => toggle(t.id)} style={{ cursor: "pointer" }} />
+            {t.name}
+          </label>
+        );
+      })}
+    </div>
   );
 }
 

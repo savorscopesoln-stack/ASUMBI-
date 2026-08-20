@@ -22,6 +22,20 @@ export default function AddQuestions() {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [assessment, setAssessment] = useState(null);
+
+  /* ── Deadline ── */
+  const deadline = assessment?.questions_deadline ? new Date(assessment.questions_deadline) : null;
+  const deadlinePassed = !!deadline && deadline.getTime() < Date.now();
+
+  const fetchAssessment = async () => {
+    try {
+      const res = await API.get(`/e-assessments/${id}`);
+      setAssessment(res.data?.assessment || res.data || null);
+    } catch (err) {
+      console.error("FETCH ASSESSMENT ERROR:", err);
+    }
+  };
 
   /* ── Fetch ── */
   const fetchQuestions = async () => {
@@ -48,7 +62,7 @@ export default function AddQuestions() {
   }
 };
 
-  useEffect(() => { if (id) fetchQuestions(); }, [id]);
+  useEffect(() => { if (id) { fetchQuestions(); fetchAssessment(); } }, [id]);
 
   /* ── Helpers ── */
   const updateOption = (index, value) => {
@@ -69,6 +83,10 @@ export default function AddQuestions() {
 
   /* ── Save ── */
 const submitQuestion = async () => {
+  if (deadlinePassed && !editingId) {
+    return alert(`The deadline to add questions passed on ${deadline.toLocaleString()}.`);
+  }
+
   if (!question.trim()) {
     return alert("Question text is required");
   }
@@ -197,6 +215,23 @@ const submitQuestion = async () => {
           </span>
         </div>
       </div>
+
+      {deadline && (
+        <div style={{
+          margin: "0 0 16px",
+          padding: "10px 16px",
+          borderRadius: 8,
+          fontSize: 13,
+          fontWeight: 600,
+          background: deadlinePassed ? "rgba(239,68,68,0.12)" : "rgba(99,102,241,0.10)",
+          border: `1px solid ${deadlinePassed ? "rgba(239,68,68,0.4)" : "rgba(99,102,241,0.3)"}`,
+          color: deadlinePassed ? "#f87171" : "#a5b4fc",
+        }}>
+          {deadlinePassed
+            ? `Deadline to add questions passed on ${deadline.toLocaleString()}. New questions can no longer be added — existing ones can still be viewed below.`
+            : `Deadline to add new questions: ${deadline.toLocaleString()}`}
+        </div>
+      )}
 
       <div style={S.layout}>
 
@@ -363,11 +398,11 @@ const submitQuestion = async () => {
             {/* Actions */}
             <div style={S.formActions}>
               <button
-                style={{ ...S.saveBtn, opacity: loading ? 0.6 : 1 }}
-                disabled={loading}
+                style={{ ...S.saveBtn, opacity: (loading || (deadlinePassed && !editingId)) ? 0.5 : 1, cursor: (deadlinePassed && !editingId) ? "not-allowed" : "pointer" }}
+                disabled={loading || (deadlinePassed && !editingId)}
                 onClick={submitQuestion}
               >
-                {loading ? "Saving…" : editingId ? "Update Question" : "Add Question"}
+                {loading ? "Saving…" : (deadlinePassed && !editingId) ? "Deadline passed" : editingId ? "Update Question" : "Add Question"}
               </button>
               {editingId && (
                 <button style={S.cancelBtn} onClick={resetForm}>

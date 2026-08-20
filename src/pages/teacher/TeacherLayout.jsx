@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import useUnreadNotifications from "../../hooks/useUnreadNotifications";
 
 /* =========================================================
    ICON SET — replaces the previous emoji glyphs with a
@@ -52,6 +53,9 @@ const IconMonitor = (p) => (
 const IconWrench = (p) => (
   <Icon {...p}><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L2 19l3 3 7.3-7.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2Z" /></Icon>
 );
+const IconBell = (p) => (
+  <Icon {...p}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></Icon>
+);
 const IconLogout = (p) => (
   <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></Icon>
 );
@@ -63,6 +67,7 @@ export default function TeacherLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { count: unreadCount } = useUnreadNotifications();
 
   const logout = () => {
     localStorage.clear();
@@ -96,6 +101,7 @@ export default function TeacherLayout() {
 
   const menu = [
     { name: "Dashboard", path: "/teacher/dashboard", icon: <IconDashboard /> },
+    { name: "Notifications", path: "/teacher/notifications", icon: <IconBell /> },
     { name: "Marks Entry", path: "/teacher/marks", icon: <IconPencil /> },
     { name: "Class register", path: "/teacher/attendance", icon: <IconCalendar /> },
     { name: "Attendance Report", path: "/teacher/attendance-report", icon: <IconFileText /> },
@@ -132,7 +138,14 @@ export default function TeacherLayout() {
           </span>
         </button>
         <span className="tl-mobile-title">{current}</span>
-        <span style={{ width: 34 }} />
+        <button
+          className="tl-mobile-bell"
+          onClick={() => go("/teacher/notifications")}
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+        >
+          <IconBell size={17} />
+          {unreadCount > 0 && <span style={styles.topBellBadge}>{unreadCount > 9 ? "9+" : unreadCount}</span>}
+        </button>
       </header>
 
       {mobileOpen && (
@@ -164,6 +177,9 @@ export default function TeacherLayout() {
               >
                 <span style={styles.icon}>{item.icon}</span>
                 {item.name}
+                {item.name === "Notifications" && unreadCount > 0 && (
+                  <span style={styles.navBadge}>{unreadCount > 99 ? "99+" : unreadCount}</span>
+                )}
                 {active && <span style={styles.glow} />}
               </button>
             );
@@ -178,7 +194,18 @@ export default function TeacherLayout() {
       <main style={styles.main}>
         <div style={styles.topbar} className="tl-desktop-topbar">
           <h2 style={styles.title}>{current}</h2>
-          <div style={styles.badge}>Teacher Mode</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              onClick={() => go("/teacher/notifications")}
+              style={styles.topBellBtn}
+              aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+              title="Notifications"
+            >
+              <IconBell size={16} />
+              {unreadCount > 0 && <span style={styles.topBellBadge}>{unreadCount > 9 ? "9+" : unreadCount}</span>}
+            </button>
+            <div style={styles.badge}>Teacher Mode</div>
+          </div>
         </div>
 
         <div style={styles.content}>
@@ -277,6 +304,53 @@ const styles = {
     animation: "tlPulse 2s infinite",
   },
 
+  navBadge: {
+    marginLeft: "auto",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 18,
+    height: 18,
+    padding: "0 5px",
+    borderRadius: 999,
+    background: "#fca5a5",
+    color: "#450a0a",
+    fontSize: 10.5,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+
+  topBellBtn: {
+    position: "relative",
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.04)",
+    color: "#ccc",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+  topBellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 16,
+    height: 16,
+    padding: "0 3px",
+    borderRadius: 999,
+    background: "#fca5a5",
+    color: "#450a0a",
+    fontSize: 9.5,
+    fontWeight: 800,
+    border: "1.5px solid #1a0000",
+  },
+
   logout: {
     marginTop: "auto",
     padding: 12,
@@ -359,6 +433,15 @@ const customStyles = `
   .tl-mobile-topbar { display: none; }
   .tl-drawer-close { display: none; }
   .tl-overlay { display: none; }
+  .tl-mobile-bell {
+    position: relative;
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    color: #ccc;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; padding: 0;
+  }
 
   @media (max-width: 880px) {
     .tl-mobile-topbar {

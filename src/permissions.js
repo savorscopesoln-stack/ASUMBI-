@@ -23,6 +23,7 @@ export const PAGES = [
   { key: "AttendanceReport", label: "Attendance Report",  route: "/attendance-report" },
   { key: "Reports",          label: "Reports",             route: "/reports" },
   { key: "Graduation",       label: "Graduation",         route: "/graduation" },
+  { key: "Notifications",    label: "Notifications",      route: "/notifications" },
 ];
 
 export const PAGE_KEYS = PAGES.map((p) => p.key);
