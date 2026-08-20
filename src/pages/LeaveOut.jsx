@@ -47,7 +47,25 @@ const DURATION_OPTIONS = [
   { value: 1440, label: "1 Day" },
   { value: 2880, label: "2 Days" },
   { value: 4320, label: "3 Days" },
+  { value: 5760, label: "4 Days" },
   { value: 7200, label: "5 Days" },
+  { value: 10080, label: "1 Week" },
+  { value: 20160, label: "2 Weeks" },
+  { value: 30240, label: "3 Weeks" },
+  { value: 40320, label: "4 Weeks" },
+  { value: 52560, label: "1 Month" },
+  { value: 105120, label: "2 Months" },
+  { value: 157680, label: "3 Months" },
+  { value: 210240, label: "4 Months" },
+  { value: 262800, label: "5 Months" },
+  { value: 315360, label: "6 Months" },
+  { value: 367920, label: "7 Months" },
+  { value: 420480, label: "8 Months" },
+  { value: 473040, label: "9 Months" },
+  { value: 403200, label: "10 Months" },
+  { value: 525600, label: "11 Months" },
+  { value: 525600, label: "1 Year" }, 
+
 ];
 
 export default function LeaveOutAdmin() {
