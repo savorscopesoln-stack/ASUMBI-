@@ -38,6 +38,8 @@ export default function Users() {
         return "bg-red-500/20 text-red-300";
       case "sub_admin":
         return "bg-amber-500/20 text-amber-300";
+      case "sub_admin_2":
+        return "bg-purple-500/20 text-purple-300";
       case "teacher":
         return "bg-blue-500/20 text-blue-300";
       default:
@@ -113,7 +115,7 @@ export default function Users() {
               </div>
 
               {/* PAGE ACCESS (sub-admins only — admins have full access) */}
-              {user.role === "sub_admin" && (
+              {(user.role === "sub_admin" || user.role === "sub_admin_2") && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {(Array.isArray(user.permissions) ? user.permissions : []).length > 0 ? (
                     user.permissions.map((p) => (

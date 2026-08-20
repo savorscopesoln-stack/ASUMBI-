@@ -84,10 +84,14 @@ export default function RegistrationPage() {
   const isValid = () => {
     if (type === "account") {
       if (!form.username || !form.role) return false;
-      // Admins get full access automatically; a sub-admin needs at
-      // least one page picked now, since there's no separate step
-      // to grant access later.
-      if (form.role === "sub_admin" && form.permissions.length === 0) return false;
+      // Admins get full access automatically; either sub-admin tier
+      // needs at least one page picked now, since there's no separate
+      // step to grant access later.
+      if (
+        (form.role === "sub_admin" || form.role === "sub_admin_2") &&
+        form.permissions.length === 0
+      )
+        return false;
       return true;
     }
 
@@ -164,16 +168,18 @@ They'll be required to change it on first login.`);
       }
 
       if (type === "account") {
+        const isSubAdmin = form.role === "sub_admin" || form.role === "sub_admin_2";
+
         const res = await API.post("/register/user", {
           username: form.username,
           role: form.role,
           email: form.email,
-          permissions: form.role === "sub_admin" ? form.permissions : [],
+          permissions: isSubAdmin ? form.permissions : [],
         });
 
         const { username, password, role, permissions } = res.data.credentials;
         const accessLine =
-          role === "sub_admin"
+          role === "sub_admin" || role === "sub_admin_2"
             ? `\nPages granted: ${(permissions || []).join(", ") || "none"}`
             : "";
         setMessage(`✅ Account created (${role})  
@@ -319,10 +325,11 @@ They'll be required to change it on first login — share it with them directly.
                   <input name="email" placeholder="Email (optional)" value={form.email} onChange={handleChange} style={styles.input} />
                   <select name="role" value={form.role} onChange={handleChange} style={styles.input}>
                     <option value="sub_admin">Sub Admin</option>
+                    <option value="sub_admin_2">Sub Admin 2</option>
                     <option value="admin">Admin</option>
                   </select>
 
-                  {form.role === "sub_admin" && (
+                  {(form.role === "sub_admin" || form.role === "sub_admin_2") && (
                     <div style={styles.permBox}>
                       <p style={styles.permTitle}>
                         Pages this sub-admin can access
