@@ -6,9 +6,8 @@ import ThemeToggle from "../components/ThemeToggle";
 import {
   ArrowLeft, Send, Clock, Users, GraduationCap, ShieldCheck, UserRound,
   Layers, Search, X, Mail, MessageSquare, Smartphone, Bell, RefreshCw,
-  CheckCircle2, XCircle, AlertTriangle, Trash2, ChevronDown, Inbox as InboxIcon,
+  CheckCircle2, XCircle, AlertTriangle, Trash2, ChevronDown,
 } from "lucide-react";
-import NotificationInbox from "../components/NotificationInbox";
 
 /* ═══════════════════════════════════════════════════════════
    DESIGN TOKENS — same stylesheet id as the rest of the app
@@ -65,18 +64,7 @@ const C = {
 
 const sx = {
   page: { minHeight: "100vh", padding: "28px 40px 60px", fontFamily: "Inter, sans-serif", background: C.bg },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 20, marginBottom: 20 },
-  tabBar: { display: "flex", gap: 8, marginBottom: 22, borderBottom: `1px solid ${C.border}`, paddingBottom: 0 },
-  tabBtn: (active) => ({
-    display: "flex", alignItems: "center", gap: 7, padding: "10px 16px", borderRadius: "10px 10px 0 0",
-    border: "none", borderBottom: active ? `2px solid ${C.accent}` : "2px solid transparent",
-    background: "transparent", color: active ? C.accent : C.textMuted,
-    fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: -1,
-  }),
-  tabBadge: {
-    display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, height: 18,
-    padding: "0 5px", borderRadius: 999, background: C.accent, color: C.white, fontSize: 10.5, fontWeight: 800,
-  },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 20, marginBottom: 28 },
   backBtn: { display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "6px 0", marginBottom: 8 },
   pageTitle: { margin: 0, fontSize: 26, fontWeight: 800, color: C.textPri, letterSpacing: "-0.02em" },
   pageSub: { margin: "6px 0 0", fontSize: 14, color: C.textMuted },
@@ -136,12 +124,6 @@ export default function AdminNotifications() {
   injectStyles();
   const navigate = useNavigate();
   const { theme } = useTheme();
-
-  // Inbox (received) vs Compose (send/broadcast) — this page used to be
-  // compose-only, with nowhere for admin/sub-admin accounts to see
-  // notifications addressed to *them*.
-  const [tab, setTab] = useState("inbox");
-  const [inboxUnread, setInboxUnread] = useState(0);
 
   const [toast, setToast] = useState(null);
   const showToast = (type, msg) => {
@@ -326,34 +308,11 @@ export default function AdminNotifications() {
             <ArrowLeft size={14} /> Back
           </button>
           <h1 style={sx.pageTitle}>Notifications</h1>
-          <p style={sx.pageSub}>
-            {tab === "inbox"
-              ? "Notifications addressed to your account."
-              : "Send or schedule a broadcast to any group — in-system, email, SMS, and WhatsApp."}
-          </p>
+          <p style={sx.pageSub}>Send or schedule a broadcast to any group — in-system, email, SMS, and WhatsApp.</p>
         </div>
         <ThemeToggle />
       </div>
 
-      <div style={sx.tabBar}>
-        <button
-          style={sx.tabBtn(tab === "inbox")}
-          onClick={() => setTab("inbox")}
-        >
-          <InboxIcon size={14} /> Inbox
-          {inboxUnread > 0 && <span style={sx.tabBadge}>{inboxUnread}</span>}
-        </button>
-        <button
-          style={sx.tabBtn(tab === "compose")}
-          onClick={() => setTab("compose")}
-        >
-          <Send size={14} /> Compose
-        </button>
-      </div>
-
-      {tab === "inbox" ? (
-        <NotificationInbox onCountChange={setInboxUnread} />
-      ) : (
       <div className="notif-two-col" style={sx.twoCol}>
         {/* ══════════ COMPOSE ══════════ */}
         <div style={sx.card}>
@@ -553,7 +512,6 @@ export default function AdminNotifications() {
           )}
         </div>
       </div>
-      )}
     </div>
   );
 }

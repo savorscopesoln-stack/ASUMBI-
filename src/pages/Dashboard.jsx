@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
-import useUnreadNotifications from "../hooks/useUnreadNotifications";
 
 /* ─── design-token stylesheet (light default, dark override) ───
    Text tokens were bumped up in contrast/saturation — the old
@@ -218,7 +217,6 @@ function Dashboard() {
   injectStyles();
 
   const { theme, toggleTheme } = useTheme();
-  const { count: unreadNotifCount } = useUnreadNotifications();
   const user    = JSON.parse(localStorage.getItem("user") || "{}");
   const navigate = useNavigate();
   const location = useLocation();
@@ -550,20 +548,8 @@ function Dashboard() {
                     title={sidebarCollapsed ? name : undefined}
                     style={D.navBtn}
                   >
-                    <span style={D.navIcon}>
-                      <Icon size={17} strokeWidth={2} />
-                      {name === "Notifications" && unreadNotifCount > 0 && sidebarCollapsed && (
-                        <span style={D.navIconDot} />
-                      )}
-                    </span>
-                    {!sidebarCollapsed && (
-                      <span style={D.navLabel}>
-                        {name}
-                        {name === "Notifications" && unreadNotifCount > 0 && (
-                          <span style={D.navBadge}>{unreadNotifCount > 99 ? "99+" : unreadNotifCount}</span>
-                        )}
-                      </span>
-                    )}
+                    <span style={D.navIcon}><Icon size={17} strokeWidth={2} /></span>
+                    {!sidebarCollapsed && <span style={D.navLabel}>{name}</span>}
                   </button>
                   
                 ))}
@@ -1104,20 +1090,8 @@ const D = {
     whiteSpace: "nowrap",
     overflow: "hidden",
   },
-  navIcon:  { display: "flex", flexShrink: 0, width: 20, alignItems: "center", justifyContent: "center", position: "relative" },
-  navIconDot: {
-    position: "absolute", top: -1, right: 0, width: 7, height: 7, borderRadius: "50%",
-    background: "var(--destructive)", border: "1.5px solid var(--card)",
-  },
-  navLabel: {
-    display: "flex", alignItems: "center", justifyContent: "space-between", flex: 1,
-    overflow: "hidden", textOverflow: "ellipsis",
-  },
-  navBadge: {
-    display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, height: 18,
-    padding: "0 5px", borderRadius: 999, background: "var(--destructive)", color: "#fff",
-    fontSize: 10.5, fontWeight: 800, flexShrink: 0, marginLeft: 8,
-  },
+  navIcon:  { display: "flex", flexShrink: 0, width: 20, alignItems: "center", justifyContent: "center" },
+  navLabel: { overflow: "hidden", textOverflow: "ellipsis" },
 
   logoutBtn: {
     display: "flex",
