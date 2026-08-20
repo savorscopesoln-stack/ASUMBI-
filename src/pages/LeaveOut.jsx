@@ -55,6 +55,14 @@ export default function LeaveOutAdmin() {
   const role = String(user?.role || "").toLowerCase();
   const isAdmin = role === "admin";
 
+  /* Sub-Admin 2 is an Emergency-only reviewer: it may never see any
+     other leave type, and — per explicit request — it must never see
+     counts/totals of any kind either (no analytics card, no "N
+     Requests" badge). Everything below keyed off this one flag so
+     there's a single place enforcing it on the UI side; the backend
+     enforces the same thing independently (see leaveOutRoutes.js). */
+  const isSubAdmin2 = role === "sub_admin_2";
+
   const [leaves, setLeaves] = useState([]);
   const [analytics, setAnalytics] = useState([]);
   const [students, setStudents] = useState([]);
@@ -62,7 +70,7 @@ export default function LeaveOutAdmin() {
 
   const [duration, setDuration] = useState(120);
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState(isSubAdmin2 ? "emergency" : "all");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [rejectModal, setRejectModal] = useState(null); // { id, reason }
@@ -78,7 +86,9 @@ export default function LeaveOutAdmin() {
   const instantLoad = async () => {
     try {
       setLoading(true);
-      await Promise.all([loadLeaves(), loadAnalytics(), loadStudents()]);
+      // Sub-Admin 2 never sees analytics/counters, so don't even fetch
+      // them — one less thing the backend has to reject.
+      await Promise.all([loadLeaves(), ...(isSubAdmin2 ? [] : [loadAnalytics()]), loadStudents()]);
     } catch (err) {
       console.log(err);
     } finally {
@@ -104,6 +114,9 @@ export default function LeaveOutAdmin() {
       console.log(err);
     }
   };
+
+  // Reload after any action. Skips analytics entirely for Sub-Admin 2.
+  const refresh = async () => Promise.all([loadLeaves(), ...(isSubAdmin2 ? [] : [loadAnalytics()])]);
 
   const getStudent = (id) => students.find((x) => x.id === id);
   const getStudentName = (id) => getStudent(id)?.name || `Student ${id}`;
@@ -136,7 +149,7 @@ export default function LeaveOutAdmin() {
     try {
       setBusyId(l.id);
       await API.put(`/leave-outs/${l.id}/approve`, { approvedAt: new Date(), duration });
-      await Promise.all([loadLeaves(), loadAnalytics()]);
+      await refresh();
     } catch (err) {
       alert(err?.response?.data?.message || "Approve failed");
     } finally {
@@ -152,7 +165,7 @@ export default function LeaveOutAdmin() {
       setBusyId(rejectModal.id);
       await API.put(`/leave-outs/${rejectModal.id}/deny`, { reason: rejectModal.reason });
       setRejectModal(null);
-      await Promise.all([loadLeaves(), loadAnalytics()]);
+      await refresh();
     } catch (err) {
       alert(err?.response?.data?.message || "Reject failed");
     } finally {
@@ -165,7 +178,7 @@ export default function LeaveOutAdmin() {
     try {
       setBusyId(l.id);
       await API.put(`/leave-outs/${l.id}/revoke`);
-      await Promise.all([loadLeaves(), loadAnalytics()]);
+      await refresh();
     } catch (err) {
       alert(err?.response?.data?.message || "Revoke failed");
     } finally {
@@ -201,7 +214,7 @@ export default function LeaveOutAdmin() {
         reason: grantModal.reason,
       });
       setGrantModal(null);
-      await Promise.all([loadLeaves(), loadAnalytics()]);
+      await refresh();
     } catch (err) {
       alert(err?.response?.data?.message || "Force grant failed");
     } finally {
@@ -214,6 +227,10 @@ export default function LeaveOutAdmin() {
   const filteredLeaves = useMemo(() => {
     const term = search.toLowerCase().trim();
     return leaves.filter((l) => {
+      // Belt-and-braces: even though the backend already scopes
+      // Sub-Admin 2 to emergency-only leaves, never render anything
+      // else here either.
+      if (isSubAdmin2 && l.leave_type !== "emergency") return false;
       if (typeFilter !== "all" && l.leave_type !== typeFilter) return false;
 
       if (statusFilter === "pending" && !PENDING_STATUSES.includes(l.status)) return false;
@@ -236,9 +253,11 @@ export default function LeaveOutAdmin() {
         {/* HEADER */}
         <div style={styles.header}>
           <div>
-            <h1 style={styles.title}>Leave Management</h1>
+            <h1 style={styles.title}>{isSubAdmin2 ? "Emergency Leave-Outs" : "Leave Management"}</h1>
             <p style={styles.subtitle}>
-              Approvals, Emergency &amp; Long-Stay workflows, and leave history.
+              {isSubAdmin2
+                ? "Review and act on Emergency leave requests."
+                : "Approvals, Emergency & Long-Stay workflows, and leave history."}
             </p>
             <button onClick={() => window.history.back()} style={styles.backBtn}>
               ← Back
@@ -268,7 +287,7 @@ export default function LeaveOutAdmin() {
         ) : (
           <>
             {/* ================= TOP GRID ================= */}
-            <div style={styles.topGrid}>
+            <div style={isSubAdmin2 ? styles.topGridSingle : styles.topGrid}>
               <div style={styles.card}>
                 <div style={styles.cardHeader}>
                   <h3>⚙️ Approval Settings</h3>
@@ -283,15 +302,20 @@ export default function LeaveOutAdmin() {
                   </select>
                 </div>
 
-                <div style={styles.field}>
-                  <label style={styles.label}>Filter by Leave Type</label>
-                  <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={styles.input}>
-                    <option value="all">All Types</option>
-                    <option value="short_stay">Short Stay</option>
-                    <option value="emergency">Emergency</option>
-                    <option value="long">Long-Stay</option>
-                  </select>
-                </div>
+                {/* Sub-Admin 2 is locked to Emergency only — there is
+                    nothing else for this filter to do, so it's hidden
+                    rather than shown disabled. */}
+                {!isSubAdmin2 && (
+                  <div style={styles.field}>
+                    <label style={styles.label}>Filter by Leave Type</label>
+                    <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={styles.input}>
+                      <option value="all">All Types</option>
+                      <option value="short_stay">Short Stay</option>
+                      <option value="emergency">Emergency</option>
+                      <option value="long">Long-Stay</option>
+                    </select>
+                  </div>
+                )}
 
                 <div style={styles.field}>
                   <label style={styles.label}>Filter by Status / Stage</label>
@@ -311,7 +335,9 @@ export default function LeaveOutAdmin() {
                 </div>
               </div>
 
-              {/* ANALYTICS */}
+              {/* ANALYTICS — never shown to Sub-Admin 2. That role gets
+                  no counts or totals of any kind, per policy. */}
+              {!isSubAdmin2 && (
               <div style={styles.card}>
                 <div style={styles.cardHeader}>
                   <h3>📊 Leave Analytics</h3>
@@ -329,13 +355,16 @@ export default function LeaveOutAdmin() {
                   ))}
                 </div>
               </div>
+              )}
             </div>
 
             {/* ================= REQUESTS TABLE ================= */}
             <div style={styles.card}>
               <div style={styles.cardHeader}>
-                <h3>📋 Leave Requests</h3>
-                <div style={styles.badge}>{filteredLeaves.length} Requests</div>
+                <h3>📋 {isSubAdmin2 ? "Emergency Leave Requests" : "Leave Requests"}</h3>
+                {/* No count badge for Sub-Admin 2 — "even the counter or
+                    number of leaves shouldn't show". */}
+                {!isSubAdmin2 && <div style={styles.badge}>{filteredLeaves.length} Requests</div>}
               </div>
 
               <div style={styles.tableWrap}>
@@ -580,6 +609,7 @@ const styles = {
     background: "rgba(255,255,255,0.05)", color: "#fff", outline: "none", fontSize: 14,
   },
   topGrid: { display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24, marginBottom: 28 },
+  topGridSingle: { display: "grid", gridTemplateColumns: "1fr", gap: 24, marginBottom: 28, maxWidth: 480 },
   card: {
     background: "rgba(255,255,255,0.05)", backdropFilter: "blur(14px)", borderRadius: 24, padding: 24,
     border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 10px 30px rgba(0,0,0,0.35)",

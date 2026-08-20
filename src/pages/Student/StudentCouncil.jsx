@@ -153,6 +153,36 @@ function StageBadge({ status }) {
 /* ═══════════════════════ ELECTIONS LIST ═══════════════════════ */
 
 function ElectionsList({ elections }) {
+  // Results need to be reachable from the very first tab a student
+  // lands on — burying them one click deep inside "Vote" is why they
+  // weren't "reflecting" for anyone who didn't think to look there.
+  // Every RESULTS-stage election gets an inline, expandable results
+  // panel right on its card here.
+  const [openId, setOpenId] = useState(null);
+  const [resultsById, setResultsById] = useState({});
+  const [loadingId, setLoadingId] = useState(null);
+  const [errorId, setErrorId] = useState(null);
+
+  const toggleResults = async (e) => {
+    if (openId === e.id) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(e.id);
+    if (resultsById[e.id]) return;
+    setLoadingId(e.id);
+    setErrorId(null);
+    try {
+      const res = await API.get(`/student-council/student/elections/${e.id}/results`);
+      setResultsById((prev) => ({ ...prev, [e.id]: res.data }));
+    } catch (err) {
+      console.log(err);
+      setErrorId(e.id);
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
   if (!elections.length) {
     return <div style={S.emptyBox}><Landmark size={28} color="var(--text-muted)" /><div style={{ marginTop: 8, color: "var(--text-muted)" }}>No elections have been announced yet.</div></div>;
   }
@@ -165,6 +195,25 @@ function ElectionsList({ elections }) {
             <StageBadge status={e.status} />
           </div>
           {e.description && <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>{e.description}</div>}
+
+          {e.status === "RESULTS" && (
+            <>
+              <button className="sc-btn" style={S.viewResultsBtn} onClick={() => toggleResults(e)}>
+                <Award size={14} />
+                {openId === e.id ? "Hide Results" : "View Official Results"}
+              </button>
+
+              {openId === e.id && (
+                loadingId === e.id ? (
+                  <div style={{ ...S.loadingBox, padding: "18px 0" }}><Loader2 className="dash-spin" size={16} /> Loading results…</div>
+                ) : errorId === e.id ? (
+                  <div style={{ color: "var(--destructive)", fontSize: 12.5, marginTop: 10 }}>Couldn't load results — try again shortly.</div>
+                ) : resultsById[e.id] ? (
+                  <ResultsView results={resultsById[e.id]} compact />
+                ) : null
+              )}
+            </>
+          )}
         </div>
       ))}
     </div>
@@ -403,27 +452,51 @@ function VotePanel({ elections, showToast, refreshElections }) {
         <div style={S.emptyBox}><AlertTriangle size={26} color="var(--text-muted)" /><div style={{ marginTop: 8, color: "var(--text-muted)" }}>The ballot isn't available right now.</div></div>
       ) : (
         <div>
-          {ballot.posts.map(({ post, candidates }) => (
-            <div key={post.id} style={{ marginBottom: 22 }}>
-              <div style={S.postGroupTitle}>{post.title}</div>
-              <div style={S.grid3}>
+          <div style={S.ballotHeader}>
+            <div style={S.ballotHeaderTop}>
+              <Landmark size={18} color="var(--primary)" />
+              <div>
+                <div style={S.ballotTitle}>Official Ballot</div>
+                <div style={S.ballotSubtitle}>{ballot.election?.title || "Student Council Election"}</div>
+              </div>
+            </div>
+            <div style={S.ballotInstructions}>
+              Select one candidate for each position below. Review your choices before submitting — your vote is final and cannot be changed once cast.
+            </div>
+          </div>
+
+          {ballot.posts.map(({ post, candidates }, postIdx) => (
+            <div key={post.id} style={S.ballotPostBlock}>
+              <div style={S.ballotPostHeader}>
+                <span style={S.ballotPostNumber}>{postIdx + 1}</span>
+                <div>
+                  <div style={S.postGroupTitle}>{post.title}</div>
+                  {post.description && <div style={S.ballotPostDesc}>{post.description}</div>}
+                </div>
+              </div>
+              <div style={S.ballotCandidateList}>
                 {candidates.map((c) => {
                   const isSelected = selections[post.id] === c.id;
                   return (
                     <div
                       key={c.id}
                       className={`sc-candidate${isSelected ? " selected" : ""}`}
-                      style={{ ...S.candidateCard, border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border)" }}
+                      style={{ ...S.ballotRow, border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border)" }}
                       onClick={() => select(post.id, c.id)}
+                      role="radio"
+                      aria-checked={isSelected}
                     >
-                      <div style={{ display: "flex", gap: 10 }}>
+                      <span style={{ ...S.ballotRadio, ...(isSelected ? S.ballotRadioSelected : {}) }}>
+                        {isSelected && <span style={S.ballotRadioDot} />}
+                      </span>
+                      <div style={{ display: "flex", gap: 10, flex: 1, minWidth: 0 }}>
                         <Avatar photoUrl={c.photoUrl} name={c.name} size={56} />
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 700 }}>{c.name}</div>
                           <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{c.admissionNo} • {c.studentClass}</div>
                           {c.partyName && <div style={{ fontSize: 11.5, color: "var(--primary)", fontWeight: 700, marginTop: 2 }}>{c.partyName}</div>}
                         </div>
-                        {isSelected && <CheckCircle2 size={18} color="var(--primary)" style={{ marginLeft: "auto", flexShrink: 0 }} />}
+                        {isSelected && <CheckCircle2 size={18} color="var(--primary)" style={{ marginLeft: "auto", flexShrink: 0, alignSelf: "center" }} />}
                       </div>
                       {c.runningMateName && (
                         <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}>
@@ -506,30 +579,53 @@ function ConfirmVoteModal({ ballot, selections, onClose, onConfirm, submitting }
   );
 }
 
-function ResultsView({ results }) {
+function ResultsView({ results, compact }) {
   return (
-    <div style={{ marginTop: 16, textAlign: "left" }}>
-      {results.posts.map(({ post, results: postResults }) => (
-        <div key={post.id} style={{ marginBottom: 20 }}>
-          <div style={S.postGroupTitle}>{post.title}</div>
-          {postResults.map((r, i) => {
-            const total = postResults.reduce((sum, x) => sum + x.votes, 0) || 1;
-            const pct = Math.round((r.votes / total) * 100);
-            return (
-              <div key={r.candidate?.studentId || i} style={S.resultRow}>
-                <Avatar photoUrl={r.candidate?.photoUrl} name={r.candidate?.name} size={32} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600 }}>
-                    <span>{r.candidate?.name || "Unknown"} {i === 0 && r.votes > 0 && <Award size={12} color="var(--warning)" style={{ marginLeft: 4 }} />}</span>
-                    <span>{pct}%</span>
+    <div style={{ marginTop: compact ? 14 : 16, textAlign: "left" }}>
+      <div style={S.resultsCertHeader}>
+        <Award size={15} color="var(--primary)" />
+        <span>Official Results</span>
+      </div>
+
+      {results.posts.map(({ post, results: postResults }) => {
+        const total = postResults.reduce((sum, x) => sum + x.votes, 0);
+        const top = postResults[0];
+        const isTie = postResults.length > 1 && postResults[1]?.votes === top?.votes && (top?.votes || 0) > 0;
+
+        return (
+          <div key={post.id} style={S.resultsPostBlock}>
+            <div style={S.resultsPostHeader}>
+              <div style={S.postGroupTitle}>{post.title}</div>
+              <div style={S.resultsTotalVotes}>{total} vote{total === 1 ? "" : "s"} cast</div>
+            </div>
+
+            {postResults.map((r, i) => {
+              const pct = total ? Math.round((r.votes / total) * 100) : 0;
+              const isWinner = i === 0 && (r.votes || 0) > 0 && !isTie;
+              return (
+                <div key={r.candidate?.studentId || i} style={{ ...S.resultRow, ...(isWinner ? S.resultRowWinner : {}) }}>
+                  <div style={S.resultRank}>{i + 1}</div>
+                  <Avatar photoUrl={r.candidate?.photoUrl} name={r.candidate?.name} size={36} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>
+                        {r.candidate?.name || "Unknown"}
+                        {r.candidate?.partyName && <span style={S.resultParty}> · {r.candidate.partyName}</span>}
+                      </span>
+                      {isWinner && <span style={S.electedTag}><Award size={11} /> ELECTED</span>}
+                    </div>
+                    <div style={S.progressTrack}><div style={{ ...S.progressFill, width: `${pct}%` }} /></div>
+                    <div style={S.resultVoteCount}>{r.votes || 0} vote{(r.votes || 0) === 1 ? "" : "s"} · {pct}%</div>
                   </div>
-                  <div style={S.progressTrack}><div style={{ ...S.progressFill, width: `${pct}%` }} /></div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+              );
+            })}
+
+            {isTie && <div style={S.tieNote}><AlertTriangle size={12} /> Tied for first place — pending official tiebreak.</div>}
+            {postResults.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 12.5 }}>No candidates for this post.</div>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -567,4 +663,35 @@ const S = {
   progressTrack: { height: 7, background: "var(--bg)", borderRadius: 4, marginTop: 5, overflow: "hidden" },
   progressFill: { height: "100%", background: "linear-gradient(90deg, var(--primary), var(--primary-dark))", borderRadius: 4, transition: "width .4s ease" },
   toast: { position: "fixed", top: 18, right: 18, color: "#fff", padding: "12px 18px", borderRadius: 10, fontWeight: 700, fontSize: 13.5, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.2)" },
+
+  /* ── elections list: inline "view results" ── */
+  viewResultsBtn: { display: "flex", alignItems: "center", gap: 6, marginTop: 12, background: "var(--primary-tint)", color: "var(--primary)", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 12.5, width: "100%", justifyContent: "center" },
+
+  /* ── official ballot ── */
+  ballotHeader: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: "16px 18px", marginBottom: 18, boxShadow: "var(--shadow-sm)" },
+  ballotHeaderTop: { display: "flex", alignItems: "center", gap: 10 },
+  ballotTitle: { fontWeight: 800, fontSize: 15.5, letterSpacing: "-0.01em" },
+  ballotSubtitle: { fontSize: 12.5, color: "var(--text-muted)", fontWeight: 600, marginTop: 1 },
+  ballotInstructions: { fontSize: 12.5, color: "var(--text-secondary)", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", lineHeight: 1.5 },
+  ballotPostBlock: { marginBottom: 22, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: 16, boxShadow: "var(--shadow-sm)" },
+  ballotPostHeader: { display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 },
+  ballotPostNumber: { flexShrink: 0, width: 24, height: 24, borderRadius: "50%", background: "var(--primary)", color: "#fff", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" },
+  ballotPostDesc: { fontSize: 12, color: "var(--text-muted)", marginTop: 2 },
+  ballotCandidateList: { display: "flex", flexDirection: "column", gap: 10 },
+  ballotRow: { display: "flex", alignItems: "flex-start", gap: 12, padding: 14, borderRadius: 12, background: "var(--card)" },
+  ballotRadio: { flexShrink: 0, width: 20, height: 20, borderRadius: "50%", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 4 },
+  ballotRadioSelected: { borderColor: "var(--primary)" },
+  ballotRadioDot: { width: 10, height: 10, borderRadius: "50%", background: "var(--primary)" },
+
+  /* ── official results ── */
+  resultsCertHeader: { display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--primary)", marginBottom: 14 },
+  resultsPostBlock: { marginBottom: 18, paddingBottom: 4 },
+  resultsPostHeader: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6, gap: 8 },
+  resultsTotalVotes: { fontSize: 11.5, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" },
+  resultRowWinner: { background: "var(--primary-tint)", borderRadius: 10, padding: "9px 8px", margin: "2px 0" },
+  resultRank: { flexShrink: 0, width: 18, textAlign: "center", fontSize: 11.5, fontWeight: 800, color: "var(--text-muted)" },
+  resultParty: { color: "var(--text-muted)", fontWeight: 600 },
+  electedTag: { display: "inline-flex", alignItems: "center", gap: 3, background: "var(--primary)", color: "#fff", fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", padding: "2px 7px", borderRadius: 20, whiteSpace: "nowrap" },
+  resultVoteCount: { fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginTop: 3 },
+  tieNote: { display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--warning)", fontWeight: 600, marginTop: 6 },
 };
