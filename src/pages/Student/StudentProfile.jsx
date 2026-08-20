@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import API from "../../api";
-import { UserRound, KeyRound, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import API, { resolvePhotoUrl } from "../../api";
+import { UserRound, KeyRound, Loader2, CheckCircle2, AlertTriangle, Camera } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app; a no-op if already mounted by the layout or
@@ -95,6 +95,12 @@ export default function StudentProfile() {
   const [msgTone, setMsgTone] = useState("success");
   const [saving, setSaving] = useState(false);
 
+  // profile photo
+  const [photoMsg, setPhotoMsg] = useState("");
+  const [photoTone, setPhotoTone] = useState("success");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef(null);
+
   /* ================= LOAD PROFILE ================= */
   const loadProfile = async () => {
     try {
@@ -111,6 +117,35 @@ export default function StudentProfile() {
   useEffect(() => {
     loadProfile();
   }, []);
+
+  /* ================= PHOTO UPLOAD ================= */
+  const handlePhotoSelect = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      setPhotoMsg("");
+      setUploadingPhoto(true);
+
+      const fd = new FormData();
+      fd.append("photo", file);
+
+      const res = await API.put("/student/profile/photo", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      setUser((u) => ({ ...u, photoUrl: res.data.photoUrl }));
+      setPhotoTone("success");
+      setPhotoMsg("Profile photo updated");
+    } catch (err) {
+      console.log(err);
+      setPhotoTone("error");
+      setPhotoMsg(err.response?.data?.message || "Failed to upload photo");
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   /* ================= CHANGE PASSWORD ================= */
   const changePassword = async () => {
@@ -163,6 +198,46 @@ export default function StudentProfile() {
             </div>
           ) : (
             <div>
+              <div style={D.photoBlock}>
+                <div style={D.photoWrap}>
+                  {user.photoUrl ? (
+                    <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={D.photoImg} />
+                  ) : (
+                    <div style={D.photoFallback}>
+                      <UserRound size={26} color="var(--text-muted)" />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingPhoto}
+                    style={D.photoEditBtn}
+                    aria-label="Change profile photo"
+                  >
+                    {uploadingPhoto ? <Loader2 size={13} className="dash-spin" /> : <Camera size={13} />}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handlePhotoSelect}
+                    style={{ display: "none" }}
+                  />
+                </div>
+                <div>
+                  <p style={D.photoTitle}>Profile Photo</p>
+                  <p style={D.photoHint}>
+                    {user.photoUrl ? "Tap the camera icon to replace it." : "No photo on file yet — required for your student ID."}
+                  </p>
+                  {photoMsg && (
+                    <div style={{ ...D.msg, marginTop: 4, color: photoTone === "success" ? "var(--success)" : "var(--destructive)" }}>
+                      {photoTone === "success" ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                      {photoMsg}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div style={D.infoRow}>
                 <span style={D.infoLabel}>Name</span>
                 <span style={D.infoValue}>{user.name || "—"}</span>
@@ -272,6 +347,51 @@ const D = {
     fontSize: 13.5,
     fontWeight: 600,
   },
+
+  photoBlock: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+    paddingBottom: 16,
+    marginBottom: 4,
+    borderBottom: "1px solid var(--border)",
+  },
+  photoWrap: { position: "relative", width: 64, height: 64, flexShrink: 0 },
+  photoImg: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    objectFit: "cover",
+    border: "1px solid var(--border)",
+  },
+  photoFallback: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    background: "var(--primary-tint)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid var(--border)",
+  },
+  photoEditBtn: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: "50%",
+    background: "var(--primary)",
+    color: "#fff",
+    border: "2px solid var(--card)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    padding: 0,
+  },
+  photoTitle: { margin: 0, fontSize: 13.5, fontWeight: 700, color: "var(--text)" },
+  photoHint: { margin: "2px 0 0", fontSize: 12, color: "var(--text-secondary)" },
 
   infoRow: {
     display: "flex",

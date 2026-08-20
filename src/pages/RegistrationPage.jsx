@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import API from "../api";
 import { PAGES } from "../permissions";
 
@@ -10,6 +10,23 @@ export default function RegistrationPage() {
   const [open, setOpen] = useState(true);
   const [message, setMessage] = useState("");
   const [file, setFile] = useState(null);
+
+  // Profile photo — required for manual student/teacher registration
+  const [photo, setPhoto] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+
+  const handlePhotoChange = (e) => {
+    const f = e.target.files[0] || null;
+    setPhoto(f);
+    setPhotoPreview(f ? URL.createObjectURL(f) : null);
+  };
+
+  useEffect(() => {
+    // Revoke the object URL when it's replaced/unmounted to avoid leaks
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+    };
+  }, [photoPreview]);
 
   const [form, setForm] = useState({
     name: "",
@@ -59,6 +76,8 @@ export default function RegistrationPage() {
       permissions: [],
       email: "",
     });
+    setPhoto(null);
+    setPhotoPreview(null);
   };
 
   /* ================= VALIDATION ================= */
@@ -73,6 +92,10 @@ export default function RegistrationPage() {
     }
 
     if (!form.name) return false;
+
+    // A profile photo is required for both student and teacher
+    // registration — the account can't be created without one.
+    if (!photo) return false;
 
     if (type === "student") {
       return (
@@ -102,12 +125,16 @@ export default function RegistrationPage() {
       setMessage("");
 
       if (type === "student") {
-        const res = await API.post("/register/student", {
-          name: form.name,
-          admissionNo: form.admissionNo,
-          studentClass: form.studentClass,
-          gender: form.gender,
-          yearOfStudy: form.yearOfStudy,
+        const fd = new FormData();
+        fd.append("name", form.name);
+        fd.append("admissionNo", form.admissionNo);
+        fd.append("studentClass", form.studentClass);
+        fd.append("gender", form.gender);
+        fd.append("yearOfStudy", form.yearOfStudy);
+        fd.append("photo", photo);
+
+        const res = await API.post("/register/student", fd, {
+          headers: { "Content-Type": "multipart/form-data" },
         });
 
         const { username, password } = res.data.credentials;
@@ -118,11 +145,15 @@ They'll be required to change it on first login.`);
       }
 
       if (type === "teacher") {
-        const res = await API.post("/register/teacher", {
-          name: form.name,
-          subject: form.subject,
-          phone: form.phone,
-          staffId: form.staffId,
+        const fd = new FormData();
+        fd.append("name", form.name);
+        fd.append("subject", form.subject);
+        fd.append("phone", form.phone);
+        fd.append("staffId", form.staffId);
+        fd.append("photo", photo);
+
+        const res = await API.post("/register/teacher", fd, {
+          headers: { "Content-Type": "multipart/form-data" },
         });
 
         const { username, password } = res.data.credentials;
@@ -242,6 +273,27 @@ They'll be required to change it on first login — share it with them directly.
 
               {type !== "account" && (
                 <input name="name" placeholder="Full Name" value={form.name} onChange={handleChange} style={styles.input} />
+              )}
+
+              {type !== "account" && (
+                <div style={styles.photoRow}>
+                  {photoPreview ? (
+                    <img src={photoPreview} alt="Preview" style={styles.photoPreview} />
+                  ) : (
+                    <div style={styles.photoPlaceholder}>No photo</div>
+                  )}
+                  <div style={{ flex: 1, textAlign: "left" }}>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handlePhotoChange}
+                      style={styles.input}
+                    />
+                    <p style={{ fontSize: 11.5, color: "#aaa", margin: "4px 0 0" }}>
+                      Profile photo is required (JPG, PNG, or WEBP)
+                    </p>
+                  </div>
+                </div>
               )}
 
               {type === "student" && (
@@ -460,5 +512,32 @@ const styles = {
     marginTop: 8,
     fontSize: 11.5,
     color: "#aaa",
+  },
+  photoRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 10,
+  },
+  photoPreview: {
+    width: 56,
+    height: 56,
+    borderRadius: "50%",
+    objectFit: "cover",
+    border: "1px solid #444",
+    flexShrink: 0,
+  },
+  photoPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: "50%",
+    border: "1px dashed #555",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 9.5,
+    color: "#888",
+    textAlign: "center",
+    flexShrink: 0,
   },
 };

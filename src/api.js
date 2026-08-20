@@ -10,6 +10,21 @@ import axios from "axios";
 const BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 // ================================
+// FILE BASE URL
+// Uploaded photos are served from the backend origin at /uploads/...,
+// not under /api — strip the trailing /api (if any) from BASE_URL so
+// a stored photoUrl like "/uploads/photos/xyz.jpg" resolves correctly
+// both in dev (proxied) and production (VITE_API_URL set explicitly).
+// ================================
+export const FILE_BASE_URL = BASE_URL.replace(/\/api\/?$/, "");
+
+export const resolvePhotoUrl = (photoUrl) => {
+  if (!photoUrl) return null;
+  if (/^https?:\/\//i.test(photoUrl)) return photoUrl;
+  return `${FILE_BASE_URL}${photoUrl}`;
+};
+
+// ================================
 // AXIOS INSTANCE
 // ================================
 const API = axios.create({
