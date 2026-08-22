@@ -752,20 +752,19 @@ export default function Practicum() {
 
     if (!placements.length) return notify("Nothing to place", true);
 
-    setLoading(true);
-    const results = await Promise.all(
-      placements.map((p) =>
-        safePut(`/practicum/students/${p.student.id}`, {
-          name: p.student.name,
-          admissionNo: p.student.admissionNo,
-          schoolId: p.schoolId,
-        })
-      )
-    );
-    setLoading(false);
+ setLoading(true);
+const bulkResult = await safePut("/practicum/students/bulk", {
+  updates: placements.map((p) => ({
+    id: p.student.id,
+    name: p.student.name,
+    admissionNo: p.student.admissionNo,
+    schoolId: p.schoolId,
+  })),
+});
+setLoading(false);
 
-    const failed = results.filter((r) => r?.error).length;
-    const placedCount = placements.length - failed;
+const failed = bulkResult?.error ? placements.length : 0;
+const placedCount = placements.length - failed;
     const bySchool = targets
       .map((t) => `${placements.filter((p) => p.schoolId === t.schoolId).length} → ${t.name}`)
       .join(", ");
