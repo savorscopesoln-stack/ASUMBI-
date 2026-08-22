@@ -1,214 +1,325 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import {
+  LayoutDashboard, UserRound, Bell, BarChart3, FileText, MonitorCheck,
+  PenSquare, CalendarCheck, GraduationCap, ClipboardCheck, Wrench,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut, Sun, Moon,
+} from "lucide-react";
 import useUnreadNotifications from "../../hooks/useUnreadNotifications";
 
-/* =========================================================
-   ICON SET — replaces the previous emoji glyphs with a
-   consistent stroke-based SVG set
-========================================================= */
-function Icon({ children, size = 17 }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {children}
-    </svg>
+/* ─── self-contained theme hook — mirrors StudentLayout's so both
+   portals read/write the same "theme" key and stay in sync. ─── */
+const useTheme = () => {
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("theme") || "light"
   );
-}
 
-const IconDashboard = (p) => (
-  <Icon {...p}><rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" /><rect x="14" y="12" width="7" height="9" /><rect x="3" y="16" width="7" height="5" /></Icon>
-);
-const IconPencil = (p) => (
-  <Icon {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></Icon>
-);
-const IconCalendar = (p) => (
-  <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></Icon>
-);
-const IconFileText = (p) => (
-  <Icon {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></Icon>
-);
-const IconBarChart = (p) => (
-  <Icon {...p}><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></Icon>
-);
-const IconGradCap = (p) => (
-  <Icon {...p}><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5" /></Icon>
-);
-const IconUser = (p) => (
-  <Icon {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></Icon>
-);
-const IconClipboardCheck = (p) => (
-  <Icon {...p}><rect x="6" y="3" width="12" height="4" rx="1" /><path d="M9 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1" /><path d="M6 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1" /><path d="M9 14l2 2 4-4" /></Icon>
-);
-const IconMonitor = (p) => (
-  <Icon {...p}><rect x="2" y="4" width="20" height="13" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></Icon>
-);
-const IconWrench = (p) => (
-  <Icon {...p}><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L2 19l3 3 7.3-7.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2Z" /></Icon>
-);
-const IconBell = (p) => (
-  <Icon {...p}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></Icon>
-);
-const IconLogout = (p) => (
-  <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></Icon>
-);
-const IconClose = (p) => (
-  <Icon {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Icon>
-);
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
+  return { theme, toggleTheme };
+};
+
+/* ─── shared design-token stylesheet — identical id/tokens to the
+   student and admin dashboards so all three portals render from
+   one consistent system and only ever inject once per page load ─── */
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:translateY(0);} }
+
+    .dash-nav-btn { transition: background 0.15s ease, color 0.15s ease; }
+    .dash-nav-btn:hover { background: var(--primary-tint); color: var(--primary-dark); }
+    .dash-nav-btn.active-nav { background: var(--primary-tint); color: var(--primary); font-weight: 700; }
+
+    .dash-btn { transition: filter 0.15s ease, background-color .15s ease, border-color .15s ease; }
+    .dash-btn:hover { filter: brightness(0.97); }
+    .dash-icon-btn:hover { background: var(--bg); }
+    .dash-profile-card:hover { background: var(--bg); }
+
+    button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    .dash-mobile-toggle { display: none; }
+    .dash-backdrop { display: none; }
+
+    @media (max-width: 900px) {
+      .dash-sidebar { position: fixed !important; top: 0; left: 0; height: 100vh; width: 250px !important; transform: translateX(-100%); transition: transform .25s ease; z-index: 60; }
+      .dash-sidebar.mobile-open { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,0.25); }
+      .dash-mobile-toggle { display: inline-flex !important; }
+      .dash-backdrop.open { display: block; position: fixed; inset: 0; background: rgba(15,17,21,0.45); z-index: 55; }
+      .dash-main { padding: 20px 16px 48px !important; }
+
+      .dash-page-header {
+        position: sticky;
+        top: 0;
+        z-index: 45;
+        margin: -20px -16px 16px !important;
+        padding: 14px 16px !important;
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── teacher nav, grouped — same shape as StudentLayout's NAV_GROUPS ─── */
+const NAV_GROUPS = [
+  {
+    label: "Core Portal",
+    items: [
+      { name: "Dashboard",     path: "/teacher/dashboard",     Icon: LayoutDashboard },
+      { name: "Notifications", path: "/teacher/notifications", Icon: Bell, badgeKey: "notifications" },
+      { name: "Profile",       path: "/teacher/profile",       Icon: UserRound },
+    ],
+  },
+  {
+    label: "Academics",
+    items: [
+      { name: "Marks Entry",   path: "/teacher/marks",         Icon: PenSquare },
+      { name: "Assessments",   path: "/teacher/assessments",   Icon: ClipboardCheck },
+      { name: "E-Assessments", path: "/teacher/e-assessments", Icon: MonitorCheck },
+      { name: "Practicum",     path: "/teacher/practicum",     Icon: Wrench },
+    ],
+  },
+  {
+    label: "Classes & Reports",
+    items: [
+      { name: "Class Register",     path: "/teacher/attendance",        Icon: CalendarCheck },
+      { name: "Attendance Report",  path: "/teacher/attendance-report", Icon: FileText },
+      { name: "Students",           path: "/teacher/students",          Icon: GraduationCap },
+      { name: "Reports",            path: "/teacher/reports",           Icon: BarChart3 },
+    ],
+  },
+];
 
 export default function TeacherLayout() {
+  injectStyles();
+
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const { count: unreadCount } = useUnreadNotifications();
 
-  const logout = () => {
-    localStorage.clear();
-    setMobileOpen(false);
-    navigate("/login");
-  };
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const isActive = (path) => location.pathname.startsWith(path);
 
   const go = (path) => {
     navigate(path);
     setMobileOpen(false);
   };
 
-  /* =====================================================
-     MOBILE DRAWER BEHAVIOR — close on route change, lock
-     background scroll while open, close on Escape
-  ===================================================== */
+  const logout = () => {
+    localStorage.clear();
+    navigate("/login");
+  };
+
+  /* close the mobile drawer on route change, same as student layout */
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    document.body.style.overflow = mobileOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [mobileOpen]);
+  const sidebarWidth = sidebarCollapsed ? 68 : 252;
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") setMobileOpen(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const menu = [
-    { name: "Dashboard", path: "/teacher/dashboard", icon: <IconDashboard /> },
-    { name: "Notifications", path: "/teacher/notifications", icon: <IconBell /> },
-    { name: "Marks Entry", path: "/teacher/marks", icon: <IconPencil /> },
-    { name: "Class register", path: "/teacher/attendance", icon: <IconCalendar /> },
-    { name: "Attendance Report", path: "/teacher/attendance-report", icon: <IconFileText /> },
-    { name: "Reports", path: "/teacher/reports", icon: <IconBarChart /> },
-    { name: "Students", path: "/teacher/students", icon: <IconGradCap /> },
-    { name: "Profile", path: "/teacher/profile", icon: <IconUser /> },
-    { name: "Assessments", path: "/teacher/assessments", icon: <IconClipboardCheck /> },
-    { name: "E-Assessments", path: "/teacher/e-assessments", icon: <IconMonitor /> },
-    { name: "Practicum", path: "/teacher/practicum", icon: <IconWrench /> },
-  ];
-
-  const isActive = (path) =>
-    location.pathname === path ||
-    location.pathname.startsWith(path + "/");
-
-  const current =
-    menu.find((m) => isActive(m.path))?.name || "Dashboard";
+  const currentName =
+    NAV_GROUPS.flatMap((g) => g.items).find((m) => isActive(m.path))?.name || "Dashboard";
 
   return (
-    <div style={styles.container}>
-      <style>{customStyles}</style>
+    <div style={S.layout}>
+      {/* mobile backdrop */}
+      <div
+        className={`dash-backdrop${mobileOpen ? " open" : ""}`}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden="true"
+      />
 
-      {/* MOBILE TOPBAR — hidden on desktop */}
-      <header className="tl-mobile-topbar">
-        <button
-          className="tl-hamburger-btn"
-          onClick={() => setMobileOpen((v) => !v)}
-          aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
-          aria-expanded={mobileOpen}
-          aria-controls="teacher-sidebar"
-        >
-          <span className={`tl-hamburger-lines${mobileOpen ? " open" : ""}`}>
-            <span /><span /><span />
-          </span>
-        </button>
-        <span className="tl-mobile-title">{current}</span>
-        <button
-          className="tl-mobile-bell"
-          onClick={() => go("/teacher/notifications")}
-          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
-        >
-          <IconBell size={17} />
-          {unreadCount > 0 && <span style={styles.topBellBadge}>{unreadCount > 9 ? "9+" : unreadCount}</span>}
-        </button>
-      </header>
-
-      {mobileOpen && (
-        <div className="tl-overlay" onClick={() => setMobileOpen(false)} aria-hidden="true" />
-      )}
-
-      {/* ================= SIDEBAR ================= */}
-      <aside id="teacher-sidebar" style={styles.sidebar} className={`tl-sidebar${mobileOpen ? " mobile-open" : ""}`}>
-        <div style={styles.logo}>
-          <span style={{ display: "flex" }}><IconGradCap size={20} /></span> Teacher Portal
-          <button className="tl-drawer-close" onClick={() => setMobileOpen(false)} aria-label="Close menu">
-            <IconClose size={15} />
+      {/* ════════ SIDEBAR ════════ */}
+      <aside
+        className={`dash-sidebar${mobileOpen ? " mobile-open" : ""}`}
+        style={{ ...S.sidebar, width: sidebarWidth }}
+        aria-label="Sidebar navigation"
+      >
+        {/* logo row */}
+        <div style={S.logoRow}>
+          <div style={S.logoMark}>
+            <GraduationCap size={20} color="#fff" strokeWidth={2.25} />
+          </div>
+          {!sidebarCollapsed && (
+            <div style={{ minWidth: 0 }}>
+              <div style={S.logoName}>Teacher Portal</div>
+              <div style={S.logoSub}>Smart Campus</div>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarCollapsed((p) => !p)}
+            className="dash-icon-btn"
+            style={S.collapseToggle}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? "Expand" : "Collapse"}
+          >
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
 
-        <div style={styles.menu}>
-          {menu.map((item) => {
-            const active = isActive(item.path);
+        {/* profile card */}
+        <button
+          type="button"
+          className="dash-profile-card"
+          style={S.profileCard}
+          onClick={() => go("/teacher/profile")}
+          aria-label="Signed in as Teacher. Open profile."
+          title={sidebarCollapsed ? "Teacher" : undefined}
+        >
+          <div style={S.profileAvatar}>TC</div>
+          {!sidebarCollapsed && (
+            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <div style={S.profileName}>Teacher</div>
+              <span style={S.profileRoleBadge}>Staff</span>
+            </div>
+          )}
+          {!sidebarCollapsed && <ChevronDown size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />}
+        </button>
 
-            return (
-              <button
-                key={item.path}
-                onClick={() => go(item.path)}
-                className="tl-nav-btn"
-                style={{
-                  ...styles.item,
-                  ...(active ? styles.active : {}),
-                }}
-              >
-                <span style={styles.icon}>{item.icon}</span>
-                {item.name}
-                {item.name === "Notifications" && unreadCount > 0 && (
-                  <span style={styles.navBadge}>{unreadCount > 99 ? "99+" : unreadCount}</span>
-                )}
-                {active && <span style={styles.glow} />}
-              </button>
-            );
-          })}
-          <button className="tl-nav-btn" style={styles.logout} onClick={logout}>
-            <IconLogout size={16} /> Logout
+        <div style={S.divider} />
+
+        {/* grouped nav */}
+        <nav aria-label="Main navigation" style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} style={{ marginBottom: 14 }}>
+              {!sidebarCollapsed && <div style={S.groupLabel}>{group.label}</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {group.items.map(({ name, path, Icon, badgeKey }) => {
+                  const active = isActive(path);
+                  const showBadge = badgeKey === "notifications" && unreadCount > 0;
+                  return (
+                    <button
+                      key={path}
+                      className={`dash-nav-btn${active ? " active-nav" : ""}`}
+                      onClick={() => go(path)}
+                      aria-current={active ? "page" : undefined}
+                      title={sidebarCollapsed ? name : undefined}
+                      style={S.navBtn}
+                    >
+                      <span style={S.navIcon}><Icon size={17} strokeWidth={2} /></span>
+                      {!sidebarCollapsed && <span style={S.navLabel}>{name}</span>}
+                      {showBadge && (
+                        <span style={{ ...S.navBadge, marginLeft: sidebarCollapsed ? 0 : "auto", ...(sidebarCollapsed ? S.navBadgeCollapsed : {}) }}>
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <button
+            onClick={logout}
+            className="dash-btn"
+            aria-label="Log out of your account"
+            title="Log out"
+            style={{ ...S.logoutBtn, justifyContent: sidebarCollapsed ? "center" : "flex-start" }}
+          >
+            <LogOut size={17} strokeWidth={2.25} />
+            {!sidebarCollapsed && <span>Log out</span>}
           </button>
-        </div>
+        </nav>
       </aside>
 
-      {/* ================= MAIN ================= */}
-      <main style={styles.main}>
-        <div style={styles.topbar} className="tl-desktop-topbar">
-          <h2 style={styles.title}>{current}</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      {/* ════════ MAIN ════════ */}
+      <main className="dash-main" style={S.main}>
+        <header className="dash-page-header" style={S.pageHeader}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button
-              onClick={() => go("/teacher/notifications")}
-              style={styles.topBellBtn}
-              aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
-              title="Notifications"
+              className="dash-mobile-toggle dash-icon-btn"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              style={S.mobileToggleBtn}
             >
-              <IconBell size={16} />
-              {unreadCount > 0 && <span style={styles.topBellBadge}>{unreadCount > 9 ? "9+" : unreadCount}</span>}
+              <Menu size={20} />
             </button>
-            <div style={styles.badge}>Teacher Mode</div>
+            <span style={S.mobileTitle}>{currentName}</span>
           </div>
-        </div>
+          <button
+            onClick={toggleTheme}
+            className="dash-icon-btn"
+            style={S.themeToggle}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-pressed={theme === "dark"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
+        </header>
 
-        <div style={styles.content}>
+        <div key={location.pathname} style={S.viewAnimator}>
           <Outlet />
         </div>
       </main>
@@ -216,96 +327,142 @@ export default function TeacherLayout() {
   );
 }
 
-/* ================= STYLES ================= */
-const styles = {
-  container: {
+/* ════════════════════════════════
+   STYLES — same token-driven approach as the student/admin
+   dashboards, so light/dark and collapse/expand swap without
+   re-render
+════════════════════════════════ */
+const S = {
+  layout: {
     display: "flex",
     minHeight: "100vh",
-    background:
-      "radial-gradient(circle at top left, #1a0000, #0b0000 60%, #000)",
-    color: "#fff",
-    fontFamily:
-      "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+    background: "var(--bg)",
+    color: "var(--text)",
+    fontFamily: "'Inter', system-ui, sans-serif",
   },
 
-  /* ================= SIDEBAR ================= */
   sidebar: {
-    width: 260,
-    padding: 18,
     display: "flex",
     flexDirection: "column",
-    gap: 12,
-
-    background: "rgba(255, 255, 255, 0.04)",
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
-
-    borderRight: "1px solid rgba(255,255,255,0.08)",
-    boxShadow: "0 0 30px rgba(0,0,0,0.4)",
-  },
-
-  logo: {
-    fontSize: 18,
-    fontWeight: 700,
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 20,
-    letterSpacing: 0.5,
-  },
-
-  menu: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    overflowY: "auto",
-  },
-
-  item: {
-    position: "relative",
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.06)",
-    background: "rgba(255,255,255,0.03)",
-    color: "#ccc",
-    cursor: "pointer",
-    textAlign: "left",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-
-    transition: "all 0.25s ease",
+    height: "100vh",
+    position: "sticky",
+    top: 0,
+    background: "var(--card)",
+    borderRight: "1px solid var(--border)",
+    padding: "18px 12px",
+    transition: "width 0.2s ease",
     overflow: "hidden",
+    zIndex: 10,
+    boxSizing: "border-box",
   },
-
-  active: {
-    background: "linear-gradient(135deg,#7f1d1d,#b91c1c)",
-    color: "#fff",
-    transform: "scale(1.03)",
-    boxShadow: "0 10px 25px rgba(127,29,29,0.4)",
+  logoRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 14,
+    padding: "0 2px",
+    minHeight: 40,
   },
-
-  icon: {
+  logoMark: {
+    width: 36,
+    height: 36,
+    minWidth: 36,
+    background: "var(--primary)",
+    borderRadius: 10,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
-
-  glow: {
-    position: "absolute",
-    right: -20,
-    top: -20,
-    width: 80,
-    height: 80,
-    background: "rgba(255,255,255,0.15)",
-    filter: "blur(20px)",
-    borderRadius: "50%",
-    animation: "tlPulse 2s infinite",
+  logoName: { fontSize: 13.5, fontWeight: 800, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  logoSub: { fontSize: 10.5, color: "var(--text-secondary)", whiteSpace: "nowrap", fontWeight: 600 },
+  collapseToggle: {
+    marginLeft: "auto",
+    background: "transparent",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    flexShrink: 0,
   },
 
+  profileCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    padding: "10px",
+    marginBottom: 12,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: 12,
+    cursor: "pointer",
+    transition: "background 0.15s ease",
+    fontFamily: "inherit",
+  },
+  profileAvatar: {
+    width: 34,
+    height: 34,
+    minWidth: 34,
+    borderRadius: "50%",
+    background: "var(--primary)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 800,
+    fontSize: 14,
+    color: "#fff",
+    flexShrink: 0,
+  },
+  profileName: { fontSize: 13, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  profileRoleBadge: {
+    display: "inline-block",
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: 700,
+    color: "var(--primary)",
+    background: "var(--primary-tint)",
+    borderRadius: 20,
+    padding: "1px 7px",
+  },
+
+  divider: { height: 1, background: "var(--border)", margin: "10px 0" },
+
+  groupLabel: {
+    fontSize: 10.5,
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--text-secondary)",
+    padding: "4px 10px",
+    marginBottom: 2,
+  },
+  navBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "9px 10px",
+    borderRadius: 9,
+    border: "none",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: "'Inter', sans-serif",
+    width: "100%",
+    textAlign: "left",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+  },
+  navIcon: { display: "flex", flexShrink: 0, width: 20, alignItems: "center", justifyContent: "center" },
+  navLabel: { overflow: "hidden", textOverflow: "ellipsis" },
   navBadge: {
-    marginLeft: "auto",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -313,244 +470,76 @@ const styles = {
     height: 18,
     padding: "0 5px",
     borderRadius: 999,
-    background: "#fca5a5",
-    color: "#450a0a",
+    background: "var(--destructive)",
+    color: "#fff",
     fontSize: 10.5,
     fontWeight: 800,
     flexShrink: 0,
   },
-
-  topBellBtn: {
-    position: "relative",
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    border: "1px solid rgba(255,255,255,0.1)",
-    background: "rgba(255,255,255,0.04)",
-    color: "#ccc",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-  },
-  topBellBadge: {
+  navBadgeCollapsed: {
     position: "absolute",
-    top: -4,
-    right: -4,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 16,
-    height: 16,
-    padding: "0 3px",
-    borderRadius: 999,
-    background: "#fca5a5",
-    color: "#450a0a",
-    fontSize: 9.5,
-    fontWeight: 800,
-    border: "1.5px solid #1a0000",
+    top: 4,
+    right: 4,
   },
 
-  logout: {
-    marginTop: "auto",
-    padding: 12,
-    borderRadius: 12,
-    border: "none",
-    background: "linear-gradient(135deg,#7f1d1d,#991b1b)",
-    color: "#fff",
-    cursor: "pointer",
-    fontWeight: 600,
+  logoutBtn: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
     gap: 10,
-    transition: "0.2s",
+    width: "100%",
+    background: "transparent",
+    border: "1px solid var(--border)",
+    color: "var(--destructive)",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontSize: 13.5,
+    fontWeight: 700,
+    fontFamily: "'Inter', sans-serif",
+    minHeight: 42,
+    padding: "0 12px",
   },
 
-  /* ================= MAIN ================= */
   main: {
     flex: 1,
-    display: "flex",
-    flexDirection: "column",
+    padding: "24px 32px 56px",
+    overflowY: "auto",
     minWidth: 0,
   },
 
-  topbar: {
-    padding: "16px 20px",
+  pageHeader: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
-
-    background: "rgba(255,255,255,0.03)",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
-    backdropFilter: "blur(10px)",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  mobileToggleBtn: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text)",
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  mobileTitle: { fontSize: 15, fontWeight: 800, color: "var(--text)" },
+  themeToggle: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
   },
 
-  title: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 600,
-    letterSpacing: 0.3,
-  },
-
-  badge: {
-    fontSize: 12,
-    padding: "6px 10px",
-    borderRadius: 20,
-    background: "rgba(127,29,29,0.3)",
-    border: "1px solid rgba(127,29,29,0.5)",
-  },
-
-  content: {
-    padding: 20,
+  viewAnimator: {
+    animation: "fadeUp 0.3s ease both",
   },
 };
-
-/* High-fidelity CSS systems injected into DOM rendering context */
-const customStyles = `
-  @keyframes tlPulse {
-    0% { transform: scale(1); opacity: .6; }
-    50% { transform: scale(1.3); opacity: .2; }
-    100% { transform: scale(1); opacity: .6; }
-  }
-
-  .tl-nav-btn:hover {
-    background: rgba(255,255,255,0.07) !important;
-    color: #fff !important;
-  }
-  .tl-nav-btn:focus-visible {
-    outline: 2px solid #fca5a5;
-    outline-offset: 2px;
-  }
-  .tl-logout-btn:hover {
-    filter: brightness(1.1);
-  }
-
-  /* =====================================================
-     MOBILE TOPBAR + HAMBURGER — hidden by default, shown
-     only under the drawer breakpoint
-  ===================================================== */
-  .tl-mobile-topbar { display: none; }
-  .tl-drawer-close { display: none; }
-  .tl-overlay { display: none; }
-  .tl-mobile-bell {
-    position: relative;
-    width: 34px; height: 34px; border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.04);
-    color: #ccc;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; padding: 0;
-  }
-
-  @media (max-width: 880px) {
-    .tl-mobile-topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 18px;
-      background: rgba(255,255,255,0.04);
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      backdrop-filter: blur(10px);
-      position: sticky;
-      top: 0;
-      z-index: 30;
-    }
-    .tl-mobile-title {
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-    }
-    .tl-hamburger-btn {
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.04);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      padding: 0;
-    }
-    .tl-hamburger-btn:focus-visible {
-      outline: 2px solid #fca5a5;
-      outline-offset: 2px;
-    }
-    .tl-hamburger-lines {
-      width: 16px;
-      height: 12px;
-      position: relative;
-      display: block;
-    }
-    .tl-hamburger-lines span {
-      position: absolute;
-      left: 0;
-      width: 100%;
-      height: 2px;
-      background: #fff;
-      border-radius: 2px;
-      transition: transform .25s ease, opacity .2s ease, top .25s ease;
-    }
-    .tl-hamburger-lines span:nth-child(1) { top: 0; }
-    .tl-hamburger-lines span:nth-child(2) { top: 5px; }
-    .tl-hamburger-lines span:nth-child(3) { top: 10px; }
-    .tl-hamburger-lines.open span:nth-child(1) { top: 5px; transform: rotate(45deg); }
-    .tl-hamburger-lines.open span:nth-child(2) { opacity: 0; }
-    .tl-hamburger-lines.open span:nth-child(3) { top: 5px; transform: rotate(-45deg); }
-
-    .tl-desktop-topbar { display: none; }
-
-    .tl-sidebar {
-      position: fixed;
-      top: 0;
-      left: 0;
-      height: 100vh;
-      width: min(82vw, 280px) !important;
-      transform: translateX(-100%);
-      transition: transform .3s cubic-bezier(0.25, 0.8, 0.25, 1);
-      z-index: 50;
-      box-shadow: 25px 0 60px rgba(0,0,0,0.6);
-    }
-    .tl-sidebar.mobile-open {
-      transform: translateX(0);
-    }
-    .tl-drawer-close {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      margin-left: auto;
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.04);
-      color: #ccc;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-    .tl-overlay {
-      display: block;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(2px);
-      z-index: 40;
-      animation: tlOverlayFade .2s ease;
-    }
-    .content { padding: 16px !important; }
-  }
-
-  @keyframes tlOverlayFade {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .tl-sidebar, .tl-hamburger-lines span, .tl-overlay {
-      transition: none !important;
-      animation: none !important;
-    }
-  }
-`;

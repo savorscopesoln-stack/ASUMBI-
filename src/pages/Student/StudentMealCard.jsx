@@ -1,9 +1,135 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import API from "../../api";
+import {
+  CreditCard, UtensilsCrossed, CalendarDays, ShieldAlert,
+  Printer, Loader2, CheckCircle2, Circle,
+} from "lucide-react";
+
+/* ─── shared design-token stylesheet — identical id/tokens to the
+   rest of the app; a no-op if already mounted by the layout or
+   another page. ─── */
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dash-spin { animation: spin 0.8s linear infinite; }
+    @keyframes cardEntrance {
+      0% { opacity: 0; transform: translateY(10px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    button:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    .meal-day-card { transition: border-color .15s ease; }
+    .meal-print-btn:hover:not(:disabled) { filter: brightness(0.95); }
+
+    @media (max-width: 900px) {
+      .dash-main { padding: 20px 16px 48px !important; }
+      .meal-schedule-grid { grid-template-columns: repeat(4, 1fr) !important; }
+    }
+    @media (max-width: 560px) {
+      .meal-schedule-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      .meal-codes-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+
+    @media print {
+      body { background: #ffffff !important; color: #000000 !important; }
+      body * { visibility: hidden; }
+      #meal-card, #meal-card * { visibility: visible; }
+      #meal-card {
+        position: absolute; top: 0; left: 0; width: 100%;
+        border: 1px solid #111 !important;
+        background: #fff !important;
+        color: #000 !important;
+        box-shadow: none !important;
+      }
+      .hide-on-print { display: none !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+const STATUS_STYLES = {
+  active: { label: "ACTIVE", tone: "success" },
+  suspended: { label: "SUSPENDED", tone: "warning" },
+};
+const toneVars = {
+  success: { color: "var(--success)", bg: "var(--success-tint)" },
+  warning: { color: "var(--warning)", bg: "var(--warning-tint)" },
+  destructive: { color: "var(--destructive)", bg: "var(--destructive-tint)" },
+};
 
 export default function StudentMealCard() {
+  injectStyles();
+
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dailyCodes, setDailyCodes] = useState([]);
+  const [codesLoading, setCodesLoading] = useState(true);
+
+  // Track whether we've completed the first load of each resource, so
+  // the 5s background refresh can update state silently instead of
+  // flipping loading back to true and flashing the whole card back to
+  // a spinner every poll.
+  const hasLoadedCard = useRef(false);
+  const hasLoadedCodes = useRef(false);
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const userId = user.id;
@@ -11,21 +137,39 @@ export default function StudentMealCard() {
   useEffect(() => {
     if (!userId) return;
     load();
+    loadDailyCodes();
 
-    const interval = setInterval(load, 5000);
+    const interval = setInterval(() => { load(); loadDailyCodes(); }, 5000);
     return () => clearInterval(interval);
   }, [userId]);
 
   const load = async () => {
     try {
-      setLoading(true);
+      if (!hasLoadedCard.current) setLoading(true);
       const res = await API.get(`/meals/my/${userId}`);
       setCard(res.data || null);
     } catch (err) {
       console.log(err.response?.data || err.message);
-      setCard(null);
+      if (!hasLoadedCard.current) setCard(null);
     } finally {
       setLoading(false);
+      hasLoadedCard.current = true;
+    }
+  };
+
+  const loadDailyCodes = async () => {
+    try {
+      if (!hasLoadedCodes.current) setCodesLoading(true);
+      const res = await API.get(`/meals/my/${userId}/daily-codes`);
+      setDailyCodes(res.data?.codes || []);
+    } catch (err) {
+      // No active card yet, or none issued — just show nothing rather
+      // than an error; the card-missing state below already covers
+      // the "no meal card" case with its own message.
+      if (!hasLoadedCodes.current) setDailyCodes([]);
+    } finally {
+      setCodesLoading(false);
+      hasLoadedCodes.current = true;
     }
   };
 
@@ -33,44 +177,52 @@ export default function StudentMealCard() {
 
   if (loading) {
     return (
-      <div style={styles.stateWrapper}>
-        <div style={styles.spinner}></div>
-        <p style={styles.stateText}>Synchronizing secure credentials...</p>
-      </div>
+      <main className="dash-main" style={S.main}>
+        <div style={S.loadingState}>
+          <Loader2 size={18} className="dash-spin" />
+          Loading your meal card…
+        </div>
+      </main>
     );
   }
 
   if (!card) {
     return (
-      <div style={{ ...styles.cardContainer, animation: "cardEntrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards" }}>
-        <div style={styles.errorHeader}>
-          <span style={styles.errorIcon}>🍽</span>
-          <h2 style={styles.errorTitle}>Meal Account Profile</h2>
-        </div>
-        <div style={styles.errorDivider}></div>
-        <p style={styles.errorText}>No active digital meal card has been assigned to this student account profile yet.</p>
-      </div>
+      <main className="dash-main" style={S.main}>
+        <header style={S.pageHeader}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <UtensilsCrossed size={20} color="var(--primary)" />
+            <div>
+              <h1 style={S.pageTitle}>Meal Card</h1>
+              <p style={S.pageSub}>Your digital dining credential</p>
+            </div>
+          </div>
+        </header>
+        <section style={S.panel}>
+          <div style={S.emptyState}>
+            <UtensilsCrossed size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
+            No active meal card has been assigned to your account yet.
+          </div>
+        </section>
+      </main>
     );
   }
 
   const isActive = card.status === "active";
+  const statusMeta = STATUS_STYLES[card.status] || { label: "RESTRICTED", tone: "destructive" };
+  const statusTone = toneVars[statusMeta.tone];
 
   /* ================= EXPIRY CALCULATION ================= */
   const mealsPerDay = 4;
-
   const createdDate = card.created_at ? new Date(card.created_at) : new Date();
-
   const totalDays = Math.max(1, Math.ceil(card.meals_remaining / mealsPerDay));
-
   const expiryDate = new Date(createdDate);
   expiryDate.setDate(expiryDate.getDate() + totalDays - 1);
 
   const mealNames = ["Breakfast", "Tea Break", "Lunch", "Supper"];
-
   const lastMealIndex = (card.meals_remaining % mealsPerDay) || mealsPerDay;
   const lastMeal = mealNames[lastMealIndex - 1];
 
-  /* ================= LAST MEAL DATE FIX ================= */
   const lastMealDate = new Date(createdDate);
   lastMealDate.setDate(lastMealDate.getDate() + totalDays - 1);
 
@@ -78,163 +230,80 @@ export default function StudentMealCard() {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const meals = ["Breakfast", "Tea Break", "Lunch", "Supper"];
 
-  // Resolve dynamically glowing badge status parameters based on core values
-  const getStatusConfiguration = (status) => {
-    switch (status?.toLowerCase()) {
-      case "active":
-        return { text: "SYSTEM ACTIVE", color: "#34d399", bg: "rgba(16, 185, 129, 0.12)", border: "rgba(16, 185, 129, 0.3)" };
-      case "suspended":
-        return { text: "SUSPENDED", color: "#fbbf24", bg: "rgba(251, 191, 36, 0.12)", border: "rgba(251, 191, 36, 0.3)" };
-      default:
-        return { text: "ACCESS RESTRICTED", color: "#f87171", bg: "rgba(239, 68, 68, 0.12)", border: "rgba(239, 68, 68, 0.3)" };
-    }
-  };
-
-  const statusConfig = getStatusConfiguration(card.status);
-
   return (
-    <div style={styles.pageContext}>
-      
-      {/* GLOBAL ENCAPSULATED STYLES FOR ANIMATIONS AND IFRAME OVERRIDES */}
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes cardEntrance {
-          0% { opacity: 0; transform: translateY(15px) scale(0.98); }
-          100% { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes rotateSpinner {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .interactive-row-card {
-          transition: transform 0.2s ease, background-color 0.2s ease !important;
-        }
-        .interactive-row-card:hover {
-          transform: translateY(-2px);
-          background-color: rgba(203, 180, 148, 0.08) !important;
-        }
-        .print-trigger-button {
-          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
-        }
-        .print-trigger-button:hover:not(:disabled) {
-          transform: translateY(-1px) !important;
-          box-shadow: 0 6px 20px rgba(203, 180, 148, 0.25) !important;
-          filter: brightness(1.1);
-        }
-        @media print {
-          body { background-color: #ffffff !important; color: #000000 !important; font-family: Arial, sans-serif; }
-          body * { visibility: hidden; }
-          #meal-card, #meal-card * { visibility: visible; }
-          #meal-card {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            border: 1px solid #111111 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            box-shadow: none !important;
-            transform: none !important;
-          }
-          .hide-on-print { display: none !important; }
-          .print-lighten-text { color: #111111 !important; }
-          .print-border-adjust { border-color: #222222 !important; }
-          .print-bg-adjust { background: transparent !important; border: 1px solid #333 !important; color: #000 !important; }
-        }
-      `}} />
-
-      {/* ================= MAIN SMART CARD CONTAINER ================= */}
-      <div 
-        id="meal-card" 
-        style={{
-          ...styles.cardContainer,
-          animation: "cardEntrance 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards"
-        }}
-      >
-        {/* PREMIUM GOLD CORNER DECORATIVE ACCENTS */}
-        <div style={styles.topAccentLine} />
-
-        {/* CAMPUS SMART CARD HEADER */}
-        <div style={styles.cardHeader}>
-          <div style={styles.logoBadge}>🏛</div>
+    <main className="dash-main" style={S.main}>
+      <header style={S.pageHeader}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <UtensilsCrossed size={20} color="var(--primary)" />
           <div>
-            <h2 style={styles.institutionTitle}>ASUMBI SMART CAMPUS</h2>
-            <p style={styles.institutionSubtitle}>OFFICIAL MEAL ACCESS CREDENTIAL</p>
+            <h1 style={S.pageTitle}>Meal Card</h1>
+            <p style={S.pageSub}>Your digital dining credential</p>
           </div>
         </div>
+      </header>
 
-        {/* STATUS GLOWING INDICATOR */}
-        <div
-          style={{
-            ...styles.statusIndicator,
-            backgroundColor: statusConfig.bg,
-            color: statusConfig.color,
-            borderColor: statusConfig.border,
-          }}
-        >
-          <span style={{...styles.statusDot, backgroundColor: statusConfig.color}} />
-          {statusConfig.text}
-        </div>
-
-        {/* STUDENT MATRIX DATA PANEL */}
-        <div style={styles.profileMatrixPanel}>
-          <div style={styles.matrixRow}>
-            <span style={styles.matrixLabel}>Student Holder</span>
-            <span style={{ ...styles.matrixValue, color: "#ffffff", fontWeight: "600" }}>{card.name || "—"}</span>
-          </div>
-          <div style={styles.matrixRow}>
-            <span style={styles.matrixLabel}>Admission Number</span>
-            <span style={styles.matrixValue}>{card.admissionNo || "—"}</span>
-          </div>
-          <div style={styles.matrixRow}>
-            <span style={styles.matrixLabel}>Class Stream</span>
-            <span style={styles.matrixValue}>{card.studentClass || "—"}</span>
-          </div>
-          <div style={styles.matrixRow}>
-            <span style={styles.matrixLabel}>Smart Card UID</span>
-            <span style={{...styles.matrixValue, fontFamily: "monospace", letterSpacing: "0.5px", color: "#cbb494"}}>{card.card_number || "—"}</span>
-          </div>
-          
-          <div style={styles.matrixGridSplitter}>
-            <div style={styles.splitBlock}>
-              <span style={styles.matrixLabel}>Frequency Rate</span>
-              <span style={styles.matrixValue}>{card.meals_per_day} Meals / Day</span>
+      <div id="meal-card" style={{ ...S.panel, animation: "cardEntrance 0.3s ease both" }}>
+        {/* status badge */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={S.cardIcon}><CreditCard size={18} color="var(--primary)" /></div>
+            <div>
+              <div style={S.holderName}>{card.name || "—"}</div>
+              <div style={S.holderSub}>{card.admissionNo || "—"} · {card.studentClass || "—"}</div>
             </div>
-            <div style={styles.splitBlock}>
-              <span style={styles.matrixLabel}>Balance Remaining</span>
-              <span style={{ ...styles.matrixValue, color: "#34d399", fontWeight: "600" }}>{card.meals_remaining} Units</span>
+          </div>
+          <span style={{ ...S.statusBadge, color: statusTone.color, background: statusTone.bg }}>
+            <span style={{ ...S.statusDot, background: statusTone.color }} />
+            {statusMeta.label}
+          </span>
+        </div>
+
+        <div style={S.matrixPanel}>
+          <div style={S.infoRow}>
+            <span style={S.infoLabel}>Smart Card UID</span>
+            <span style={{ ...S.infoValue, fontFamily: "monospace", letterSpacing: "0.5px" }}>{card.card_number || "—"}</span>
+          </div>
+
+          <div style={S.splitter}>
+            <div>
+              <div style={S.infoLabel}>Frequency Rate</div>
+              <div style={{ ...S.infoValue, textAlign: "left", marginTop: 4 }}>{card.meals_per_day} meals / day</div>
+            </div>
+            <div>
+              <div style={S.infoLabel}>Balance Remaining</div>
+              <div style={{ ...S.infoValue, textAlign: "left", marginTop: 4, color: "var(--success)" }}>{card.meals_remaining} units</div>
             </div>
           </div>
 
-          <div style={styles.matrixDivider} className="print-border-adjust"></div>
+          <div style={S.divider} />
 
-          {/* CHRONOLOGY METRIC GROUPINGS */}
-          <div style={styles.matrixRow}>
-            <span style={styles.matrixLabel}>Issue Timestamp</span>
-            <span style={styles.matrixValue}>{createdDate.toDateString()}</span>
+          <div style={S.infoRow}>
+            <span style={S.infoLabel}>Issued</span>
+            <span style={S.infoValue}>{createdDate.toDateString()}</span>
           </div>
-          <div style={styles.matrixRow}>
-            <span style={styles.matrixLabel}>Calculated Terminus</span>
-            <span style={styles.matrixValue}>{expiryDate.toDateString()}</span>
+          <div style={S.infoRow}>
+            <span style={S.infoLabel}>Expected Expiry</span>
+            <span style={S.infoValue}>{expiryDate.toDateString()}</span>
           </div>
-          <div style={{ ...styles.matrixRow, marginBottom: 0 }}>
-            <span style={styles.matrixLabel}>Final Active Session</span>
-            <span style={{ ...styles.matrixValue, color: "#fca5a5" }}>
-              {lastMeal} <span style={styles.dateSubtext}>({lastMealDate.toDateString()})</span>
+          <div style={{ ...S.infoRow, borderBottom: "none" }}>
+            <span style={S.infoLabel}>Final Session</span>
+            <span style={{ ...S.infoValue, color: "var(--destructive)" }}>
+              {lastMeal} <span style={{ fontSize: 11, opacity: 0.75 }}>({lastMealDate.toDateString()})</span>
             </span>
           </div>
         </div>
 
-        {/* DYNAMIC CALENDAR ALLOCATION GRID */}
-        <div style={styles.scheduleSection}>
-          <h3 style={styles.scheduleTitle}>📅 Weekly Dining Matrix Allocation</h3>
-          <div style={styles.scheduleGrid}>
+        {/* weekly schedule */}
+        <div style={S.section}>
+          <h3 style={S.sectionTitle}><CalendarDays size={15} /> Weekly Dining Schedule</h3>
+          <div className="meal-schedule-grid" style={S.scheduleGrid}>
             {days.map((day) => (
-              <div key={day} style={styles.dayColumnCard} className="interactive-row-card print-bg-adjust">
-                <div style={styles.dayColumnHeader}>{day.toUpperCase()}</div>
-                <div style={styles.mealRowsContainer}>
+              <div key={day} className="meal-day-card" style={S.dayCard}>
+                <div style={S.dayHeader}>{day.toUpperCase()}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                   {meals.map((meal) => (
-                    <div key={meal} style={styles.mealRowItem}>
-                      <span style={styles.mealIndicatorBullet} />
+                    <div key={meal} style={S.mealItem}>
+                      <span style={S.mealBullet} />
                       {meal}
                     </div>
                   ))}
@@ -244,364 +313,228 @@ export default function StudentMealCard() {
           </div>
         </div>
 
-        {/* SYSTEM WARNING BANNER */}
+        {/* daily codes */}
+        <div className="hide-on-print" style={S.section}>
+          <h3 style={S.sectionTitle}>Today's Meal Verification Codes</h3>
+          <p style={S.hint}>Give each code to the kitchen when collecting that meal — every code works once only.</p>
+          {codesLoading ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 12.5 }}>Loading codes…</p>
+          ) : dailyCodes.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 12.5 }}>No codes issued yet — check back once your card is active.</p>
+          ) : (
+            <div className="meal-codes-grid" style={S.codesGrid}>
+              {dailyCodes.map((c) => (
+                <div key={c.slot} style={{ ...S.codeCard, opacity: c.used ? 0.55 : 1 }}>
+                  <div style={S.codeSlot}>{c.slot.charAt(0).toUpperCase() + c.slot.slice(1)}</div>
+                  <div style={S.codeValue}>{c.code || "—"}</div>
+                  <div style={{ ...S.codeStatus, color: c.used ? "var(--destructive)" : "var(--success)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    {c.used ? <Circle size={10} /> : <CheckCircle2 size={11} />}
+                    {c.used ? "USED" : "AVAILABLE"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {!isActive && (
-          <div style={styles.restrictionAlertFrame} className="print-bg-adjust">
-            <span style={styles.alertIcon}>⚠</span>
+          <div style={S.alertFrame}>
+            <ShieldAlert size={17} color="var(--destructive)" style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
-              <div style={styles.alertTitle}>Hardware Access Restricted</div>
-              <div style={styles.alertBody}>This credential card has been flagged or de-registered. Digital turnstiles will deny entry automatically.</div>
+              <div style={S.alertTitle}>Access Restricted</div>
+              <div style={S.alertBody}>This card has been flagged or deactivated. Dining hall access will be denied automatically.</div>
             </div>
           </div>
         )}
       </div>
 
-      {/* PRINT SYSTEM ACTION INVOCATION FOOTER */}
-      <div style={styles.actionControlFooter} className="hide-on-print">
+      <div className="hide-on-print" style={S.footer}>
         <button
           onClick={handlePrint}
           disabled={!isActive}
-          className="print-trigger-button"
-          style={{
-            ...styles.printActionBtn,
-            backgroundColor: isActive ? "#cbb494" : "#222733",
-            color: isActive ? "#11141c" : "#64748b",
-            border: isActive ? "none" : "1px solid #3a4257",
-            cursor: isActive ? "pointer" : "not-allowed",
-          }}
+          className="meal-print-btn"
+          style={{ ...S.printBtn, opacity: isActive ? 1 : 0.55, cursor: isActive ? "pointer" : "not-allowed" }}
         >
-          <span style={{ marginRight: "8px", fontSize: "15px" }}>🖨</span> Generate Formal Card Document / PDF
+          <Printer size={15} /> Print / Save as PDF
         </button>
       </div>
-
-    </div>
+    </main>
   );
 }
 
-/* ================= COMPONENT PRODUCTION STYLING ENGINE ================= */
-const styles = {
-  pageContext: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "24px 16px",
-    backgroundColor: "transparent",
-  },
-
-  stateWrapper: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "60px 40px",
-    textAlign: "center",
-  },
-
-  spinner: {
-    width: "32px",
-    height: "32px",
-    border: "3px solid rgba(203, 180, 148, 0.15)",
-    borderTop: "3px solid #cbb494",
-    borderRadius: "50%",
-    animation: "rotateSpinner 0.8s linear infinite",
-    marginBottom: "16px",
-  },
-
-  stateText: {
-    color: "#94a3b8",
-    fontSize: "14px",
-    letterSpacing: "0.2px",
-    margin: 0,
-  },
-
-  /* Card Structural Base Framework */
-  cardContainer: {
-    width: "100%",
-    maxWidth: "70%",
-height: "70%",
-maxHeight: "90%",
-    backgroundColor: "#161a24", 
-    borderRadius: "16px",
-    border: "1px solid #cbb494", // Match core system gold finish parameters
-    padding: "2px 24px",
+/* ================= STYLES ================= */
+const S = {
+  main: {
+    padding: "24px 32px 56px",
+    background: "var(--bg)",
+    color: "var(--text)",
+    minHeight: "100vh",
+    fontFamily: "'Inter', system-ui, sans-serif",
     boxSizing: "border-box",
-    boxShadow: "0 20px 40px -15px rgba(0, 0, 0, 0.45)",
-   
-    overflow: "hidden",
+    maxWidth: 720,
   },
+  pageHeader: { marginBottom: 22 },
+  pageTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
+  pageSub: { margin: "3px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
 
-  topAccentLine: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "4px",
-    background: "linear-gradient(90deg, #cbb494 0%, #edd9bc 50%, #cbb494 100%)",
-  },
-
-  /* Card Header Elements */
-  cardHeader: {
+  loadingState: {
     display: "flex",
     alignItems: "center",
-    gap: "14px",
-    marginBottom: "20px",
+    gap: 10,
+    padding: "40px 0",
+    color: "var(--text-secondary)",
+    fontSize: 13.5,
+    fontWeight: 600,
   },
 
-  logoBadge: {
-    width: "44px",
-    height: "44px",
-    backgroundColor: "rgba(203, 180, 148, 0.1)",
-    border: "1px solid rgba(203, 180, 148, 0.25)",
-    borderRadius: "10px",
+  panel: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: "22px 24px",
+    boxShadow: "var(--shadow-sm)",
+  },
+  emptyState: {
+    padding: "36px 0",
+    textAlign: "center",
+    color: "var(--text-muted)",
+    fontSize: 13.5,
+    fontWeight: 600,
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "center",
-    fontSize: "20px",
-    color: "#cbb494",
   },
 
-  institutionTitle: {
-    color: "#cbb494",
-    fontSize: "18px",
-    fontWeight: "700",
-    margin: 0,
-    letterSpacing: "0.5px",
+  cardIcon: {
+    width: 38, height: 38, borderRadius: 10,
+    background: "var(--primary-tint)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    flexShrink: 0,
   },
+  holderName: { fontSize: 15, fontWeight: 800, color: "var(--text)" },
+  holderSub: { fontSize: 12, color: "var(--text-secondary)", marginTop: 1, fontWeight: 600 },
 
-  institutionSubtitle: {
-    color: "#94a3b8",
-    fontSize: "11px",
-    fontWeight: "500",
-    margin: "2px 0 0 0",
-    letterSpacing: "0.75px",
-  },
-
-  /* Glowing Account Badging */
-  statusIndicator: {
-    display: "flex",
+  statusBadge: {
+    display: "inline-flex",
     alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    padding: "8px 16px",
-    borderRadius: "25px",
-    fontSize: "12px",
-    fontWeight: "700",
-    letterSpacing: "0.5px",
-    border: "1px solid transparent",
-    marginBottom: "20px",
+    gap: 6,
+    padding: "6px 14px",
+    borderRadius: 20,
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: "0.04em",
   },
+  statusDot: { width: 6, height: 6, borderRadius: "50%" },
 
-  statusDot: {
-    width: "6px",
-    height: "6px",
-    borderRadius: "50%",
+  matrixPanel: {
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)",
+    padding: "14px 16px",
+    marginBottom: 20,
   },
-
-  /* Information Display Layer Matrix */
-  profileMatrixPanel: {
-    backgroundColor: "#11141c",
-    borderRadius: "12px",
-    padding: "16px 18px",
-    border: "1px solid #232a38",
-    marginBottom: "24px",
-  },
-
-  matrixRow: {
+  infoRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     padding: "9px 0",
-    fontSize: "13px",
+    borderBottom: "1px solid var(--border)",
+    fontSize: 13,
+    gap: 12,
   },
-
-  matrixLabel: {
-    color: "#64748b",
-    fontWeight: "500",
-  },
-
-  matrixValue: {
-    color: "#e2e8f0",
-    fontWeight: "500",
-    textAlign: "right",
-  },
-
-  matrixGridSplitter: {
+  infoLabel: { color: "var(--text-secondary)", fontWeight: 700, fontSize: 12.5 },
+  infoValue: { color: "var(--text)", fontWeight: 600, textAlign: "right" },
+  splitter: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "16px",
-    padding: "12px 0 4px 0",
-    marginTop: "4px",
-    borderTop: "1px dashed #232a38",
+    gap: 16,
+    padding: "10px 0 10px",
+    borderBottom: "1px dashed var(--border)",
+    marginBottom: 2,
   },
+  divider: { height: 1, background: "var(--border)", margin: "2px 0 4px" },
 
-  splitBlock: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
+  section: { marginTop: 22 },
+  sectionTitle: {
+    display: "flex", alignItems: "center", gap: 6,
+    margin: "0 0 12px", fontSize: 13, fontWeight: 800, color: "var(--text)",
   },
+  hint: { color: "var(--text-secondary)", fontSize: 12, margin: "0 0 10px" },
 
-  matrixDivider: {
-    height: "1px",
-    backgroundColor: "#232a38",
-    margin: "8px 0",
-    width: "100%",
-  },
-
-  dateSubtext: {
-    fontSize: "11px",
-    opacity: 0.75,
-  },
-
-  /* Calendar Scheduling Module Components */
-  scheduleSection: {
-    marginTop: "20px",
-  },
-
-  scheduleTitle: {
-    color: "#ffffff",
-    fontSize: "13px",
-    fontWeight: "600",
-    margin: "0 0 12px 0",
-    letterSpacing: "0.2px",
-  },
-
-  scheduleGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(7, 1fr)",
-    gap: "6px",
-  },
-
-  dayColumnCard: {
-    backgroundColor: "#11141c",
-    border: "1px solid #232a38",
-    borderRadius: "8px",
+  scheduleGrid: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 },
+  dayCard: {
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: 8,
     padding: "8px 4px",
     textAlign: "center",
-    boxSizing: "border-box",
   },
-
-  dayColumnHeader: {
-    color: "#cbb494",
-    fontSize: "11px",
-    fontWeight: "700",
-    borderBottom: "1px solid #232a38",
-    paddingBottom: "4px",
-    marginBottom: "6px",
-    letterSpacing: "0.2px",
+  dayHeader: {
+    color: "var(--primary)",
+    fontSize: 11,
+    fontWeight: 800,
+    borderBottom: "1px solid var(--border)",
+    paddingBottom: 4,
+    marginBottom: 6,
   },
-
-  mealRowsContainer: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "5px",
-  },
-
-  mealRowItem: {
-    color: "#94a3b8",
-    fontSize: "10px",
-    fontWeight: "400",
+  mealItem: {
+    color: "var(--text-secondary)",
+    fontSize: 10,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "3px",
+    gap: 3,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
+  mealBullet: { width: 3, height: 3, borderRadius: "50%", background: "var(--primary)", opacity: 0.5, flexShrink: 0 },
 
-  mealIndicatorBullet: {
-    width: "3px",
-    height: "3px",
-    borderRadius: "50%",
-    backgroundColor: "rgba(203, 180, 148, 0.4)",
-    display: "inline-block",
+  codesGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 },
+  codeCard: {
+    background: "var(--bg)",
+    border: "1px solid var(--primary)",
+    borderRadius: "var(--radius-sm)",
+    padding: "12px 8px",
+    textAlign: "center",
   },
+  codeSlot: { color: "var(--primary)", fontSize: 11, fontWeight: 800, marginBottom: 6 },
+  codeValue: {
+    color: "var(--text)",
+    fontSize: 20,
+    fontWeight: 800,
+    fontFamily: "monospace",
+    letterSpacing: "2px",
+    marginBottom: 6,
+  },
+  codeStatus: { fontSize: 10, fontWeight: 800, letterSpacing: "0.04em" },
 
-  /* System Warnings & Flags Frames */
-  restrictionAlertFrame: {
+  alertFrame: {
     display: "flex",
-    alignItems: "flex-start",
-    gap: "12px",
-    backgroundColor: "rgba(220, 38, 38, 0.08)",
-    border: "1px solid rgba(220, 38, 38, 0.25)",
-    borderRadius: "8px",
+    gap: 12,
+    background: "var(--destructive-tint)",
+    border: "1px solid var(--destructive)",
+    borderRadius: "var(--radius-sm)",
     padding: "12px 14px",
-    marginTop: "20px",
+    marginTop: 20,
   },
+  alertTitle: { color: "var(--destructive)", fontSize: 12.5, fontWeight: 800, marginBottom: 2 },
+  alertBody: { color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.4 },
 
-  alertIcon: {
-    color: "#ef4444",
-    fontSize: "16px",
-    lineHeight: "1",
-  },
-
-  alertTitle: {
-    color: "#f87171",
-    fontSize: "12px",
-    fontWeight: "600",
-    margin: "0 0 2px 0",
-  },
-
-  alertBody: {
-    color: "#fca5a5",
-    fontSize: "11px",
-    lineHeight: "1.4",
-    margin: 0,
-  },
-
-  /* Empty/Missing Matrix States Elements */
-  errorHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    marginBottom: "14px",
-  },
-
-  errorIcon: {
-    fontSize: "24px",
-  },
-
-  errorTitle: {
-    color: "#cbb494",
-    fontSize: "16px",
-    fontWeight: "600",
-    margin: 0,
-  },
-
-  errorDivider: {
-    height: "1px",
-    backgroundColor: "#cbb494",
-    opacity: 0.3,
-    marginBottom: "14px",
-  },
-
-  errorText: {
-    color: "#94a3b8",
-    fontSize: "13px",
-    lineHeight: "1.5",
-    margin: 0,
-  },
-
-  /* Global Actions Call Footer UI */
-  actionControlFooter: {
-    marginTop: "20px",
-    width: "100%",
-    maxWidth: "520px",
-    display: "flex",
-  },
-
-  printActionBtn: {
-    width: "100%",
-    padding: "13px 20px",
-    borderRadius: "10px",
-    fontSize: "13px",
-    fontWeight: "600",
-    boxSizing: "border-box",
+  footer: { marginTop: 16, display: "flex" },
+  printBtn: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    letterSpacing: "0.2px",
-    outline: "none",
+    gap: 8,
+    width: "100%",
+    padding: "12px 16px",
+    background: "var(--primary)",
+    color: "#fff",
+    border: "none",
+    borderRadius: "var(--radius-sm)",
+    fontWeight: 700,
+    fontSize: 13.5,
+    fontFamily: "inherit",
   },
 };

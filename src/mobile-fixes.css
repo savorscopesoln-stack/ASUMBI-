@@ -1,0 +1,126 @@
+/* ============================================================
+   GLOBAL MOBILE RESPONSIVENESS SAFETY NET
+   ------------------------------------------------------------
+   This app is built almost entirely with inline React `style={}`
+   objects rather than CSS classes. Inline styles can't respond
+   to @media queries on their own, so a handful of pages that
+   never got a matching CSS override still break (overflow
+   horizontally, squeeze into unreadable slivers, force iOS to
+   zoom in on inputs, etc.) on small screens.
+
+   This file is imported once, globally (see main.jsx), and uses
+   attribute-selector + !important overrides so it can reach
+   into inline styles and guarantee every page stays usable on a
+   phone, without having to rewrite every page's style objects.
+   It intentionally only kicks in at phone/small-tablet widths,
+   so desktop/tablet layouts are untouched.
+============================================================ */
+
+/* ---- universal box model + no accidental horizontal scroll ---- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* ---- media never overflows its container ---- */
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---- stop iOS Safari from auto-zooming the page when a form
+   field is focused (it does this for any input with a computed
+   font-size under 16px) ---- */
+@media (max-width: 900px) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* ---- collapse any inline CSS-grid layout to a single column on
+   phones, so multi-column dashboards/stat rows/forms never
+   overflow or squeeze into unreadable slivers. Targets the
+   `style="grid-template-columns: ..."` attribute React renders
+   for every grid in the app, since @media can't otherwise reach
+   an inline style. ---- */
+@media (max-width: 640px) {
+  [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Two-column layouts just above phone width (tablets/small
+   landscape phones) get a little more room before collapsing
+   fully — anything wider than 2 columns already dropped above. */
+@media (max-width: 480px) {
+  [style*="grid-template-columns"] {
+    column-gap: 8px !important;
+  }
+}
+
+/* ---- fallback horizontal scroll for any <table> that isn't
+   already wrapped in its own scroll container. Harmless when a
+   wrapper already exists (it just becomes a no-op nested
+   scroller), but rescues the few pages that render a bare
+   <table> straight into the page. ---- */
+@media (max-width: 700px) {
+  table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table thead,
+  table tbody {
+    display: table;
+    width: 100%;
+  }
+}
+
+/* ---- let flex rows (toolbars, filter bars, button groups) wrap
+   onto multiple lines on phones instead of forcing the page to
+   scroll sideways or squeezing every item down to nothing. Skips
+   any flex container that already declares its own overflow-x
+   (those are deliberate horizontal scrollers — e.g. a chip/tab
+   strip — and should keep scrolling, not wrap). ---- */
+@media (max-width: 640px) {
+  [style*="display: flex"]:not([style*="overflow-x"]):not([style*="overflowX"]),
+  [style*="display:flex"]:not([style*="overflow-x"]):not([style*="overflowX"]) {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* ---- generic overflow guard for anything given a large fixed
+   pixel width inline (old-style two-pane editors, wide modals,
+   etc.) — lets it shrink to fit a phone screen instead of
+   pushing the page into horizontal scroll. ---- */
+@media (max-width: 640px) {
+  [style*="width: 380px"],
+  [style*="width:380px"],
+  [style*="width: 420px"],
+  [style*="width:420px"],
+  [style*="width: 480px"],
+  [style*="width:480px"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}

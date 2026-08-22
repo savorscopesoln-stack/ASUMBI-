@@ -1,9 +1,98 @@
 import React, { useEffect, useState } from "react";
 import API from "../api";
 import * as XLSX from "xlsx";
+import {
+  ArrowLeft, Search, ChevronDown, Download, Printer,
+  CheckSquare, Square, Pencil, Save, X, Sun, Moon,
+  ShieldCheck, ShieldOff, Inbox,
+} from "lucide-react";
+import { useTheme } from "../context/ThemeContext";
+
+/* ─── design-token stylesheet — shared with Dashboard.jsx so every
+   admin page (light/dark, colors, radius, shadows) looks the same.
+   Guarded by id so it's only injected into <head> once app-wide. */
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    .dash-icon-btn:hover { background: var(--bg); }
+    .dash-btn { transition: filter 0.15s ease, background-color .15s ease, border-color .15s ease; }
+    .dash-btn:hover { filter: brightness(0.97); }
+    .dash-btn-secondary:hover { background: var(--bg) !important; }
+    .dash-row:hover { background: var(--primary-tint) !important; }
+    .dash-row.selected-row { background: var(--primary-tint) !important; }
+
+    button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .teachers-toolrow { flex-direction: column; align-items: stretch !important; }
+      .teachers-actions { flex-direction: column; align-items: stretch !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
 
 /* ================= TEACHERS PAGE ================= */
 export default function Teachers() {
+  injectStyles();
+  const { theme, toggleTheme } = useTheme();
+
   const [uploadType] = useState("teachers");
 
   const [activeData, setActiveData] = useState([]);
@@ -26,6 +115,8 @@ export default function Teachers() {
   const [editingRow, setEditingRow] = useState(null);
   const [tempRow, setTempRow] = useState({});
 
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     pullRecords();
 
@@ -40,19 +131,26 @@ export default function Teachers() {
 
   /* ================= FETCH ================= */
   const pullRecords = async () => {
-    const res = await API.get("/records", {
-      params: { type: uploadType, page: 1, limit: 500 },
-    });
+    setLoading(true);
+    try {
+      const res = await API.get("/records", {
+        params: { type: uploadType, page: 1, limit: 500 },
+      });
 
-    const data = res.data.records || [];
-    setActiveData(data);
+      const data = res.data.records || [];
+      setActiveData(data);
 
-    const headers = data.length ? Object.keys(data[0]) : [];
-    setPreviewHeaders(headers);
+      const headers = data.length ? Object.keys(data[0]) : [];
+      setPreviewHeaders(headers);
 
-    const init = {};
-    headers.forEach((h) => (init[h] = true));
-    setColumnVisibility(init);
+      const init = {};
+      headers.forEach((h) => (init[h] = true));
+      setColumnVisibility(init);
+    } catch (err) {
+      console.log(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* ================= AUTO SAVE ================= */
@@ -164,7 +262,8 @@ export default function Teachers() {
 
       const matchesSearch =
         !search ||
-        String(row.name || "").toLowerCase().includes(search);
+        String(row.name || "").toLowerCase().includes(search) ||
+        String(row.staffId || "").toLowerCase().includes(search);
 
       return (
         matchesSearch &&
@@ -201,15 +300,15 @@ export default function Teachers() {
       <head>
         <title>Teachers Report</title>
         <style>
-          body { font-family: -apple-system, sans-serif; padding: 30px; background-color: #161920; color: #e2e8f0; }
+          body { font-family: -apple-system, sans-serif; padding: 30px; background-color: #F8FAFC; color: #0B0F19; }
           table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #3a3f4d; padding: 10px 14px; font-size: 13px; text-align: left; }
-          th { background: #1f232e; color: #cbb494; font-weight: 600; }
-          tr:nth-child(even) { background: #1a1e27; }
+          th, td { border: 1px solid #E2E5EA; padding: 10px 14px; font-size: 13px; text-align: left; }
+          th { background: #FBEAEC; color: #8B1E2D; font-weight: 700; }
+          tr:nth-child(even) { background: #F8FAFC; }
         </style>
       </head>
       <body>
-        <h2 style="color: #cbb494; font-size: 22px; letter-spacing: 0.5px;">TEACHERS DATABASE REPORT</h2>
+        <h2 style="color: #8B1E2D; font-size: 22px; letter-spacing: 0.5px;">TEACHERS DATABASE REPORT</h2>
         <table>
           <thead>
             <tr>
@@ -222,7 +321,7 @@ export default function Teachers() {
                 (r) => `
                   <tr>
                     ${visibleHeaders
-                      .map((h) => `<td>${r[h] || ""}</td>`)
+                      .map((h) => `<td>${r[h] ?? ""}</td>`)
                       .join("")}
                   </tr>
                 `
@@ -258,372 +357,517 @@ export default function Teachers() {
     "Music",
     "Art & Design",
     "Educational Psychology",
-    "Teaching Practice"
+    "Teaching Practice",
   ];
 
   return (
-    <div style={styles.page}>
-      <div style={styles.appContainer}>
-        
-        {/* HEADER SECTION */}
-        <div style={styles.header}>
-          <button style={styles.backBtn} onClick={() => window.history.back()}>
-            ← Back
+    <div style={T.page}>
+      <div style={T.container}>
+
+        {/* ── Header ── */}
+        <header style={T.pageHeader}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <button
+              className="dash-icon-btn"
+              style={T.backBtn}
+              onClick={() => window.history.back()}
+              aria-label="Go back"
+            >
+              <ArrowLeft size={17} />
+            </button>
+            <div>
+              <h1 style={T.pageTitle}>Teachers</h1>
+              <p style={T.pageSub}>Staff records, subjects and account status</p>
+            </div>
+          </div>
+
+          <button
+            onClick={toggleTheme}
+            className="dash-icon-btn"
+            style={T.themeToggle}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <h2 style={styles.title}>
-            Teachers Database <span style={styles.titleDivider}>|</span> <span style={styles.titleSub}>Management Suite</span>
-          </h2>
-        </div>
+        </header>
 
-        {/* SEARCH BAR INPUT */}
-        <div style={styles.searchWrap}>
-          <span style={styles.searchIcon}>🔍</span>
-          <input
-            style={styles.search}
-            placeholder="Search by Name, Employee ID, or Keyword..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+        {/* ── Main panel ── */}
+        <section style={T.panel} aria-label="Teachers manager">
 
-        {/* FILTER GROUP SELECTORS */}
-        <div style={styles.filterBar}>
-          <span style={styles.filterLabel}>Filter by:</span>
+          {/* SEARCH */}
+          <div style={T.searchWrap}>
+            <Search size={16} style={T.searchIcon} />
+            <input
+              style={T.search}
+              placeholder="Search by name or staff ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-          {/* SUBJECT DROPDOWN */}
-          <div style={styles.dropdown} onClick={(e) => {
-            e.stopPropagation();
-            setOpenFilter(openFilter === "subject" ? null : "subject");
-          }}>
-            <span>Subject {subjectFilter.length > 0 && `(${subjectFilter.length})`}</span>
-            <span style={styles.arrow}>▾</span>
-            {openFilter === "subject" && (
-              <div style={styles.drop} onClick={(e) => e.stopPropagation()}>
-                <div style={styles.dropScroll}>
-                  {subjects.map((s) => (
-                    <label key={s} style={styles.item}>
+          {/* FILTERS */}
+          <div className="teachers-toolrow" style={T.filterBar}>
+            <span style={T.filterLabel}>Filter by:</span>
+
+            {/* SUBJECT */}
+            <div
+              style={T.dropdown}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenFilter(openFilter === "subject" ? null : "subject");
+              }}
+            >
+              <span>Subject {subjectFilter.length > 0 && `(${subjectFilter.length})`}</span>
+              <ChevronDown size={14} />
+              {openFilter === "subject" && (
+                <div style={T.drop} onClick={(e) => e.stopPropagation()}>
+                  <div style={T.dropScroll}>
+                    {subjects.map((s) => (
+                      <label key={s} style={T.item}>
+                        <input
+                          type="checkbox"
+                          style={T.checkbox}
+                          checked={subjectFilter.includes(s)}
+                          onChange={() => toggleArray(s, subjectFilter, setSubjectFilter)}
+                        />
+                        {s}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* STATUS */}
+            <div
+              style={T.dropdown}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenFilter(openFilter === "status" ? null : "status");
+              }}
+            >
+              <span>Status {statusFilter.length > 0 && `(${statusFilter.length})`}</span>
+              <ChevronDown size={14} />
+              {openFilter === "status" && (
+                <div style={T.drop} onClick={(e) => e.stopPropagation()}>
+                  {["active", "inactive"].map((s) => (
+                    <label key={s} style={T.item}>
                       <input
                         type="checkbox"
-                        style={styles.checkbox}
-                        checked={subjectFilter.includes(s)}
-                        onChange={() => toggleArray(s, subjectFilter, setSubjectFilter)}
+                        style={T.checkbox}
+                        checked={statusFilter.includes(s)}
+                        onChange={() => toggleArray(s, statusFilter, setStatusFilter)}
                       />
-                      {s}
+                      <span style={{ textTransform: "capitalize" }}>{s}</span>
                     </label>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          {/* STATUS DROPDOWN */}
-          <div style={styles.dropdown} onClick={(e) => {
-            e.stopPropagation();
-            setOpenFilter(openFilter === "status" ? null : "status");
-          }}>
-            <span>Status {statusFilter.length > 0 && `(${statusFilter.length})`}</span>
-            <span style={styles.arrow}>▾</span>
-            {openFilter === "status" && (
-              <div style={styles.drop} onClick={(e) => e.stopPropagation()}>
-                {["active", "inactive"].map((s) => (
-                  <label key={s} style={styles.item}>
-                    <input
-                      type="checkbox"
-                      style={styles.checkbox}
-                      checked={statusFilter.includes(s)}
-                      onChange={() => toggleArray(s, statusFilter, setStatusFilter)}
-                    />
-                    <span style={{ textTransform: "capitalize" }}>{s}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* COLUMN VISIBILITY DROPDOWN */}
-          <div style={styles.dropdown} onClick={(e) => {
-            e.stopPropagation();
-            setShowColumnsMenu(!showColumnsMenu);
-          }}>
-            <span>Visible Columns</span>
-            <span style={styles.arrow}>▾</span>
-            {showColumnsMenu && (
-              <div style={styles.drop} onClick={(e) => e.stopPropagation()}>
-                <div style={styles.dropScroll}>
-                  {previewHeaders.map((col) => (
-                    <label key={col} style={styles.item}>
-                      <input
-                        type="checkbox"
-                        style={styles.checkbox}
-                        checked={columnVisibility[col] !== false}
-                        onChange={() => toggleColumn(col)}
-                      />
-                      {col}
-                    </label>
-                  ))}
+            {/* COLUMN VISIBILITY */}
+            <div
+              style={T.dropdown}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowColumnsMenu(!showColumnsMenu);
+              }}
+            >
+              <span>Visible Columns</span>
+              <ChevronDown size={14} />
+              {showColumnsMenu && (
+                <div style={T.drop} onClick={(e) => e.stopPropagation()}>
+                  <div style={T.dropScroll}>
+                    {previewHeaders.map((col) => (
+                      <label key={col} style={T.item}>
+                        <input
+                          type="checkbox"
+                          style={T.checkbox}
+                          checked={columnVisibility[col] !== false}
+                          onChange={() => toggleColumn(col)}
+                        />
+                        {col}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* ACTION AND CONTROLS UTILITY TOOLBAR */}
-        <div style={styles.actionsToolbar}>
-          <div style={styles.actionGroupLeft}>
-            <button style={styles.btnGoldSelect} onClick={selectAll}>✓ SELECT ALL</button>
-            <button style={styles.btnSecondary} onClick={clearSelection}>✕ CLEAR</button>
-          </div>
-          
-          <div style={styles.actionGroupRight}>
-            <button style={styles.btnGreen} onClick={handleExcel}>⤓ EXPORT EXCEL</button>
-            <button style={styles.btnSecondary} onClick={handlePrint}>🖨 PRINT REPORT</button>
-            <button style={styles.btnActiveMass} onClick={() => massUpdateStatus("active")}>✓ ACTIVATE</button>
-            <button style={styles.btnInactiveMass} onClick={() => massUpdateStatus("inactive")}>⊘ DEACTIVATE</button>
-          </div>
-        </div>
+          {/* TOOLBAR */}
+          <div className="teachers-actions" style={T.actionsToolbar}>
+            <div style={T.actionGroupLeft}>
+              <SecondaryBtn onClick={selectAll} Icon={CheckSquare}>Select All</SecondaryBtn>
+              <SecondaryBtn onClick={clearSelection} Icon={Square}>Clear</SecondaryBtn>
+            </div>
 
-        {/* INTERACTIVE DATA TABLE */}
-        <div style={styles.tableCard}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={{ ...styles.th, textAlign: "center", width: "70px" }}>Select</th>
-                {visibleHeaders.map((h) => (
-                  <th key={h} style={styles.th}>{h}</th>
+            <div style={T.actionGroupRight}>
+              <SecondaryBtn onClick={handleExcel} Icon={Download}>Export Excel</SecondaryBtn>
+              <SecondaryBtn onClick={handlePrint} Icon={Printer}>Print Report</SecondaryBtn>
+              <PrimaryBtn onClick={() => massUpdateStatus("active")} Icon={ShieldCheck}>Activate</PrimaryBtn>
+              <DestructiveBtn onClick={() => massUpdateStatus("inactive")} Icon={ShieldOff}>Deactivate</DestructiveBtn>
+            </div>
+          </div>
+
+          {/* TABLE */}
+          <div style={T.tableWrap}>
+            {loading ? (
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="dash-skeleton" style={{ height: 20, background: "var(--border)", borderRadius: 8 }} />
                 ))}
-                <th style={{ ...styles.th, textAlign: "center", width: "240px" }}>Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredData().map((row) => {
-                const isEditing = editingRow === row.id;
-                const isChecked = selectedRows.includes(row.id);
-
-                return (
-                  <tr key={row.id} style={{ ...styles.tr, backgroundColor: isChecked ? "#212633" : "transparent" }}>
-                    
-                    {/* SELECTION CELL */}
-                    <td style={{ textAlign: "center", padding: "14px 10px" }}>
-                      <input
-                        type="checkbox"
-                        style={styles.checkbox}
-                        checked={isChecked}
-                        onChange={() => toggleSelectRow(row.id)}
-                      />
-                    </td>
-
-                    {/* DYNAMIC FIELD DATA CELLS */}
-                    {visibleHeaders.map((h) => {
-                      const isStatusField = h.toLowerCase() === "status";
-                      const cellValue = row[h];
-                      
-                      return (
-                        <td key={h} style={styles.td}>
-                          {isEditing ? (
-                            <input
-                              value={tempRow[h] ?? cellValue ?? ""}
-                              onChange={(e) =>
-                                setTempRow({
-                                  ...tempRow,
-                                  [h]: e.target.value,
-                                })
-                              }
-                              style={styles.inputActive}
-                            />
-                          ) : (
-                            isStatusField ? (
-                              <span style={String(cellValue).toLowerCase() === "active" ? styles.badgeActive : styles.badgeInactive}>
-                                {String(cellValue).toUpperCase()}
-                              </span>
-                            ) : (
-                              <span style={styles.cellText}>{cellValue || "—"}</span>
-                            )
-                          )}
-                        </td>
-                      );
-                    })}
-
-                    {/* ROW CONTROLS CELL */}
-                    <td style={{ padding: "12px 16px" }}>
-                      <div style={styles.tableActionsLayout}>
-                        {isEditing ? (
-                          <>
-                            <button style={styles.rowSaveBtn} onClick={() => handleSave(row)}>Save</button>
-                            <button style={styles.rowCancelBtn} onClick={handleCancel}>Cancel</button>
-                          </>
-                        ) : (
-                          <>
-                            <button style={styles.rowEditBtn} onClick={() => handleEditClick(row)}>✏ Edit</button>
-                            <button style={styles.rowStatusBtn} onClick={() => setStatus(row.id, "active")}>🛈 Status</button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-
+              </div>
+            ) : (
+              <table style={T.table}>
+                <thead>
+                  <tr>
+                    <th style={{ ...T.th, textAlign: "center", width: "56px" }}>Select</th>
+                    {visibleHeaders.map((h) => (
+                      <th key={h} style={T.th}>{h}</th>
+                    ))}
+                    <th style={{ ...T.th, textAlign: "center", width: "220px" }}>Actions</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
 
-          {filteredData().length === 0 && (
-            <div style={styles.emptyState}>No matching teacher profiles found.</div>
-          )}
-        </div>
+                <tbody>
+                  {filteredData().map((row) => {
+                    const isEditing = editingRow === row.id;
+                    const isChecked = selectedRows.includes(row.id);
 
+                    return (
+                      <tr
+                        key={row.id}
+                        className="dash-row"
+                        style={{
+                          ...T.tr,
+                          backgroundColor: isChecked ? "var(--primary-tint)" : "transparent",
+                        }}
+                      >
+                        {/* SELECT */}
+                        <td style={{ ...T.td, textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            style={T.checkbox}
+                            checked={isChecked}
+                            onChange={() => toggleSelectRow(row.id)}
+                          />
+                        </td>
+
+                        {/* DATA CELLS */}
+                        {visibleHeaders.map((h) => {
+                          const isStatusField = h.toLowerCase() === "status";
+                          const cellValue = row[h];
+
+                          return (
+                            <td key={h} style={T.td}>
+                              {isEditing ? (
+                                <input
+                                  value={tempRow[h] ?? cellValue ?? ""}
+                                  onChange={(e) =>
+                                    setTempRow({
+                                      ...tempRow,
+                                      [h]: e.target.value,
+                                    })
+                                  }
+                                  style={T.inputActive}
+                                />
+                              ) : isStatusField ? (
+                                <span
+                                  style={
+                                    String(cellValue).toLowerCase() === "active"
+                                      ? T.badgeActive
+                                      : T.badgeInactive
+                                  }
+                                >
+                                  {cellValue ? String(cellValue).toUpperCase() : "—"}
+                                </span>
+                              ) : (
+                                <span>{cellValue ?? "—"}</span>
+                              )}
+                            </td>
+                          );
+                        })}
+
+                        {/* ROW ACTIONS */}
+                        <td style={{ ...T.td, textAlign: "center" }}>
+                          <div style={T.tableActionsLayout}>
+                            {isEditing ? (
+                              <>
+                                <button style={T.rowSaveBtn} onClick={() => handleSave(row)}>
+                                  <Save size={13} /> Save
+                                </button>
+                                <button style={T.rowCancelBtn} onClick={handleCancel}>
+                                  <X size={13} /> Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button style={T.rowEditBtn} onClick={() => handleEditClick(row)}>
+                                  <Pencil size={13} /> Edit
+                                </button>
+                                <button
+                                  style={T.rowStatusBtn}
+                                  onClick={() =>
+                                    setStatus(
+                                      row.id,
+                                      String(row.status).toLowerCase() === "active" ? "inactive" : "active"
+                                    )
+                                  }
+                                >
+                                  {String(row.status).toLowerCase() === "active" ? (
+                                    <>
+                                      <ShieldOff size={13} /> Deactivate
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ShieldCheck size={13} /> Activate
+                                    </>
+                                  )}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+
+            {!loading && filteredData().length === 0 && (
+              <div style={T.emptyState}>
+                <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
+                <div>No matching teacher profiles found.</div>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
 }
 
-/* ================= THEMED DESIGN COMPONENT STYLES ================= */
-const styles = {
+/* ── button helpers (Primary / Secondary / Destructive) — same
+   hierarchy as Dashboard.jsx's PrimaryBtn/SecondaryBtn/DestructiveBtn ── */
+function PrimaryBtn({ children, onClick, disabled = false, Icon }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="dash-btn"
+      style={{
+        ...T.btnBase,
+        background: "var(--success)",
+        color: "#fff",
+        border: "1px solid var(--success)",
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {Icon && <Icon size={14} strokeWidth={2.5} />}
+      {children}
+    </button>
+  );
+}
+function SecondaryBtn({ children, onClick, disabled = false, Icon }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="dash-btn dash-btn-secondary"
+      style={{
+        ...T.btnBase,
+        background: "var(--card)",
+        color: "var(--text)",
+        border: "1px solid var(--border)",
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {Icon && <Icon size={14} strokeWidth={2.5} />}
+      {children}
+    </button>
+  );
+}
+function DestructiveBtn({ children, onClick, disabled = false, Icon }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="dash-btn"
+      style={{
+        ...T.btnBase,
+        background: "var(--destructive)",
+        color: "#fff",
+        border: "1px solid var(--destructive)",
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {Icon && <Icon size={14} strokeWidth={2.5} />}
+      {children}
+    </button>
+  );
+}
+
+/* ════════════════════════════════
+   STYLES — CSS-variable driven, matching Dashboard.jsx's design
+   tokens (light/dark theme swap without re-render)
+════════════════════════════════ */
+const T = {
   page: {
-    padding: "3px 2px",
     minHeight: "100vh",
-    backgroundColor: "#11141c", // High-fidelity dark layout body background
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    color: "#e2e8f0",
+    background: "var(--bg)",
+    color: "var(--text)",
+    fontFamily: "'Inter', system-ui, sans-serif",
   },
 
-  appContainer: {
-    maxWidth: "98%",
+  container: {
+    maxWidth: "100%",
     margin: "0 auto",
+    padding: "24px 32px 56px",
   },
 
-  header: {
+  pageHeader: {
     display: "flex",
-    alignItems: "center",
-    gap: "24px",
-    marginBottom: "24px",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 22,
+    flexWrap: "wrap",
+    gap: 14,
   },
 
   backBtn: {
-    padding: "8px 16px",
-    background: "transparent",
-    color: "#94a3b8",
-    borderRadius: "6px",
-    border: "1px solid #2e3545",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text)",
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
-    fontSize: "14px",
-    transition: "background 0.2s",
+    flexShrink: 0,
   },
 
-  title: {
-    color: "#cbb494", // Premium champagne gold headings
-    fontSize: "26px",
-    fontWeight: "600",
+  pageTitle: {
     margin: 0,
-    letterSpacing: "0.5px",
+    fontSize: 24,
+    fontWeight: 800,
+    color: "var(--text)",
+    letterSpacing: "-0.01em",
+  },
+  pageSub: { margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
+
+  themeToggle: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
   },
 
-  titleDivider: {
-    color: "#2e3545",
-    margin: "0 10px",
-    fontWeight: "300",
-  },
-
-  titleSub: {
-    color: "#ffffff",
-    fontWeight: "400",
-    fontSize: "24px",
+  panel: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: "20px 22px",
+    boxShadow: "var(--shadow-sm)",
   },
 
   searchWrap: {
     position: "relative",
-    marginBottom: "24px",
+    marginBottom: 18,
     display: "flex",
     alignItems: "center",
   },
-
   searchIcon: {
     position: "absolute",
-    left: "18px",
-    fontSize: "16px",
-    color: "#64748b",
+    left: "16px",
+    color: "var(--text-muted)",
   },
-
   search: {
     width: "100%",
-    padding: "14px 16px 14px 48px",
-    borderRadius: "30px", // Fully pill-shaped search input matching the layout sample
-    border: "1px solid #cbb494",
-    backgroundColor: "transparent",
-    color: "#ffffff",
-    fontSize: "15px",
+    padding: "11px 14px 11px 42px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    backgroundColor: "var(--bg)",
+    color: "var(--text)",
+    fontSize: "14px",
     outline: "none",
     boxSizing: "border-box",
+    fontFamily: "inherit",
   },
 
   filterBar: {
     display: "flex",
     alignItems: "center",
-    gap: "12px",
+    gap: "10px",
     flexWrap: "wrap",
-    marginBottom: "24px",
+    marginBottom: 16,
   },
-
   filterLabel: {
-    color: "#94a3b8",
-    fontSize: "14px",
-    marginRight: "4px",
+    color: "var(--text-secondary)",
+    fontSize: "12.5px",
+    fontWeight: 700,
+    marginRight: "2px",
   },
-
   dropdown: {
-    background: "transparent",
-    border: "1px solid #cbb494",
-    padding: "8px 18px",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    padding: "8px 14px",
     borderRadius: "20px",
-    color: "#cbb494",
-    fontSize: "14px",
+    color: "var(--text)",
+    fontSize: "13px",
+    fontWeight: 600,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
-    gap: "16px",
+    gap: "10px",
     position: "relative",
     userSelect: "none",
   },
-
-  arrow: {
-    color: "#cbb494",
-    fontSize: "12px",
-  },
-
   drop: {
     position: "absolute",
-    background: "#1a1f2c",
-    color: "#e2e8f0",
-    padding: "10px",
-    borderRadius: "8px",
+    background: "var(--card-elevated)",
+    color: "var(--text)",
+    padding: "8px",
+    borderRadius: "10px",
     top: "calc(100% + 6px)",
     left: 0,
     zIndex: 999,
-    boxShadow: "0 10px 25px -5px rgba(0,0,0,0.5)",
+    boxShadow: "var(--shadow)",
     minWidth: "220px",
-    border: "1px solid #3a4257",
+    border: "1px solid var(--border)",
   },
-
   dropScroll: {
     maxHeight: "220px",
     overflowY: "auto",
   },
-
   item: {
     display: "flex",
     alignItems: "center",
     gap: "10px",
     padding: "8px 10px",
-    borderRadius: "4px",
+    borderRadius: "6px",
     fontSize: "13px",
     cursor: "pointer",
-    color: "#cbd5e1",
+    color: "var(--text)",
     width: "100%",
     boxSizing: "border-box",
+    fontWeight: 500,
   },
-
   checkbox: {
-    accentColor: "#cbb494",
+    accentColor: "var(--primary)",
     width: "15px",
     height: "15px",
     cursor: "pointer",
@@ -633,155 +877,87 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: "16px",
+    gap: "12px",
     flexWrap: "wrap",
-    marginBottom: "20px",
+    marginBottom: 18,
   },
+  actionGroupLeft: { display: "flex", gap: "10px" },
+  actionGroupRight: { display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" },
 
-  actionGroupLeft: {
-    display: "flex",
-    gap: "12px",
-  },
-
-  actionGroupRight: {
-    display: "flex",
-    gap: "12px",
+  btnBase: {
+    display: "inline-flex",
     alignItems: "center",
+    gap: 6,
+    padding: "9px 14px",
+    borderRadius: "var(--radius-sm)",
+    fontWeight: 700,
+    fontSize: "12.5px",
+    whiteSpace: "nowrap",
+    fontFamily: "inherit",
+    minHeight: 38,
+    boxSizing: "border-box",
   },
 
-  /* Button Architectures */
-  btnGoldSelect: {
-    backgroundColor: "#cbb494",
-    color: "#11141c",
-    padding: "10px 18px",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "13px",
-    fontWeight: "600",
-    cursor: "pointer",
-    letterSpacing: "0.3px",
-  },
-
-  btnSecondary: {
-    backgroundColor: "#222733",
-    color: "#cbd5e1",
-    padding: "10px 18px",
-    border: "1px solid #3a4257",
-    borderRadius: "6px",
-    fontSize: "13px",
-    fontWeight: "500",
-    cursor: "pointer",
-  },
-
-  btnGreen: {
-    backgroundColor: "#0d6e46",
-    color: "#ffffff",
-    padding: "10px 18px",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "13px",
-    fontWeight: "500",
-    cursor: "pointer",
-  },
-
-  btnActiveMass: {
-    backgroundColor: "#115e42",
-    color: "#ffffff",
-    padding: "10px 18px",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "13px",
-    fontWeight: "500",
-    cursor: "pointer",
-  },
-
-  btnInactiveMass: {
-    backgroundColor: "#7f1d1d",
-    color: "#ffffff",
-    padding: "10px 18px",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "13px",
-    fontWeight: "500",
-    cursor: "pointer",
-  },
-
-  tableCard: {
-    background: "#161a24",
-    borderRadius: "12px",
-    border: "1px solid #cbb494", // Outer gold borders mapping directly to sample file
+  tableWrap: {
     overflowX: "auto",
-    boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
   },
-
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: "14px",
-    textAlign: "left",
-  },
-
+  table: { width: "100%", borderCollapse: "collapse", fontSize: "13.5px", textAlign: "left" },
   th: {
-    background: "#11141c",
-    color: "#cbb494",
-    padding: "14px 16px",
-    fontWeight: "500",
-    fontSize: "13px",
-    borderBottom: "1px solid #cbb494",
-    textTransform: "capitalize",
+    padding: "12px 16px",
+    background: "var(--bg)",
+    color: "var(--text-secondary)",
+    fontWeight: 800,
+    fontSize: "11px",
+    textTransform: "uppercase",
+    letterSpacing: "0.03em",
+    borderBottom: "1px solid var(--border)",
+    whiteSpace: "nowrap",
   },
-
   tr: {
-    borderBottom: "1px solid #2e3545",
+    borderBottom: "1px solid var(--border)",
     transition: "background-color 0.15s ease",
   },
-
   td: {
-    padding: "14px 16px",
-    color: "#e2e8f0",
+    padding: "12px 16px",
+    color: "var(--text)",
     verticalAlign: "middle",
+    background: "var(--card)",
   },
 
-  cellText: {
-    fontSize: "14px",
-  },
-
-  /* Badges for System Status Grid */
   badgeActive: {
     display: "inline-block",
     padding: "3px 10px",
     borderRadius: "20px",
-    backgroundColor: "rgba(16, 185, 129, 0.1)",
-    color: "#34d399",
-    fontWeight: "600",
+    backgroundColor: "var(--success-tint)",
+    color: "var(--success)",
+    fontWeight: "700",
     fontSize: "11px",
     letterSpacing: "0.5px",
-    border: "1px solid rgba(16, 185, 129, 0.2)",
   },
-
   badgeInactive: {
     display: "inline-block",
     padding: "3px 10px",
     borderRadius: "20px",
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-    color: "#f87171",
-    fontWeight: "600",
+    backgroundColor: "var(--destructive-tint)",
+    color: "var(--destructive)",
+    fontWeight: "700",
     fontSize: "11px",
     letterSpacing: "0.5px",
-    border: "1px solid rgba(239, 68, 68, 0.2)",
   },
 
-  /* Row Editing Control Overrides */
   inputActive: {
     width: "100%",
-    padding: "8px 12px",
+    padding: "7px 10px",
     borderRadius: "6px",
-    border: "1px solid #cbb494",
-    backgroundColor: "#11141c",
-    color: "#ffffff",
-    fontSize: "14px",
+    border: "1px solid var(--primary)",
+    backgroundColor: "var(--bg)",
+    color: "var(--text)",
+    fontSize: "13px",
     outline: "none",
     boxSizing: "border-box",
+    fontFamily: "inherit",
   },
 
   tableActionsLayout: {
@@ -789,52 +965,73 @@ const styles = {
     gap: "8px",
     justifyContent: "center",
     alignItems: "center",
+    flexWrap: "wrap",
   },
-
   rowEditBtn: {
-    padding: "6px 14px",
-    backgroundColor: "transparent",
-    color: "#e2e8f0",
-    border: "1px solid #4a546e",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "6px 12px",
+    backgroundColor: "var(--card)",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
     borderRadius: "20px",
-    fontSize: "13px",
+    fontSize: "12px",
+    fontWeight: 700,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
-
   rowStatusBtn: {
-    padding: "6px 14px",
-    backgroundColor: "transparent",
-    color: "#cbb494",
-    border: "1px solid #cbb494",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "6px 12px",
+    backgroundColor: "var(--card)",
+    color: "var(--primary)",
+    border: "1px solid var(--primary)",
     borderRadius: "20px",
-    fontSize: "13px",
+    fontSize: "12px",
+    fontWeight: 700,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
-
   rowSaveBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
     padding: "6px 12px",
-    backgroundColor: "#10b981",
-    color: "#ffffff",
+    backgroundColor: "var(--success)",
+    color: "#fff",
     border: "none",
-    borderRadius: "4px",
-    fontSize: "13px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 700,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
-
   rowCancelBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
     padding: "6px 12px",
-    backgroundColor: "#475569",
-    color: "#ffffff",
+    backgroundColor: "var(--text-muted)",
+    color: "#fff",
     border: "none",
-    borderRadius: "4px",
-    fontSize: "13px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 700,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
 
   emptyState: {
-    padding: "48px",
+    padding: "44px",
     textAlign: "center",
-    color: "#64748b",
-    fontSize: "14px",
+    color: "var(--text-muted)",
+    fontSize: "13.5px",
+    fontWeight: 600,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
   },
 };

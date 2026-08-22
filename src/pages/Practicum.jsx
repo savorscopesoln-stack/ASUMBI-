@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import API from "../api";
+import { getStoredUser } from "../permissions";
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
@@ -23,6 +24,51 @@ const MANAGE_SUBTABS = [
 ];
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// Mirrors MAX_PER_TEACHER in backend/routes/practicum.js — used only to
+// flag/disable full teachers in the manual-reassign dropdown. The real
+// enforcement happens server-side; this is just for a clearer UI.
+const MAX_PER_TEACHER_CLIENT = 7;
+
+/* ================= DATE HELPERS =================
+   The backend only stores a weekday NAME per deployment (e.g. "Monday"),
+   never a real calendar date — a research day is a standing weekly slot,
+   not a one-time event. These helpers compute a real date for DISPLAY
+   only, on the frontend, without needing any database change:
+     - nextDateForWeekday: the next upcoming calendar date that falls on
+       a given weekday (used to show "Monday (25 Aug 2026)" next to a
+       teacher's research day).
+     - weekdayNameForDate: the reverse — given a calendar date picked in
+       the Reports tab, what weekday name to match assignments against.
+   NOTE: because no exact date is persisted, an "extra" one-off
+   deployment on a given weekday will match every future date that
+   falls on that same weekday in the date-based report below. There is
+   no way to tell a one-off Monday deployment from a recurring research
+   day apart after the fact without adding a date column. */
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function nextDateForWeekday(weekdayName, fromDate = new Date()) {
+  const targetIndex = WEEKDAY_NAMES.indexOf(weekdayName);
+  if (targetIndex === -1) return null;
+  const from = new Date(fromDate);
+  from.setHours(0, 0, 0, 0);
+  const diff = (targetIndex - from.getDay() + 7) % 7;
+  const result = new Date(from);
+  result.setDate(from.getDate() + diff);
+  return result;
+}
+
+function weekdayNameForDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return WEEKDAY_NAMES[d.getDay()];
+}
+
+function formatDateShort(date) {
+  if (!date) return "";
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
 
 /* ================= THEME ================= */
 const THEME_VARS = {
@@ -132,6 +178,16 @@ const RESPONSIVE_CSS = `
 `;
 
 export default function Practicum() {
+  /* ================= CURRENT USER ================= */
+  // Manually adding a student to a teacher who is already at the
+  // MAX_PER_TEACHER cap is an admin-only action — a sub_admin/sub_admin_2
+  // with Practicum access can still reassign freely within the cap, but
+  // cannot push a teacher over it. This is enforced again on the backend
+  // (PUT /practicum/assign/:id) — this flag only drives the UI so
+  // non-admins get a clear warning up front instead of a rejected request.
+  const currentUser = useMemo(() => getStoredUser(), []);
+  const isAdmin = String(currentUser?.role || "").toLowerCase().trim() === "admin";
+
   /* ================= DATA ================= */
   const [meta, setMeta] = useState({ regions: [], schools: [], teachers: [], students: [] });
   const [sessions, setSessions] = useState([]);
@@ -139,6 +195,7 @@ export default function Practicum() {
   const [assignments, setAssignments] = useState([]);
   const [reportRows, setReportRows] = useState([]);
   const [reportSession, setReportSession] = useState(null);
+  const [reportPickDate, setReportPickDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   /* ================= UI STATE ================= */
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -425,6 +482,19 @@ export default function Practicum() {
   };
 
   const reassign = async (assignmentId, teacherId) => {
+    const current = assignments.find((a) => a.assignmentId === assignmentId);
+    if (current && String(current.teacherId) !== String(teacherId)) {
+      const destinationCount = assignments.filter(
+        (a) => a.day === current.day && String(a.teacherId) === String(teacherId)
+      ).length;
+      if (destinationCount >= MAX_PER_TEACHER_CLIENT && !isAdmin) {
+        return notify(
+          `That teacher already has ${destinationCount}/${MAX_PER_TEACHER_CLIENT} trainees for this day. Only an admin can manually add beyond the cap.`,
+          true
+        );
+      }
+    }
+
     const result = await safePut(`/practicum/assign/${assignmentId}`, { teacherId });
     if (result?.error) {
       addLog("Reassign failed", result.error, "error");
@@ -486,8 +556,14 @@ export default function Practicum() {
     }
 
     const regionName = meta.regions.find((r) => String(r.id) === String(deployRegionId))?.name || "region";
-    const dayLabel = deployDayMode === "extra" ? `extra day (${deployExtraDay})` : "their own research day";
-    notify(`Deployed ${selectedTeacherIds.length} teacher(s) for ${regionName}`);
+    const dayLabel = deployDayMode === "extra"
+      ? `extra day (${deployExtraDay}, ${
+          deployExtraDate
+            ? formatDateShort(new Date(`${deployExtraDate}T00:00:00`))
+            : formatDateShort(nextDateForWeekday(deployExtraDay))
+        })`
+      : "their own research day (dates shown per teacher above)";
+    notify(`Deployed ${selectedTeacherIds.length} teacher(s) for ${regionName} — ${dayLabel}`);
     addLog(
       "Teachers deployed",
       `Deployed ${selectedTeacherIds.length} teacher(s) in ${regionName} on ${dayLabel}.`,
@@ -740,6 +816,50 @@ export default function Practicum() {
         a.regionName?.toLowerCase().includes(q)
     );
   }, [pivoted, search]);
+
+  /* Reports tab: "pick a date, see who's deployed" — matches the picked
+     date's weekday against each assignment's stored day name (see the
+     DATE HELPERS note above for why this is weekday-based, not exact-date). */
+  /* Reports tab: "pick a date, see who's deployed".
+     - Standing research-day deployments (isExtra false/undefined) recur
+       every week, so these still match by WEEKDAY, same as before.
+     - One-off "extra day" deployments (isExtra true) now carry a real
+       persisted deployDate, so these match the EXACT date picked instead
+       — this is what stops a one-off Monday deployment from reappearing
+       on every other Monday in the report.
+     Rows from before the deployDate/isExtra migration was run will have
+     isExtra = false by default and simply fall back to weekday matching,
+     same as the old behaviour. */
+  const toDateOnly = (value) => {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toISOString().slice(0, 10);
+  };
+
+  const dateDeployRegions = useMemo(() => {
+    const weekday = weekdayNameForDate(reportPickDate);
+    if (!weekday) return [];
+
+    const byRegion = new Map(); // regionName -> Map(teacherName -> [studentLabel, ...])
+    assignments
+      .filter((a) =>
+        a.isExtra ? toDateOnly(a.deployDate) === reportPickDate : a.day === weekday
+      )
+      .forEach((a) => {
+        const regionName = a.regionName || "Unassigned region";
+        if (!byRegion.has(regionName)) byRegion.set(regionName, new Map());
+        const teacherMap = byRegion.get(regionName);
+        const teacherName = a.teacherName || "Unknown teacher";
+        if (!teacherMap.has(teacherName)) teacherMap.set(teacherName, []);
+        teacherMap.get(teacherName).push(`${a.studentName}${a.schoolName ? ` — ${a.schoolName}` : ""}`);
+      });
+
+    return [...byRegion.entries()].map(([regionName, teacherMap]) => [
+      regionName,
+      Object.fromEntries(teacherMap),
+    ]);
+  }, [assignments, reportPickDate]);
 
   const groupedLetters = useMemo(
     () =>
@@ -1439,6 +1559,10 @@ export default function Practicum() {
                   {regionTeachers.map((t) => {
                     const checked = selectedTeacherIds.includes(t.id);
                     const goesOutToday = deployDayMode === "research" ? t.researchDay : deployExtraDay;
+                    const previewDate =
+                      deployDayMode === "extra" && deployExtraDate
+                        ? formatDateShort(new Date(`${deployExtraDate}T00:00:00`))
+                        : formatDateShort(nextDateForWeekday(goesOutToday));
                     return (
                       <label key={t.id} className={`pz-teacher-pick ${checked ? "checked" : ""}`}>
                         <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1450,6 +1574,7 @@ export default function Practicum() {
                         </span>
                         <span className="pz-badge pz-badge-info">
                           {deployDayMode === "research" ? "Research day" : "Extra day"}: {goesOutToday || "—"}
+                          {goesOutToday && <> · {previewDate}</>}
                         </span>
                       </label>
                     );
@@ -1564,17 +1689,37 @@ export default function Practicum() {
                 <p style={styles.hint}>No assignments yet — click Auto-assign to deploy trainees to teachers.</p>
               )}
 
-              {[...new Set(assignments.map((a) => a.day))].sort().map((day) => (
+              {[...new Set(assignments.map((a) => a.day))].sort().map((day) => {
+                const dayRows = assignments.filter((a) => a.day === day);
+                const extraRow = dayRows.find((a) => a.isExtra && a.deployDate);
+                const headerDate = extraRow
+                  ? formatDateShort(new Date(extraRow.deployDate))
+                  : (WEEKDAY_NAMES.includes(day) ? formatDateShort(nextDateForWeekday(day)) : null);
+                const teacherDayCounts = {};
+                dayRows.forEach((r) => {
+                  teacherDayCounts[r.teacherId] = (teacherDayCounts[r.teacherId] || 0) + 1;
+                });
+                return (
                 <div key={day}>
-                  <h3 style={styles.toggle}>Day {day}</h3>
+                  <h3 style={styles.toggle}>
+                    Day {day}
+                    {headerDate && ` · ${extraRow ? "" : "next "}${headerDate}`}
+                  </h3>
                   {[...new Set(assignments.filter((a) => a.day === day).map((a) => a.teacherId))].map((teacherId) => {
                     const teacherRows = assignments.filter((a) => a.day === day && a.teacherId === teacherId);
                     const teacherName = teacherRows[0]?.teacherName;
+                    const overCap = teacherRows.length > 7;
                     return (
                       <div key={teacherId} style={styles.teacherBlock}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <b>{teacherName}</b>
-                          <span style={styles.muted}>{teacherRows.length}/7 trainees</span>
+                          <span
+                            className={overCap ? "pz-badge pz-badge-warn" : undefined}
+                            style={overCap ? undefined : styles.muted}
+                            title={overCap ? "Over the 7-per-day cap — someone was added manually" : undefined}
+                          >
+                            {teacherRows.length}/7 trainees{overCap ? " (manually added)" : ""}
+                          </span>
                         </div>
                         <div style={styles.progressTrack}>
                           <div style={{ ...styles.progressFill, width: `${Math.min(100, (teacherRows.length / 7) * 100)}%` }} />
@@ -1587,10 +1732,16 @@ export default function Practicum() {
                                 style={styles.miniSelect}
                                 value={a.teacherId}
                                 onChange={(e) => reassign(a.assignmentId, Number(e.target.value))}
+                                title={isAdmin ? undefined : "Teachers at 7/7 are disabled — only an admin can manually add beyond the cap"}
                               >
-                                {meta.teachers.map((t) => (
-                                  <option key={t.id} value={t.id}>{t.name}</option>
-                                ))}
+                                {meta.teachers.map((t) => {
+                                  const isFull = (teacherDayCounts[t.id] || 0) >= MAX_PER_TEACHER_CLIENT && t.id !== a.teacherId;
+                                  return (
+                                    <option key={t.id} value={t.id} disabled={isFull && !isAdmin}>
+                                      {t.name}{isFull ? " (7/7 full)" : ""}
+                                    </option>
+                                  );
+                                })}
                               </select>
                               <button
                                 style={styles.dangerBtnSm}
@@ -1605,7 +1756,8 @@ export default function Practicum() {
                     );
                   })}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -1669,6 +1821,59 @@ export default function Practicum() {
           )}
 
           {/* ===================== REPORTS ===================== */}
+          {activeTab === "reports" && (
+            <div className="pz-card" style={{ ...styles.card, marginBottom: 16 }}>
+              <h2 style={styles.sectionTitle}>Deployments on a date</h2>
+              <p style={styles.hint}>
+                Pick any date — we work out its weekday (e.g. a Monday) and show which regions and
+                teachers have a deployment on that weekday for the selected session, with the
+                students under each teacher. Standing research-day deployments recur every week, so
+                they show up on every matching date; one-off "extra day" deployments now use their
+                exact saved date, so they only show up on the date they were actually deployed for.
+              </p>
+
+              <input
+                style={{ ...styles.input, maxWidth: 220 }}
+                type="date"
+                value={reportPickDate}
+                onChange={(e) => setReportPickDate(e.target.value)}
+              />
+              {reportPickDate && (
+                <p style={styles.muted}>
+                  {weekdayNameForDate(reportPickDate)}
+                  {WEEKDAY_NAMES.includes(weekdayNameForDate(reportPickDate))
+                    ? ` — ${formatDateShort(new Date(`${reportPickDate}T00:00:00`))}`
+                    : " (no practicum deployments run on a Sunday)"}
+                </p>
+              )}
+
+              {dateDeployRegions.length === 0 && (
+                <p style={styles.hint}>No teachers are deployed on this weekday for the current session.</p>
+              )}
+
+              {dateDeployRegions.map(([regionName, teacherMap]) => (
+                <div key={regionName} style={styles.teacherBlock}>
+                  <b>{regionName || "Unassigned region"}</b>
+                  {Object.entries(teacherMap).map(([teacherName, students]) => (
+                    <div key={teacherName} style={{ marginTop: 8, marginLeft: 10 }}>
+                      <div>
+                        {teacherName}{" "}
+                        <span style={styles.muted}>
+                          ({students.length} student{students.length === 1 ? "" : "s"})
+                        </span>
+                      </div>
+                      <ul style={{ margin: "4px 0 0 18px" }}>
+                        {students.map((s, i) => (
+                          <li key={i} style={styles.muted}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
           {activeTab === "reports" && (
             <div className="pz-card" style={styles.card}>
               <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>

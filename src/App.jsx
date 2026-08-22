@@ -29,6 +29,8 @@ import AdminEAssessments from "./pages/AdminEAssessments";
 import AdminNotifications from "./pages/AdminNotifications";
 import AdminNotificationSettings from "./pages/AdminNotificationSettings";
 import StudentCouncil from "./pages/StudentCouncil";
+import GatePage from "./pages/GatePage";
+import KitchenPage from "./pages/KitchenPage";
 
 /* =========================================================
    AUTH
@@ -567,6 +569,30 @@ export default function App() {
             page="Student Council"
           >
             <StudentCouncil />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/gate"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="Gate"
+          >
+            <GatePage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/kitchen"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="Kitchen"
+          >
+            <KitchenPage />
           </ProtectedRoute>
         }
       />
