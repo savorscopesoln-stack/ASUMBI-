@@ -1,7 +1,73 @@
 import React, { useEffect, useState, useRef } from "react";
 import API from "../api";
+import { useTheme } from "../context/ThemeContext";
+
+/* Shares the single design-token stylesheet (CSS variables on
+   :root / [data-theme='dark']) that Dashboard owns, instead of this
+   page's old hardcoded dark maroon palette. injectDesignTokens() is
+   idempotent (guarded by the "dash-tokens" id) so it's safe to call
+   again here in case this page is the first one mounted. */
+const injectDesignTokens = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    body { background: var(--bg); transition: background-color .2s ease; }
+  `;
+  document.head.appendChild(el);
+};
 
 export default function MealAdmin() {
+  const { theme, toggleTheme } = useTheme();
+
   const [students, setStudents] = useState([]);
   const [cards, setCards] = useState([]);
   const [meals, setMeals] = useState(3);
@@ -16,6 +82,11 @@ export default function MealAdmin() {
   const [cardMealInputs, setCardMealInputs] = useState({});
 
   const intervalRef = useRef(null);
+
+  /* ================= THEME TOKENS ================= */
+  useEffect(() => {
+    injectDesignTokens();
+  }, []);
 
   /* ================= LOAD ================= */
   useEffect(() => {
@@ -110,68 +181,68 @@ export default function MealAdmin() {
   ).length;
 
   /* ================= ASSIGN ================= */
-/* ================= ASSIGN ================= */
-const assign = async (student_id) => {
-  try {
-    setLoading(true);
+  const assign = async (student_id) => {
+    try {
+      setLoading(true);
 
-    const totalMeals =
-      Number(meals) * Number(days);
+      const totalMeals =
+        Number(meals) * Number(days);
 
-    await API.post("/meals/assign", {
-      student_id,
+      await API.post("/meals/assign", {
+        student_id,
 
-      meals_per_day: Number(meals),
+        meals_per_day: Number(meals),
 
-      number_of_days: Number(days),
+        number_of_days: Number(days),
 
-      meals_remaining: totalMeals,
-    });
+        meals_remaining: totalMeals,
+      });
 
-    await loadStudents();
-    await loadCards();
+      await loadStudents();
+      await loadCards();
 
-  } catch (err) {
-    alert(
-      err.response?.data?.message ||
-        "Assignment failed"
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+    } catch (err) {
+      alert(
+        err.response?.data?.message ||
+          "Assignment failed"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const assignAll = async () => {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const totalMeals =
-      Number(meals) * Number(days);
+      const totalMeals =
+        Number(meals) * Number(days);
 
-    const results = await Promise.allSettled(
-      students.map((s) =>
-        API.post("/meals/assign", {
-          student_id: s.id,
+      const results = await Promise.allSettled(
+        students.map((s) =>
+          API.post("/meals/assign", {
+            student_id: s.id,
 
-          meals_per_day: Number(meals),
+            meals_per_day: Number(meals),
 
-          number_of_days: Number(days),
+            number_of_days: Number(days),
 
-          meals_remaining: totalMeals,
-        })
-      )
-    );
+            meals_remaining: totalMeals,
+          })
+        )
+      );
 
-    console.log("Bulk results:", results);
+      console.log("Bulk results:", results);
 
-    await loadStudents();
-    await loadCards();
+      await loadStudents();
+      await loadCards();
 
-  } catch (err) {
-    alert("Bulk assign failed");
-  } finally {
-    setLoading(false);
-  }
-};
+    } catch (err) {
+      alert("Bulk assign failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   /* ================= ACTIONS ================= */
   const suspend = async (id) => {
@@ -203,12 +274,13 @@ const assign = async (student_id) => {
   };
 
   const statusColor = (status) => {
-    if (status === "active") return "#22c55e";
-    if (status === "suspended") return "#f59e0b";
-    if (status === "inactive") return "#ef4444";
-    return "#94a3b8";
+    if (status === "active") return "var(--success)";
+    if (status === "suspended") return "var(--warning)";
+    if (status === "inactive") return "var(--destructive)";
+    return "var(--text-muted)";
   };
-    const deleteAllCards = async () => {
+
+  const deleteAllCards = async () => {
     try {
       const confirmDelete = window.confirm(
         "Are you sure you want to delete ALL meal cards?"
@@ -269,6 +341,15 @@ const assign = async (student_id) => {
               placeholder="🔍 Search student, admission or card..."
               style={styles.search}
             />
+
+            <button
+              onClick={toggleTheme}
+              style={styles.themeToggle}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? "☀" : "🌙"}
+            </button>
           </div>
         </div>
 
@@ -336,7 +417,7 @@ const assign = async (student_id) => {
 
         <div style={styles.card}>
           <div style={styles.cardHeader}>
-            <h3>⚙️ Meal Assignment Settings</h3>
+            <h3 style={styles.cardHeaderTitle}>⚙️ Meal Assignment Settings</h3>
 
             <div style={styles.badge}>
               {students.length} Students
@@ -344,60 +425,61 @@ const assign = async (student_id) => {
           </div>
 
           <div style={styles.settingsRow}>
-  <div style={styles.field}>
-    <label style={styles.label}>
-      Meals Per Day
-    </label>
+    <div style={styles.field}>
+      <label style={styles.label}>
+        Meals Per Day
+      </label>
 
-    <input
-      type="number"
-      value={meals}
-      onChange={(e) =>
-        setMeals(Number(e.target.value))
-      }
-      style={styles.input}
-    /><div style={styles.field}>
-  <label style={styles.label}>
-    Number Of Days
-  </label>
+      <input
+        type="number"
+        value={meals}
+        onChange={(e) =>
+          setMeals(Number(e.target.value))
+        }
+        style={styles.input}
+      />
+    </div>
+    <div style={styles.field}>
+      <label style={styles.label}>
+        Number Of Days
+      </label>
 
-  <input
-    type="number"
-    value={days}
-    onChange={(e) =>
-      setDays(Number(e.target.value))
-    }
-    style={styles.input}
-  />
-</div>
+      <input
+        type="number"
+        value={days}
+        onChange={(e) =>
+          setDays(Number(e.target.value))
+        }
+        style={styles.input}
+      />
+    </div>
+
+    <button
+      onClick={assignAll}
+      disabled={loading}
+      style={styles.primaryBtn}
+    >
+      {loading
+        ? "Processing..."
+        : "⚡ Assign All Cards"}
+    </button>
+
+    {/* DELETE ALL BUTTON */}
+    <button
+      onClick={deleteAllCards}
+      disabled={loading}
+      style={styles.deleteAllBtn}
+    >
+      🗑️ Delete All Cards
+    </button>
   </div>
-
-  <button
-    onClick={assignAll}
-    disabled={loading}
-    style={styles.primaryBtn}
-  >
-    {loading
-      ? "Processing..."
-      : "⚡ Assign All Cards"}
-  </button>
-
-  {/* DELETE ALL BUTTON */}
-  <button
-    onClick={deleteAllCards}
-    disabled={loading}
-    style={styles.deleteAllBtn}
-  >
-    🗑️ Delete All Cards
-  </button>
-</div>
         </div>
 
         {/* ================= STUDENTS ================= */}
 
         <div style={styles.card}>
           <div style={styles.cardHeader}>
-            <h3>
+            <h3 style={styles.cardHeaderTitle}>
               👤 Active Students ({students.length})
             </h3>
 
@@ -460,7 +542,7 @@ const assign = async (student_id) => {
 
         <div style={styles.card}>
           <div style={styles.cardHeader}>
-            <h3>
+            <h3 style={styles.cardHeaderTitle}>
               🍽️ Assigned Meal Cards ({cards.length})
             </h3>
 
@@ -596,26 +678,27 @@ const assign = async (student_id) => {
   );
 }
 
-/* ================= STYLES ================= */
+/* ================= STYLES =================
+   All colors reference the shared design-token CSS variables, so this
+   page follows the same light/dark palette as Dashboard, Practicum,
+   and Users. */
 
 const styles = {
   layout: {
     minHeight: "100vh",
-    background:
-      "linear-gradient(135deg,#0f0f0f 0%, #1b0a0a 45%, #090909 100%)",
-    color: "#fff",
-    fontFamily: "'Inter', sans-serif",
+    background: "var(--bg)",
+    color: "var(--text)",
+    fontFamily: "'Inter', system-ui, sans-serif",
   },
   deleteAllBtn: {
     padding: "14px 20px",
-    borderRadius: 14,
-    border: "none",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--destructive)",
     cursor: "pointer",
     fontWeight: 700,
     color: "#fff",
-    background:
-      "linear-gradient(135deg,#7f1d1d,#ef4444)",
-    boxShadow: "0 8px 20px rgba(239,68,68,0.28)",
+    background: "var(--destructive)",
+    boxShadow: "var(--shadow-sm)",
   },
   main: {
     padding: 35,
@@ -634,45 +717,57 @@ const styles = {
 
   title: {
     margin: 0,
-    fontSize: 38,
+    fontSize: 32,
     fontWeight: 800,
+    color: "var(--text)",
   },
 
   subtitle: {
-    color: "#9ca3af",
+    color: "var(--text-secondary)",
     marginTop: 8,
-    fontSize: 15,
+    fontSize: 14,
   },
 
   headerRight: {
     display: "flex",
     alignItems: "center",
-    gap: 14,
+    gap: 10,
   },
 
   search: {
-    width: 340,
-    padding: 15,
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.05)",
-    color: "#fff",
+    width: 320,
+    padding: 12,
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text)",
     outline: "none",
-    fontSize: 14,
-    backdropFilter: "blur(12px)",
+    fontSize: 13.5,
+  },
+
+  themeToggle: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    width: 40,
+    height: 40,
+    borderRadius: "var(--radius-sm)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    fontSize: 15,
   },
 
   backBtn: {
     marginTop: 18,
-    padding: "12px 18px",
-    borderRadius: 12,
-    border: "none",
+    padding: "10px 16px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
     cursor: "pointer",
     fontWeight: 700,
-    color: "#fff",
-    background:
-      "linear-gradient(135deg,#991b1b,#dc2626)",
-    boxShadow: "0 8px 20px rgba(220,38,38,0.25)",
+    color: "var(--text)",
+    background: "var(--card)",
   },
 
   /* ================= ANALYTICS ================= */
@@ -681,93 +776,97 @@ const styles = {
     display: "grid",
     gridTemplateColumns:
       "repeat(auto-fit,minmax(240px,1fr))",
-    gap: 20,
-    marginBottom: 28,
+    gap: 16,
+    marginBottom: 24,
   },
 
   analyticsCard: {
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.06)",
-    borderRadius: 24,
-    padding: 24,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: 20,
     display: "flex",
     alignItems: "center",
-    gap: 18,
-    backdropFilter: "blur(14px)",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+    gap: 16,
+    boxShadow: "var(--shadow-sm)",
   },
 
   analyticsIcon: {
-    width: 65,
-    height: 65,
-    borderRadius: 18,
+    width: 52,
+    height: 52,
+    borderRadius: "var(--radius-sm)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 28,
-    background:
-      "linear-gradient(135deg,#991b1b,#ef4444)",
-    boxShadow: "0 10px 25px rgba(239,68,68,0.25)",
+    fontSize: 24,
+    background: "var(--primary-tint)",
   },
 
   analyticsLabel: {
     margin: 0,
-    color: "#9ca3af",
-    fontSize: 14,
+    color: "var(--text-secondary)",
+    fontSize: 12.5,
+    fontWeight: 600,
   },
 
   analyticsValue: {
-    margin: "8px 0 0",
-    fontSize: 30,
+    margin: "6px 0 0",
+    fontSize: 26,
     fontWeight: 800,
+    color: "var(--text)",
   },
 
   /* ================= CARDS ================= */
 
   card: {
-    background: "rgba(255,255,255,0.05)",
-    backdropFilter: "blur(14px)",
-    borderRadius: 24,
-    padding: 24,
-    border: "1px solid rgba(255,255,255,0.06)",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-    marginBottom: 24,
+    background: "var(--card)",
+    borderRadius: "var(--radius)",
+    padding: 22,
+    border: "1px solid var(--border)",
+    boxShadow: "var(--shadow-sm)",
+    marginBottom: 20,
   },
 
   cardHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 20,
     flexWrap: "wrap",
     gap: 12,
   },
 
+  cardHeaderTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 800,
+    color: "var(--text)",
+  },
+
   badge: {
-    background: "rgba(220,38,38,0.15)",
-    color: "#fca5a5",
-    padding: "8px 14px",
+    background: "var(--primary-tint)",
+    color: "var(--primary)",
+    padding: "6px 12px",
     borderRadius: 999,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
   },
 
   toggleBtn: {
-    padding: "10px 16px",
-    borderRadius: 12,
-    border: "none",
+    padding: "8px 14px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
     cursor: "pointer",
     fontWeight: 700,
-    background:
-      "linear-gradient(135deg,#1e293b,#334155)",
-    color: "#fff",
+    background: "var(--card-elevated)",
+    color: "var(--text)",
   },
 
   /* ================= FORM ================= */
 
   settingsRow: {
     display: "flex",
-    gap: 20,
+    gap: 16,
     alignItems: "end",
     flexWrap: "wrap",
   },
@@ -775,94 +874,88 @@ const styles = {
   field: {
     display: "flex",
     flexDirection: "column",
-    gap: 8,
+    gap: 6,
   },
 
   label: {
-    fontSize: 13,
-    color: "#cbd5e1",
-    fontWeight: 600,
+    fontSize: 12,
+    color: "var(--text-secondary)",
+    fontWeight: 700,
   },
 
   input: {
-    padding: 14,
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(0,0,0,0.35)",
-    color: "#fff",
+    padding: 12,
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text)",
     outline: "none",
     minWidth: 120,
-    fontSize: 14,
+    fontSize: 13.5,
   },
 
   /* ================= BUTTONS ================= */
 
   primaryBtn: {
-    padding: "14px 20px",
-    borderRadius: 14,
-    border: "none",
+    padding: "12px 18px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--primary)",
     cursor: "pointer",
     fontWeight: 700,
     color: "#fff",
-    background:
-      "linear-gradient(135deg,#991b1b,#dc2626)",
-    boxShadow: "0 8px 20px rgba(220,38,38,0.25)",
+    background: "var(--primary)",
+    boxShadow: "var(--shadow-sm)",
   },
 
   blueBtn: {
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "none",
+    padding: "10px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--info)",
     cursor: "pointer",
     fontWeight: 700,
     color: "#fff",
-    background:
-      "linear-gradient(135deg,#1d4ed8,#2563eb)",
+    background: "var(--info)",
   },
 
   orangeBtn: {
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "none",
+    padding: "10px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--warning)",
     cursor: "pointer",
     fontWeight: 700,
     color: "#fff",
-    background:
-      "linear-gradient(135deg,#c2410c,#f59e0b)",
+    background: "var(--warning)",
   },
 
   redBtn: {
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "none",
+    padding: "10px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--destructive)",
     cursor: "pointer",
     fontWeight: 700,
     color: "#fff",
-    background:
-      "linear-gradient(135deg,#991b1b,#ef4444)",
+    background: "var(--destructive)",
   },
 
   greenBtn: {
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "none",
+    padding: "10px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--success)",
     cursor: "pointer",
     fontWeight: 700,
     color: "#fff",
-    background:
-      "linear-gradient(135deg,#15803d,#22c55e)",
+    background: "var(--success)",
   },
 
   assignBtn: {
-    marginTop: 16,
+    marginTop: 14,
     width: "100%",
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "none",
+    padding: "10px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--primary)",
     cursor: "pointer",
     fontWeight: 700,
-    background:
-      "linear-gradient(135deg,#991b1b,#dc2626)",
+    background: "var(--primary)",
     color: "#fff",
   },
 
@@ -871,127 +964,130 @@ const styles = {
   grid: {
     display: "grid",
     gridTemplateColumns:
-      "repeat(auto-fit,minmax(320px,1fr))",
-    gap: 20,
+      "repeat(auto-fit,minmax(300px,1fr))",
+    gap: 16,
   },
 
   /* ================= STUDENTS ================= */
 
   studentCard: {
-    background: "rgba(0,0,0,0.28)",
-    border: "1px solid rgba(255,255,255,0.05)",
-    borderRadius: 22,
-    padding: 22,
+    background: "var(--card-elevated)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: 18,
   },
 
   studentTop: {
     display: "flex",
     alignItems: "center",
-    gap: 16,
+    gap: 14,
   },
 
   avatar: {
-    width: 58,
-    height: 58,
+    width: 50,
+    height: 50,
     borderRadius: "50%",
-    background:
-      "linear-gradient(135deg,#991b1b,#ef4444)",
+    background: "var(--primary)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     fontWeight: 800,
-    fontSize: 20,
-    boxShadow: "0 8px 18px rgba(239,68,68,0.3)",
+    fontSize: 18,
+    color: "#fff",
   },
 
   studentName: {
     margin: 0,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 700,
+    color: "var(--text)",
   },
 
   studentMeta: {
     margin: "4px 0",
-    color: "#9ca3af",
-    fontSize: 13,
+    color: "var(--text-muted)",
+    fontSize: 12.5,
   },
 
   /* ================= CARD BOX ================= */
 
   cardBox: {
-    background: "rgba(0,0,0,0.28)",
-    border: "1px solid rgba(255,255,255,0.05)",
-    borderRadius: 22,
-    padding: 22,
-    transition: "0.3s",
+    background: "var(--card-elevated)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: 18,
+    transition: "opacity 0.2s ease",
   },
 
   inactiveCard: {
-    opacity: 0.45,
-    filter: "grayscale(100%)",
+    opacity: 0.5,
   },
 
   cardTop: {
     display: "flex",
     justifyContent: "space-between",
     gap: 12,
-    marginBottom: 20,
+    marginBottom: 16,
     flexWrap: "wrap",
   },
 
   cardName: {
     margin: 0,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 700,
+    color: "var(--text)",
   },
 
   cardMeta: {
-    color: "#9ca3af",
-    fontSize: 13,
+    color: "var(--text-muted)",
+    fontSize: 12.5,
     marginTop: 6,
   },
 
   statusBadge: {
-    padding: "10px 16px",
+    padding: "6px 12px",
     borderRadius: 999,
     textTransform: "uppercase",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
-    background: "rgba(255,255,255,0.03)",
+    background: "var(--card)",
     height: "fit-content",
   },
 
   cardStats: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: 14,
-    marginBottom: 20,
+    gap: 12,
+    marginBottom: 16,
   },
 
   statBox: {
-    background: "rgba(255,255,255,0.04)",
-    borderRadius: 14,
-    padding: 16,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)",
+    padding: 12,
     display: "flex",
     flexDirection: "column",
-    gap: 8,
-    color: "#d1d5db",
+    gap: 6,
+    color: "var(--text-secondary)",
+    fontSize: 12.5,
   },
 
   btnGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: 12,
-    marginTop: 20,
+    gap: 10,
+    marginTop: 16,
   },
 
   /* ================= EMPTY ================= */
 
   emptyState: {
-    padding: 30,
+    padding: 28,
     textAlign: "center",
-    color: "#9ca3af",
-    borderRadius: 18,
-    background: "rgba(0,0,0,0.25)",
+    color: "var(--text-muted)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--card-elevated)",
+    border: "1px solid var(--border)",
   },
 };

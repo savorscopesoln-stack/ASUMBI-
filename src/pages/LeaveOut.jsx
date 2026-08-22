@@ -1,6 +1,71 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../api";
 import { getStoredUser } from "../permissions";
+import { useTheme } from "../context/ThemeContext";
+
+/* Shares the single design-token stylesheet (CSS variables on
+   :root / [data-theme='dark']) that Dashboard owns, instead of this
+   page's old hardcoded dark maroon palette. injectDesignTokens() is
+   idempotent (guarded by the "dash-tokens" id) so it's safe to call
+   again here in case this page is the first one mounted. */
+const injectDesignTokens = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    body { background: var(--bg); transition: background-color .2s ease; }
+    @keyframes leaveSpin { to { transform: rotate(360deg); } }
+  `;
+  document.head.appendChild(el);
+};
 
 const LEAVE_TYPE_LABELS = {
   short_stay: "Short Stay",
@@ -9,8 +74,8 @@ const LEAVE_TYPE_LABELS = {
 };
 
 const LEAVE_TYPE_COLOR = (t) => {
-  if (t === "emergency") return "#ef4444";
-  if (t === "long") return "#3b82f6";
+  if (t === "emergency") return "var(--destructive)";
+  if (t === "long") return "var(--info)";
   return "#8b5cf6";
 };
 
@@ -29,12 +94,12 @@ const STATUS_LABELS = {
 };
 
 const STATUS_COLOR = (s) => {
-  if (s === "approved" || s === "admin_granted") return "#22c55e";
-  if (s === "rejected" || s === "denied") return "#ef4444";
-  if (s === "cancelled") return "#9ca3af";
-  if (s === "expired") return "#9ca3af";
-  if (s === "revoked") return "#6b7280";
-  return "#facc15"; // any pending_* stage
+  if (s === "approved" || s === "admin_granted") return "var(--success)";
+  if (s === "rejected" || s === "denied") return "var(--destructive)";
+  if (s === "cancelled") return "var(--text-muted)";
+  if (s === "expired") return "var(--text-muted)";
+  if (s === "revoked") return "var(--text-secondary)";
+  return "var(--warning)"; // any pending_* stage
 };
 
 const PENDING_STATUSES = ["pending", "pending_subadmin2", "pending_final", "pending_admin"];
@@ -51,6 +116,12 @@ const DURATION_OPTIONS = [
 ];
 
 export default function LeaveOutAdmin() {
+  const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    injectDesignTokens();
+  }, []);
+
   const user = getStoredUser();
   const role = String(user?.role || "").toLowerCase();
   const isAdmin = role === "admin";
@@ -276,13 +347,21 @@ export default function LeaveOutAdmin() {
               onChange={(e) => setSearch(e.target.value)}
               style={styles.search}
             />
+            <button
+              onClick={toggleTheme}
+              style={styles.themeToggle}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? "☀" : "🌙"}
+            </button>
           </div>
         </div>
 
         {loading ? (
           <div style={styles.loaderWrap}>
             <div style={styles.loader}></div>
-            <p style={{ marginTop: 20 }}>Loading Leave Dashboard...</p>
+            <p style={{ marginTop: 20, color: "var(--text-secondary)" }}>Loading Leave Dashboard...</p>
           </div>
         ) : (
           <>
@@ -290,7 +369,7 @@ export default function LeaveOutAdmin() {
             <div style={isSubAdmin2 ? styles.topGridSingle : styles.topGrid}>
               <div style={styles.card}>
                 <div style={styles.cardHeader}>
-                  <h3>⚙️ Approval Settings</h3>
+                  <h3 style={styles.cardHeaderTitle}>⚙️ Approval Settings</h3>
                 </div>
 
                 <div style={styles.field}>
@@ -340,7 +419,7 @@ export default function LeaveOutAdmin() {
               {!isSubAdmin2 && (
               <div style={styles.card}>
                 <div style={styles.cardHeader}>
-                  <h3>📊 Leave Analytics</h3>
+                  <h3 style={styles.cardHeaderTitle}>📊 Leave Analytics</h3>
                 </div>
 
                 <div style={styles.analyticsGrid}>
@@ -348,9 +427,9 @@ export default function LeaveOutAdmin() {
                     <div key={a.student_id} style={styles.analyticsCard}>
                       <h4 style={styles.analyticsName}>{getStudentName(a.student_id)}</h4>
                       <div style={styles.analyticsRow}><span>Total</span><strong>{a.totalLeaves}</strong></div>
-                      <div style={styles.analyticsRow}><span style={{ color: "#22c55e" }}>Approved</span><strong>{a.approvedLeaves}</strong></div>
-                      <div style={styles.analyticsRow}><span style={{ color: "#facc15" }}>Pending</span><strong>{a.pendingLeaves}</strong></div>
-                      <div style={styles.analyticsRow}><span style={{ color: "#ef4444" }}>Rejected</span><strong>{a.deniedLeaves}</strong></div>
+                      <div style={styles.analyticsRow}><span style={{ color: "var(--success)" }}>Approved</span><strong>{a.approvedLeaves}</strong></div>
+                      <div style={styles.analyticsRow}><span style={{ color: "var(--warning)" }}>Pending</span><strong>{a.pendingLeaves}</strong></div>
+                      <div style={styles.analyticsRow}><span style={{ color: "var(--destructive)" }}>Rejected</span><strong>{a.deniedLeaves}</strong></div>
                     </div>
                   ))}
                 </div>
@@ -361,7 +440,7 @@ export default function LeaveOutAdmin() {
             {/* ================= REQUESTS TABLE ================= */}
             <div style={styles.card}>
               <div style={styles.cardHeader}>
-                <h3>📋 {isSubAdmin2 ? "Emergency Leave Requests" : "Leave Requests"}</h3>
+                <h3 style={styles.cardHeaderTitle}>📋 {isSubAdmin2 ? "Emergency Leave Requests" : "Leave Requests"}</h3>
                 {/* No count badge for Sub-Admin 2 — "even the counter or
                     number of leaves shouldn't show". */}
                 {!isSubAdmin2 && <div style={styles.badge}>{filteredLeaves.length} Requests</div>}
@@ -446,8 +525,8 @@ export default function LeaveOutAdmin() {
       {rejectModal && (
         <div style={styles.modalOverlay} onClick={() => setRejectModal(null)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Reject Leave Request</h3>
-            <p style={{ color: "#9ca3af", fontSize: 13.5 }}>
+            <h3 style={{ marginTop: 0, color: "var(--text)" }}>Reject Leave Request</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>
               This will notify the student with the reason below. This cannot be undone.
             </p>
             <textarea
@@ -468,8 +547,8 @@ export default function LeaveOutAdmin() {
       {grantModal && (
         <div style={styles.modalOverlay} onClick={() => setGrantModal(null)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>⚡ Force Give Leave</h3>
-            <p style={{ color: "#9ca3af", fontSize: 13.5 }}>
+            <h3 style={{ marginTop: 0, color: "var(--text)" }}>⚡ Force Give Leave</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>
               Grants leave immediately with no approval workflow. Recorded as Admin Granted with your account and timestamp.
             </p>
 
@@ -568,100 +647,118 @@ function ApprovalHistory({ leave: l }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "6px 4px" }}>
       {l.deny_reason && l.status === "rejected" && (
-        <div style={{ color: "#fca5a5", fontSize: 13 }}>Reason: {l.deny_reason}</div>
+        <div style={{ color: "var(--destructive)", fontSize: 13 }}>Reason: {l.deny_reason}</div>
       )}
       {rows.map((r, i) => (
-        <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: r.bad ? "#fca5a5" : "#d1d5db", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 6 }}>
+        <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: r.bad ? "var(--destructive)" : "var(--text-secondary)", borderBottom: "1px solid var(--border)", paddingBottom: 6 }}>
           <span><strong>{r.label}</strong> — {r.who}</span>
-          <span style={{ color: "#9ca3af" }}>{r.when || "—"}</span>
+          <span style={{ color: "var(--text-muted)" }}>{r.when || "—"}</span>
         </div>
       ))}
     </div>
   );
 }
 
-/* ================= STYLES ================= */
+/* ================= STYLES =================
+   All colors reference the shared design-token CSS variables, so this
+   page follows the same light/dark palette as Dashboard, Practicum,
+   Meals, and Users. */
 
 const styles = {
   layout: {
     display: "flex",
     minHeight: "100vh",
-    background: "linear-gradient(135deg,#0f0f0f 0%, #1b0a0a 45%, #090909 100%)",
-    color: "#fff",
+    background: "var(--bg)",
+    color: "var(--text)",
     fontFamily: "'Inter', sans-serif",
   },
   main: { flex: 1, padding: 35, maxWidth: "100%", overflowX: "hidden" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30, flexWrap: "wrap", gap: 20 },
-  title: { margin: 0, fontSize: 32, fontWeight: 800 },
-  subtitle: { marginTop: 8, color: "#9ca3af", fontSize: 15 },
+  title: { margin: 0, fontSize: 30, fontWeight: 800, color: "var(--text)" },
+  subtitle: { marginTop: 8, color: "var(--text-secondary)", fontSize: 14 },
   backBtn: {
-    marginTop: 14, padding: "10px 18px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 700,
-    color: "#fff", background: "linear-gradient(135deg,#991b1b,#dc2626)", boxShadow: "0 8px 20px rgba(220,38,38,0.25)",
+    marginTop: 14, padding: "10px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", cursor: "pointer", fontWeight: 700,
+    color: "var(--text)", background: "var(--card)",
     display: "flex", alignItems: "center", gap: 8,
   },
-  headerRight: { display: "flex", alignItems: "center", gap: 15, flexWrap: "wrap" },
+  headerRight: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
   forceGrantBtn: {
-    padding: "12px 18px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 700, color: "#111",
-    background: "linear-gradient(135deg,#fde047,#f59e0b)", boxShadow: "0 8px 20px rgba(245,158,11,0.3)",
+    padding: "12px 18px", borderRadius: "var(--radius-sm)", border: "1px solid var(--warning)", cursor: "pointer", fontWeight: 700, color: "#111",
+    background: "var(--warning-tint)", boxShadow: "var(--shadow-sm)",
   },
   search: {
-    width: 280, padding: 13, borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.05)", color: "#fff", outline: "none", fontSize: 14,
+    width: 260, padding: 11, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
+    background: "var(--card)", color: "var(--text)", outline: "none", fontSize: 13.5,
   },
-  topGrid: { display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24, marginBottom: 28 },
-  topGridSingle: { display: "grid", gridTemplateColumns: "1fr", gap: 24, marginBottom: 28, maxWidth: 480 },
+  themeToggle: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    width: 38,
+    height: 38,
+    borderRadius: "var(--radius-sm)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    fontSize: 15,
+    flexShrink: 0,
+  },
+  topGrid: { display: "grid", gridTemplateColumns: "1fr 2fr", gap: 20, marginBottom: 24 },
+  topGridSingle: { display: "grid", gridTemplateColumns: "1fr", gap: 20, marginBottom: 24, maxWidth: 480 },
   card: {
-    background: "rgba(255,255,255,0.05)", backdropFilter: "blur(14px)", borderRadius: 24, padding: 24,
-    border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+    background: "var(--card)", borderRadius: "var(--radius)", padding: 22,
+    border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)",
   },
-  cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 },
-  badge: { background: "rgba(220,38,38,0.15)", color: "#fca5a5", padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 700 },
-  field: { marginBottom: 18 },
-  label: { display: "block", marginBottom: 8, color: "#d1d5db", fontSize: 13, fontWeight: 600 },
+  cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 },
+  cardHeaderTitle: { margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" },
+  badge: { background: "var(--primary-tint)", color: "var(--primary)", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700 },
+  field: { marginBottom: 16 },
+  label: { display: "block", marginBottom: 6, color: "var(--text-secondary)", fontSize: 12, fontWeight: 700 },
   input: {
-    width: "100%", padding: 12, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(0,0,0,0.35)", color: "#fff", outline: "none", fontSize: 14, boxSizing: "border-box",
+    width: "100%", padding: 11, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
+    background: "var(--card)", color: "var(--text)", outline: "none", fontSize: 13.5, boxSizing: "border-box",
   },
   textarea: {
-    width: "100%", minHeight: 90, padding: 12, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(0,0,0,0.35)", color: "#fff", outline: "none", resize: "vertical", fontSize: 14, boxSizing: "border-box",
+    width: "100%", minHeight: 90, padding: 11, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
+    background: "var(--card)", color: "var(--text)", outline: "none", resize: "vertical", fontSize: 13.5, boxSizing: "border-box",
   },
-  analyticsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 18 },
-  analyticsCard: { background: "rgba(0,0,0,0.28)", padding: 18, borderRadius: 18, border: "1px solid rgba(255,255,255,0.05)" },
-  analyticsName: { marginTop: 0, marginBottom: 16, fontSize: 16, fontWeight: 700 },
-  analyticsRow: { display: "flex", justifyContent: "space-between", marginBottom: 10, color: "#d1d5db", fontSize: 14 },
+  analyticsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14 },
+  analyticsCard: { background: "var(--card-elevated)", padding: 16, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" },
+  analyticsName: { marginTop: 0, marginBottom: 14, fontSize: 15, fontWeight: 700, color: "var(--text)" },
+  analyticsRow: { display: "flex", justifyContent: "space-between", marginBottom: 8, color: "var(--text-secondary)", fontSize: 13.5 },
 
   tableWrap: { overflowX: "auto" },
   table: { width: "100%", borderCollapse: "collapse", minWidth: 780 },
-  th: { textAlign: "left", padding: "12px 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, color: "#9ca3af", borderBottom: "1px solid rgba(255,255,255,0.1)" },
-  tr: { borderBottom: "1px solid rgba(255,255,255,0.05)" },
-  td: { padding: "14px 10px", fontSize: 13.5, verticalAlign: "top" },
-  emptyCell: { padding: "30px 10px", textAlign: "center", color: "#9ca3af" },
-  historyCell: { padding: "6px 14px 16px", background: "rgba(0,0,0,0.2)" },
+  th: { textAlign: "left", padding: "10px 10px", fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)", borderBottom: "1px solid var(--border)" },
+  tr: { borderBottom: "1px solid var(--border)" },
+  td: { padding: "13px 10px", fontSize: 13.5, verticalAlign: "top", color: "var(--text)" },
+  emptyCell: { padding: "30px 10px", textAlign: "center", color: "var(--text-muted)" },
+  historyCell: { padding: "6px 14px 16px", background: "var(--card-elevated)" },
 
-  studentName: { fontWeight: 700, fontSize: 14.5 },
-  studentId: { color: "#9ca3af", fontSize: 12, marginTop: 2 },
+  studentName: { fontWeight: 700, fontSize: 14, color: "var(--text)" },
+  studentId: { color: "var(--text-muted)", fontSize: 12, marginTop: 2 },
   typeBadge: { display: "inline-block", padding: "3px 9px", borderRadius: 20, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" },
-  grantedTag: { marginTop: 4, fontSize: 10.5, color: "#fde047", fontWeight: 700 },
-  status: { padding: "6px 12px", borderRadius: 999, textTransform: "uppercase", fontWeight: 700, fontSize: 11, background: "rgba(255,255,255,0.03)", whiteSpace: "nowrap" },
+  grantedTag: { marginTop: 4, fontSize: 10.5, color: "var(--warning)", fontWeight: 700 },
+  status: { padding: "6px 12px", borderRadius: 999, textTransform: "uppercase", fontWeight: 700, fontSize: 11, background: "var(--card-elevated)", whiteSpace: "nowrap" },
 
   actions: { display: "flex", gap: 8, flexWrap: "wrap" },
-  approve: { padding: "8px 14px", border: "none", borderRadius: 10, background: "linear-gradient(135deg,#15803d,#22c55e)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
-  deny: { padding: "8px 14px", border: "none", borderRadius: 10, background: "linear-gradient(135deg,#991b1b,#ef4444)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
-  revoke: { padding: "8px 14px", border: "none", borderRadius: 10, background: "linear-gradient(135deg,#c2410c,#f97316)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
-  historyBtn: { padding: "8px 14px", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, background: "transparent", color: "#d1d5db", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
-  cancelBtn: { padding: "10px 16px", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, background: "transparent", color: "#d1d5db", fontWeight: 700, cursor: "pointer" },
+  approve: { padding: "8px 14px", border: "1px solid var(--success)", borderRadius: "var(--radius-sm)", background: "var(--success)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
+  deny: { padding: "8px 14px", border: "1px solid var(--destructive)", borderRadius: "var(--radius-sm)", background: "var(--destructive)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
+  revoke: { padding: "8px 14px", border: "1px solid var(--warning)", borderRadius: "var(--radius-sm)", background: "var(--warning)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
+  historyBtn: { padding: "8px 14px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--card)", color: "var(--text-secondary)", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
+  cancelBtn: { padding: "10px 16px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--card)", color: "var(--text-secondary)", fontWeight: 700, cursor: "pointer" },
 
   loaderWrap: { height: "60vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" },
-  loader: { width: 70, height: 70, border: "6px solid rgba(255,255,255,0.08)", borderTop: "6px solid #dc2626", borderRadius: "50%", animation: "spin 1s linear infinite" },
+  loader: { width: 60, height: 60, border: "5px solid var(--border)", borderTop: "5px solid var(--primary)", borderRadius: "50%", animation: "leaveSpin 1s linear infinite" },
 
   modalOverlay: {
-    position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center",
+    position: "fixed", inset: 0, background: "rgba(10,10,10,0.5)", display: "flex", alignItems: "center",
     justifyContent: "center", zIndex: 1000, padding: 20,
   },
   modal: {
-    background: "#161616", borderRadius: 20, padding: 26, width: "100%", maxWidth: 460,
-    border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 20px 60px rgba(0,0,0,0.5)", maxHeight: "90vh", overflowY: "auto",
+    background: "var(--card)", borderRadius: "var(--radius)", padding: 24, width: "100%", maxWidth: 460,
+    border: "1px solid var(--border)", boxShadow: "var(--shadow)", maxHeight: "90vh", overflowY: "auto",
   },
   modalActions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 },
 };

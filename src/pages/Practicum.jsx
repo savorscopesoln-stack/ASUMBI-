@@ -3,6 +3,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import API from "../api";
 import { getStoredUser } from "../permissions";
+import { useTheme } from "../context/ThemeContext";
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
@@ -70,87 +71,113 @@ function formatDateShort(date) {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-/* ================= THEME ================= */
-const THEME_VARS = {
-  light: {
-    "--bg": "#F7F7F5",
-    "--surface": "#FFFFFF",
-    "--surface-alt": "#F1F1EE",
-    "--border": "#E4E3DF",
-    "--text": "#17181A",
-    "--text-muted": "#6B6F76",
-    "--accent": "#2F6F5E",
-    "--accent-soft": "#E7F1EC",
-    "--accent-contrast": "#FFFFFF",
-    "--danger": "#B3261E",
-    "--danger-soft": "#F8E9E8",
-    "--success": "#1F7A4D",
-    "--success-soft": "#E7F3EC",
-    "--warn": "#9A6300",
-    "--warn-soft": "#FBF0DC",
-    "--shadow": "0 1px 2px rgba(20,20,20,.05), 0 2px 8px rgba(20,20,20,.04)",
-  },
-  dark: {
-    "--bg": "#121417",
-    "--surface": "#1A1D21",
-    "--surface-alt": "#20242A",
-    "--border": "#2B2F36",
-    "--text": "#ECEDEE",
-    "--text-muted": "#9AA0A8",
-    "--accent": "#4FB593",
-    "--accent-soft": "#1C2E28",
-    "--accent-contrast": "#0B1210",
-    "--danger": "#E5645A",
-    "--danger-soft": "#2E1E1D",
-    "--success": "#43C285",
-    "--success-soft": "#1B2C24",
-    "--warn": "#E0A94B",
-    "--warn-soft": "#2C2415",
-    "--shadow": "0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.3)",
-  },
+/* ================= THEME =================
+   Practicum no longer keeps its own light/dark palette or localStorage
+   toggle. It shares the single design-token stylesheet (CSS variables
+   on :root / [data-theme='dark']) and the ThemeContext that Dashboard
+   owns, so colors, radii, and shadows stay identical across every page.
+   injectStyles() is idempotent (guarded by the "dash-tokens" id) so
+   it's safe to call again here in case this page is the first one
+   mounted. */
+const injectDesignTokens = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    body { background: var(--bg); transition: background-color .2s ease; }
+  `;
+  document.head.appendChild(el);
 };
 
 /* Injected once — keeps this a single-file component while still giving us
    real @media queries and CSS variables, which inline style objects can't do. */
 const RESPONSIVE_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
-.pz-progress { position: sticky; top: 0; height: 3px; width: 100%; overflow: hidden; z-index: 50; }
-.pz-progress .pz-progress-fill { height: 100%; width: 40%; background: var(--accent); opacity: 0; transform: translateX(-100%); }
-.pz-progress.active .pz-progress-fill { opacity: 1; animation: pz-indeterminate 1.1s ease-in-out infinite; }
-@keyframes pz-indeterminate {
-  0%   { transform: translateX(-100%); width: 40%; }
-  50%  { width: 60%; }
-  100% { transform: translateX(250%); width: 40%; }
-}
   .pz-app, .pz-app input, .pz-app select, .pz-app button, .pz-app textarea { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-  .pz-app h1, .pz-app h2, .pz-app h3 { font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 600; letter-spacing: -0.01em; }
-  .pz-app *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pz-app h1, .pz-app h2, .pz-app h3 { font-family: 'Inter', sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+  .pz-app *:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-  .pz-topbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 20px; background:var(--surface); border-bottom:1px solid var(--border); }
+  .pz-progress { position: sticky; top: 0; height: 3px; width: 100%; overflow: hidden; z-index: 50; }
+  .pz-progress .pz-progress-fill { height: 100%; width: 40%; background: var(--primary); opacity: 0; transform: translateX(-100%); }
+  .pz-progress.active .pz-progress-fill { opacity: 1; animation: pz-indeterminate 1.1s ease-in-out infinite; }
+  @keyframes pz-indeterminate {
+    0%   { transform: translateX(-100%); width: 40%; }
+    50%  { width: 60%; }
+    100% { transform: translateX(250%); width: 40%; }
+  }
+
+  .pz-topbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 20px; background:var(--card); border-bottom:1px solid var(--border); }
 
   .pz-layout { display:flex; }
-  .pz-sidebar { width:200px; background:var(--surface); border-right:1px solid var(--border); min-height:calc(100vh - 61px); padding:14px 10px; }
-  .pz-nav-btn { width:100%; padding:10px 12px; margin-bottom:4px; border:1px solid transparent; border-radius:8px; cursor:pointer; text-align:left; font-size:13.5px; font-weight:500; background:transparent; color:var(--text-muted); transition:background .12s ease, color .12s ease; }
-  .pz-nav-btn:hover { background:var(--surface-alt); color:var(--text); }
-  .pz-nav-btn.active { background:var(--accent-soft); color:var(--accent); font-weight:600; }
+  .pz-sidebar { width:200px; background:var(--card); border-right:1px solid var(--border); min-height:calc(100vh - 61px); padding:14px 10px; }
+  .pz-nav-btn { width:100%; padding:10px 12px; margin-bottom:4px; border:1px solid transparent; border-radius:9px; cursor:pointer; text-align:left; font-size:13.5px; font-weight:600; background:transparent; color:var(--text-secondary); transition:background .12s ease, color .12s ease; }
+  .pz-nav-btn:hover { background:var(--primary-tint); color:var(--primary-dark); }
+  .pz-nav-btn.active { background:var(--primary-tint); color:var(--primary); font-weight:700; }
   .pz-main { flex:1; padding:24px; min-width:0; background:var(--bg); }
   .pz-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .pz-btn-row { display:flex; gap:8px; flex-wrap:wrap; }
   .pz-letter-container { width:75%; }
   .pz-modal { padding:16px; }
-  .pz-icon-btn { border:1px solid var(--border); background:var(--surface); border-radius:8px; width:36px; height:36px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; color:var(--text); }
-  .pz-icon-btn:hover { background:var(--surface-alt); }
-  .pz-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; }
-  .pz-badge-success { background:var(--success-soft); color:var(--success); }
-  .pz-badge-warn { background:var(--warn-soft); color:var(--warn); }
-  .pz-badge-error { background:var(--danger-soft); color:var(--danger); }
-  .pz-badge-info { background:var(--surface-alt); color:var(--text-muted); }
+  .pz-icon-btn { border:1px solid var(--border); background:var(--card); border-radius:9px; width:36px; height:36px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; color:var(--text); }
+  .pz-icon-btn:hover { background:var(--bg); }
+  .pz-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
+  .pz-badge-success { background:var(--success-tint); color:var(--success); }
+  .pz-badge-warn { background:var(--warning-tint); color:var(--warning); }
+  .pz-badge-error { background:var(--destructive-tint); color:var(--destructive); }
+  .pz-badge-info { background:var(--card-elevated); color:var(--text-muted); }
   .pz-log-row { display:grid; grid-template-columns:150px 100px 160px 1fr; gap:10px; padding:9px 4px; border-bottom:1px solid var(--border); font-size:12.5px; align-items:start; }
-  .pz-log-row.head { color:var(--text-muted); font-weight:600; text-transform:uppercase; font-size:10.5px; letter-spacing:.04em; }
-  .pz-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; border:1px solid var(--border); background:var(--surface); font-size:12.5px; cursor:pointer; color:var(--text); }
-  .pz-chip.on { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); font-weight:600; }
-  .pz-teacher-pick { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; background:var(--surface); }
-  .pz-teacher-pick.checked { border-color:var(--accent); background:var(--accent-soft); }
+  .pz-log-row.head { color:var(--text-muted); font-weight:700; text-transform:uppercase; font-size:10.5px; letter-spacing:.04em; }
+  .pz-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); font-size:12.5px; cursor:pointer; color:var(--text); }
+  .pz-chip.on { background:var(--primary-tint); border-color:var(--primary); color:var(--primary); font-weight:700; }
+  .pz-teacher-pick { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; background:var(--card); }
+  .pz-teacher-pick.checked { border-color:var(--primary); background:var(--primary-tint); }
 
   @media (max-width: 820px) {
     .pz-topbar { padding:10px; }
@@ -218,22 +245,11 @@ export default function Practicum() {
   /* Assessment entry — controlled per-row edits */
   const [assessDrafts, setAssessDrafts] = useState({});
 
-  /* ================= THEME ================= */
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem("pz_theme") || "light";
-    } catch {
-      return "light";
-    }
-  });
-
+  /* ================= THEME (shared with Dashboard) ================= */
+  const { theme, toggleTheme } = useTheme();
   useEffect(() => {
-    try {
-      localStorage.setItem("pz_theme", theme);
-    } catch {
-      /* ignore storage errors (e.g. private browsing) */
-    }
-  }, [theme]);
+    injectDesignTokens();
+  }, []);
 
   /* ================= ACTIVITY LOGS ================= */
   const [logs, setLogs] = useState(() => {
@@ -817,9 +833,6 @@ export default function Practicum() {
     );
   }, [pivoted, search]);
 
-  /* Reports tab: "pick a date, see who's deployed" — matches the picked
-     date's weekday against each assignment's stored day name (see the
-     DATE HELPERS note above for why this is weekday-based, not exact-date). */
   /* Reports tab: "pick a date, see who's deployed".
      - Standing research-day deployments (isExtra false/undefined) recur
        every week, so these still match by WEEKDAY, same as before.
@@ -942,9 +955,9 @@ export default function Practicum() {
             body { font-family: Arial, sans-serif; padding: 20px; color: #000; }
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             th, td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
-            th { background: #2F6F5E; color: #fff; }
+            th { background: #8B1E2D; color: #fff; }
             .letter { page-break-after: always; margin-bottom: 30px; }
-            .header { border-bottom: 2px solid #2F6F5E; margin-bottom: 10px; }
+            .header { border-bottom: 2px solid #8B1E2D; margin-bottom: 10px; }
           </style>
         </head>
         <body>${printContent.innerHTML}</body>
@@ -1015,10 +1028,9 @@ export default function Practicum() {
   const csvSafe = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
   /* ================= RENDER ================= */
-  const vars = THEME_VARS[theme];
 
   return (
-    <div className="pz-app" style={{ ...styles.page, ...vars }}>
+    <div className="pz-app" style={styles.page}>
       <style>{RESPONSIVE_CSS}</style>
 
       {toast && (
@@ -1026,7 +1038,7 @@ export default function Practicum() {
           className="pz-badge"
           style={{
             ...styles.toast,
-            background: toast.isError ? "var(--danger)" : "var(--success)",
+            background: toast.isError ? "var(--destructive)" : "var(--success)",
           }}
         >
           {toast.msg}
@@ -1068,9 +1080,9 @@ export default function Practicum() {
             className="pz-icon-btn"
             title="Toggle theme"
             aria-label="Toggle color theme"
-            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+            onClick={toggleTheme}
           >
-            {theme === "light" ? "🌙" : "☀"}
+            {theme === "dark" ? "☀" : "🌙"}
           </button>
 
           <div style={styles.profile}>Admin</div>
@@ -1426,7 +1438,7 @@ export default function Practicum() {
                   <div style={styles.statLabel}>Unassigned students</div>
                 </div>
                 <div style={styles.placementSummaryCard}>
-                  <div style={{ ...styles.statValue, color: totalTargeted > unassignedStudents.length ? "var(--warn)" : "var(--text)" }}>
+                  <div style={{ ...styles.statValue, color: totalTargeted > unassignedStudents.length ? "var(--warning)" : "var(--text)" }}>
                     {totalTargeted}
                   </div>
                   <div style={styles.statLabel}>Students targeted</div>
@@ -2062,7 +2074,7 @@ export default function Practicum() {
 }
 
 function StatCard({ label, value, tone }) {
-  const toneVar = { success: "var(--success)", warn: "var(--warn)", danger: "var(--danger)" }[tone] || "var(--text)";
+  const toneVar = { success: "var(--success)", warn: "var(--warning)", danger: "var(--destructive)" }[tone] || "var(--text)";
   return (
     <div style={styles.statCard}>
       <div style={{ ...styles.statValue, color: toneVar }}>{value}</div>
@@ -2074,56 +2086,56 @@ function StatCard({ label, value, tone }) {
 /* ================= UI ================= */
 const styles = {
   page: { background: "var(--bg)", minHeight: "100vh", color: "var(--text)" },
-  toast: { position: "fixed", top: 16, right: 16, zIndex: 999, color: "#fff", padding: "10px 16px", borderRadius: 8, boxShadow: "var(--shadow)", maxWidth: "90vw", textTransform: "none", fontWeight: 500, letterSpacing: 0 },
+  toast: { position: "fixed", top: 16, right: 16, zIndex: 999, color: "#fff", padding: "10px 16px", borderRadius: 8, boxShadow: "var(--shadow)", maxWidth: "90vw", textTransform: "none", fontWeight: 600, letterSpacing: 0 },
   logo: { color: "var(--text)", margin: 0, fontSize: 19 },
-  search: { padding: 9, borderRadius: 8, border: "1px solid var(--border)", minWidth: 260, boxSizing: "border-box", background: "var(--surface-alt)", color: "var(--text)" },
-  sessionSelect: { padding: 8, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-alt)", color: "var(--text)" },
-  profile: { background: "var(--accent-soft)", padding: "6px 12px", borderRadius: 8, color: "var(--accent)", fontWeight: 600, fontSize: 13 },
-  card: { background: "var(--surface)", color: "var(--text)", padding: 22, borderRadius: 14, border: "1px solid var(--border)", boxShadow: "var(--shadow)" },
-  sectionTitle: { borderLeft: "3px solid var(--accent)", paddingLeft: 10, margin: 0 },
+  search: { padding: 9, borderRadius: 9, border: "1px solid var(--border)", minWidth: 260, boxSizing: "border-box", background: "var(--card-elevated)", color: "var(--text)" },
+  sessionSelect: { padding: 8, borderRadius: 9, border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--text)" },
+  profile: { background: "var(--primary-tint)", padding: "6px 12px", borderRadius: 9, color: "var(--primary)", fontWeight: 700, fontSize: 13 },
+  card: { background: "var(--card)", color: "var(--text)", padding: 22, borderRadius: 14, border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" },
+  sectionTitle: { borderLeft: "3px solid var(--primary)", paddingLeft: 10, margin: 0 },
   formRow: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 },
-  input: { padding: 10, marginTop: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box", flex: "1 1 180px", width: "100%", background: "var(--surface)", color: "var(--text)" },
-  primaryBtn: { background: "var(--accent)", padding: "10px 14px", color: "var(--accent-contrast)", border: "none", borderRadius: 8, marginTop: 10, cursor: "pointer", fontWeight: 600, fontSize: 13.5 },
-  secondaryBtn: { border: "1px solid var(--border)", background: "var(--surface)", padding: "8px 12px", borderRadius: 8, cursor: "pointer", marginTop: 10, color: "var(--text)", fontSize: 13.5 },
-  secondaryBtnFlat: { border: "1px solid var(--border)", background: "var(--surface)", padding: "9px 14px", borderRadius: 8, cursor: "pointer", color: "var(--text)", fontSize: 13.5 },
-  dangerBtn: { border: "1px solid var(--danger)", background: "var(--danger-soft)", color: "var(--danger)", padding: "8px 12px", borderRadius: 8, cursor: "pointer", marginTop: 10, fontSize: 13.5 },
-  dangerBtnSm: { border: "1px solid var(--danger)", background: "var(--danger-soft)", color: "var(--danger)", padding: "4px 8px", borderRadius: 6, cursor: "pointer", fontSize: 12 },
-  saveIconBtn: { border: "1px solid var(--border)", background: "var(--surface-alt)", color: "var(--text)", borderRadius: 6, cursor: "pointer", padding: "4px 8px", fontSize: 11 },
+  input: { padding: 10, marginTop: 10, borderRadius: 9, border: "1px solid var(--border)", boxSizing: "border-box", flex: "1 1 180px", width: "100%", background: "var(--card)", color: "var(--text)" },
+  primaryBtn: { background: "var(--primary)", padding: "10px 14px", color: "#fff", border: "none", borderRadius: 9, marginTop: 10, cursor: "pointer", fontWeight: 700, fontSize: 13.5 },
+  secondaryBtn: { border: "1px solid var(--border)", background: "var(--card)", padding: "8px 12px", borderRadius: 9, cursor: "pointer", marginTop: 10, color: "var(--text)", fontSize: 13.5, fontWeight: 600 },
+  secondaryBtnFlat: { border: "1px solid var(--border)", background: "var(--card)", padding: "9px 14px", borderRadius: 9, cursor: "pointer", color: "var(--text)", fontSize: 13.5, fontWeight: 600 },
+  dangerBtn: { border: "1px solid var(--destructive)", background: "var(--destructive-tint)", color: "var(--destructive)", padding: "8px 12px", borderRadius: 9, cursor: "pointer", marginTop: 10, fontSize: 13.5, fontWeight: 600 },
+  dangerBtnSm: { border: "1px solid var(--destructive)", background: "var(--destructive-tint)", color: "var(--destructive)", padding: "4px 8px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 },
+  saveIconBtn: { border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--text)", borderRadius: 6, cursor: "pointer", padding: "4px 8px", fontSize: 11, fontWeight: 600 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 },
-  userCard: { background: "var(--surface-alt)", color: "var(--text)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" },
+  userCard: { background: "var(--card-elevated)", color: "var(--text)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" },
   userCardSub: { color: "var(--text-muted)", fontSize: 12.5, marginTop: 4 },
   row: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 2px", borderBottom: "1px solid var(--border)", flexWrap: "wrap", gap: 8 },
   assignmentRow: { padding: 8, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)" },
-  teacherBlock: { background: "var(--surface-alt)", padding: 12, borderRadius: 10, marginTop: 10, border: "1px solid var(--border)" },
+  teacherBlock: { background: "var(--card-elevated)", padding: 12, borderRadius: 10, marginTop: 10, border: "1px solid var(--border)" },
   progressTrack: { height: 5, background: "var(--border)", borderRadius: 999, marginTop: 6, marginBottom: 4, overflow: "hidden" },
-  progressFill: { height: "100%", background: "var(--accent)", borderRadius: 999 },
-  miniSelect: { padding: 4, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" },
+  progressFill: { height: "100%", background: "var(--primary)", borderRadius: 999 },
+  miniSelect: { padding: 4, borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)" },
   toggle: { color: "var(--text)", marginTop: 20 },
-  loading: { color: "var(--accent)", marginBottom: 10, fontSize: 13 },
+  loading: { color: "var(--primary)", marginBottom: 10, fontSize: 13 },
   hint: { color: "var(--text-muted)", fontSize: 12.5, marginTop: 6 },
   muted: { color: "var(--text-muted)" },
   statGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginTop: 10 },
-  statCard: { padding: 16, borderRadius: 10, background: "var(--surface-alt)", border: "1px solid var(--border)" },
-  statValue: { fontSize: 24, fontWeight: 700, color: "var(--text)" },
+  statCard: { padding: 16, borderRadius: 10, background: "var(--card-elevated)", border: "1px solid var(--border)" },
+  statValue: { fontSize: 24, fontWeight: 800, color: "var(--text)" },
   statLabel: { fontSize: 12, color: "var(--text-muted)", marginTop: 2 },
   table: { width: "100%", borderCollapse: "collapse", marginTop: 10 },
-  th: { background: "var(--surface-alt)", color: "var(--text-muted)", padding: 8, fontSize: 11, textAlign: "left", textTransform: "uppercase", letterSpacing: ".03em", borderBottom: "1px solid var(--border)" },
+  th: { background: "var(--card-elevated)", color: "var(--text-muted)", padding: 8, fontSize: 11, textAlign: "left", textTransform: "uppercase", letterSpacing: ".03em", borderBottom: "1px solid var(--border)" },
   td: { padding: 8, fontSize: 13, borderBottom: "1px solid var(--border)" },
-  scoreInput: { width: 50, padding: 4, borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" },
-  targetInput: { width: 64, padding: 6, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" },
-  pill: { border: "1px solid var(--border)", background: "var(--surface)", padding: "8px 14px", borderRadius: 999, cursor: "pointer", color: "var(--text-muted)", fontSize: 13, fontWeight: 500 },
-  pillActive: { border: "1px solid var(--accent)", background: "var(--accent-soft)", padding: "8px 14px", borderRadius: 999, cursor: "pointer", color: "var(--accent)", fontSize: 13, fontWeight: 600 },
+  scoreInput: { width: 50, padding: 4, borderRadius: 4, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)" },
+  targetInput: { width: 64, padding: 6, borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)" },
+  pill: { border: "1px solid var(--border)", background: "var(--card)", padding: "8px 14px", borderRadius: 999, cursor: "pointer", color: "var(--text-muted)", fontSize: 13, fontWeight: 600 },
+  pillActive: { border: "1px solid var(--primary)", background: "var(--primary-tint)", padding: "8px 14px", borderRadius: 999, cursor: "pointer", color: "var(--primary)", fontSize: 13, fontWeight: 700 },
   placementSummaryRow: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", margin: "14px 0" },
-  placementSummaryCard: { padding: "10px 18px", borderRadius: 10, background: "var(--surface-alt)", border: "1px solid var(--border)", minWidth: 140 },
-  deployControls: { background: "var(--surface-alt)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginTop: 14 },
+  placementSummaryCard: { padding: "10px 18px", borderRadius: 10, background: "var(--card-elevated)", border: "1px solid var(--border)", minWidth: 140 },
+  deployControls: { background: "var(--card-elevated)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginTop: 14 },
   modal: { position: "fixed", inset: 0, background: "rgba(10,10,10,0.55)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 998 },
-  letterContainer: { background: "var(--surface)", color: "var(--text)", padding: 20, borderRadius: 14, maxHeight: "85vh", overflow: "auto", border: "1px solid var(--border)" },
-  letterTitle: { color: "var(--accent)", marginBottom: 10 },
+  letterContainer: { background: "var(--card)", color: "var(--text)", padding: 20, borderRadius: 14, maxHeight: "85vh", overflow: "auto", border: "1px solid var(--border)" },
+  letterTitle: { color: "var(--primary)", marginBottom: 10 },
   letter: { padding: 20, border: "1px solid var(--border)", marginBottom: 20, borderRadius: 10 },
   letterHead: { textAlign: "center", marginBottom: 15 },
-  letterInstitution: { margin: 0, fontSize: 18, color: "var(--accent)", letterSpacing: 1 },
+  letterInstitution: { margin: 0, fontSize: 18, color: "var(--primary)", letterSpacing: 1 },
   letterSub: { margin: 0, fontSize: 12, color: "var(--text-muted)" },
-  letterLine: { height: 2, background: "var(--accent)", marginTop: 10 },
+  letterLine: { height: 2, background: "var(--primary)", marginTop: 10 },
   letterDate: { textAlign: "right", marginBottom: 10, fontSize: 12 },
   letterSubject: { marginTop: 10, marginBottom: 10, fontSize: 14 },
   letterText: { fontSize: 13, lineHeight: "1.6" },

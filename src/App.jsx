@@ -73,6 +73,7 @@ import AddQuestions from "./pages/teacher/AddQuestions";
 import TeacherSubmissions from "./pages/teacher/TeacherSubmissions";
 import Marking from "./pages/teacher/Marking";
 import AllQuestionsMarking from "./pages/teacher/AllQuestionsMarking";
+import TeacherPracticum from "./pages/teacher/TeacherPracticum";
 
 
 /* =========================================================
@@ -699,6 +700,11 @@ export default function App() {
         <Route
           path="e-assessments/marking/:id"
           element={<Marking />}
+        />
+
+        <Route
+          path="practicum"
+          element={<TeacherPracticum />}
         />
         <Route
   path="/teacher/e-assessments/:id/all-questions-marking"
