@@ -4,7 +4,7 @@ import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
 import {
   ArrowLeft, Sun, Moon, DoorOpen, CheckCircle2, Clock, Archive,
-  Printer, AlertTriangle, Inbox, FileEdit, Siren,
+  Printer, AlertTriangle, Inbox, FileEdit, Siren, KeyRound,
 } from "lucide-react";
 
 const PENDING_STAGE_LABEL = {
@@ -152,7 +152,13 @@ export default function StudentLeaveOut() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
 
-  /* ================= SUBMIT ================= */
+  /* ================= SUBMIT =================
+     The server generates a single code the moment this request is
+     created — it's what gets handed to Sub-Admin 1 in person to
+     unlock this request for review, and later doubles as the exact
+     code the Gate page verifies for exit/reentry. Surfaced here right
+     away since there's nowhere else the student would otherwise see it
+     before an approval happens. */
   const submit = async () => {
     if (!form.reason) {
       alert("Reason required");
@@ -165,7 +171,7 @@ export default function StudentLeaveOut() {
         : new Date().toISOString();
 
     try {
-      await API.post("/leave-outs", {
+      const res = await API.post("/leave-outs", {
         student_id: user.id,
         reason: form.reason,
         request_date: requestDate,
@@ -174,9 +180,20 @@ export default function StudentLeaveOut() {
 
       setForm({ reason: "", date: "", time: "", leave_type: "short_stay" });
       loadLeaves();
-      alert("Leave request submitted");
+
+      if (res.data?.code) {
+        alert(
+          `Leave request submitted.\n\nYour code: ${res.data.code}\n\n` +
+          `Give this code to the staff member reviewing your request when asked for it — ` +
+          `your request won't be reviewed without it. The same code is also what you'll ` +
+          `use at the gate once approved.`
+        );
+      } else {
+        alert("Leave request submitted");
+      }
     } catch (err) {
       console.log(err);
+      alert(err.response?.data?.message || "Failed to submit leave request");
     }
   };
 
@@ -204,7 +221,7 @@ export default function StudentLeaveOut() {
 
     const permitId = `LP-${l.id}-${Date.now().toString().slice(-6)}`;
 
-    const verifyCode = btoa(
+    const verifyCode = l.gate_code || btoa(
       `${l.id}-${l.student_id}-${l.approved_at}`
     ).slice(0, 12);
 
@@ -521,7 +538,7 @@ export default function StudentLeaveOut() {
           </div>
           <div class="security">
             <div class="securityCard">
-              <h3 class="securityTitle">Verification Code</h3>
+              <h3 class="securityTitle">Gate Code</h3>
               <div class="verifyCode">${verifyCode}</div>
             </div>
             <div class="securityCard">
@@ -630,7 +647,10 @@ export default function StudentLeaveOut() {
               <h3 style={D.panelTitle}>New Request</h3>
             </div>
           </div>
-          <p style={D.formHelp}>Fill in the details below to file a leave request.</p>
+          <p style={D.formHelp}>
+            You'll get a code immediately after submitting — give it to the staff member
+            reviewing your request when asked. The same code is used at the gate once approved.
+          </p>
 
           <div style={D.fieldGroup}>
             <label style={D.fieldLabel}>Reason for Leave</label>
@@ -727,6 +747,11 @@ export default function StudentLeaveOut() {
                         </div>
                       )}
                       <div style={D.rowMeta}>Duration: {formatDuration(l.duration)}</div>
+                      {l.gate_code && (
+                        <div style={D.codeChip}>
+                          <KeyRound size={11} /> Gate code: <span style={{ fontFamily: "monospace", fontWeight: 800 }}>{l.gate_code}</span>
+                        </div>
+                      )}
                     </div>
                     <button onClick={() => printLeave(l)} style={D.printBtn}>
                       <Printer size={13} /> Print
@@ -768,6 +793,11 @@ export default function StudentLeaveOut() {
                       )}
                       {l.status === "pending_admin" && (
                         <div style={D.rowMeta}>Awaiting Admin approval</div>
+                      )}
+                      {l.gate_code && (
+                        <div style={D.codeChip}>
+                          <KeyRound size={11} /> Your code: <span style={{ fontFamily: "monospace", fontWeight: 800 }}>{l.gate_code}</span> — give this to staff when asked
+                        </div>
                       )}
                     </div>
                     <span style={{ ...D.badge, background: "var(--warning-tint)", color: "var(--warning)" }}>
@@ -949,7 +979,7 @@ const D = {
   },
 
   /* ── form ── */
-  formHelp: { color: "var(--text-secondary)", fontSize: 13, margin: "0 0 18px" },
+  formHelp: { color: "var(--text-secondary)", fontSize: 13, margin: "0 0 18px", lineHeight: 1.5 },
   fieldGroup: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 },
   fieldLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-muted)" },
   formRow: { display: "flex", gap: 16 },
@@ -1024,6 +1054,10 @@ const D = {
   },
   rowTitle: { fontWeight: 700, color: "var(--text)", fontSize: 13.5, marginBottom: 3 },
   rowMeta: { color: "var(--text-muted)", fontSize: 12 },
+  codeChip: {
+    display: "flex", alignItems: "center", gap: 5,
+    color: "var(--primary)", fontSize: 11.5, fontWeight: 600, marginTop: 6,
+  },
   revokedNote: {
     display: "flex", alignItems: "center", gap: 5,
     color: "var(--destructive)", fontSize: 12, fontWeight: 600, marginTop: 4,

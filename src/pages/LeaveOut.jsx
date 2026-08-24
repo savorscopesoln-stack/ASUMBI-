@@ -115,6 +115,29 @@ const DURATION_OPTIONS = [
   { value: 7200, label: "5 Days" },
 ];
 
+/* Turns an array of plain objects into a downloadable CSV file. Kept
+   dependency-free (no CSV library) since this is a one-off export
+   button, not a recurring data-grid feature. */
+const downloadCsv = (filename, rows, columns) => {
+  const escape = (val) => {
+    const s = val === null || val === undefined ? "" : String(val);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = columns.map((c) => escape(c.label)).join(",");
+  const body = rows.map((row) => columns.map((c) => escape(c.get(row))).join(",")).join("\n");
+  const csv = `${header}\n${body}`;
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 export default function LeaveOutAdmin() {
   const { theme, toggleTheme } = useTheme();
 
@@ -125,6 +148,7 @@ export default function LeaveOutAdmin() {
   const user = getStoredUser();
   const role = String(user?.role || "").toLowerCase();
   const isAdmin = role === "admin";
+  const isSubAdmin1 = role === "sub_admin";
 
   /* Sub-Admin 2 is an Emergency-only reviewer: it may never see any
      other leave type, and — per explicit request — it must never see
@@ -137,6 +161,7 @@ export default function LeaveOutAdmin() {
   const [leaves, setLeaves] = useState([]);
   const [analytics, setAnalytics] = useState([]);
   const [students, setStudents] = useState([]);
+  const [approvedLeaves, setApprovedLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [duration, setDuration] = useState(120);
@@ -149,6 +174,12 @@ export default function LeaveOutAdmin() {
   const [busyId, setBusyId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
 
+  // Per-row code entry for Sub-Admin 1's unlock gate — keyed by leave id
+  // so multiple locked rows can each hold their own in-progress code.
+  const [codeInputs, setCodeInputs] = useState({});
+  const [unlockingId, setUnlockingId] = useState(null);
+  const [unlockError, setUnlockError] = useState({});
+
   /* ================= LOAD ================= */
   useEffect(() => {
     instantLoad();
@@ -159,7 +190,12 @@ export default function LeaveOutAdmin() {
       setLoading(true);
       // Sub-Admin 2 never sees analytics/counters, so don't even fetch
       // them — one less thing the backend has to reject.
-      await Promise.all([loadLeaves(), ...(isSubAdmin2 ? [] : [loadAnalytics()]), loadStudents()]);
+      await Promise.all([
+        loadLeaves(),
+        ...(isSubAdmin2 ? [] : [loadAnalytics()]),
+        loadStudents(),
+        loadApprovedLeaves(),
+      ]);
     } catch (err) {
       console.log(err);
     } finally {
@@ -186,8 +222,18 @@ export default function LeaveOutAdmin() {
     }
   };
 
+  const loadApprovedLeaves = async () => {
+    try {
+      const res = await API.get("/leave-outs/approved");
+      setApprovedLeaves(res.data || []);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
   // Reload after any action. Skips analytics entirely for Sub-Admin 2.
-  const refresh = async () => Promise.all([loadLeaves(), ...(isSubAdmin2 ? [] : [loadAnalytics()])]);
+  const refresh = async () =>
+    Promise.all([loadLeaves(), ...(isSubAdmin2 ? [] : [loadAnalytics()]), loadApprovedLeaves()]);
 
   const getStudent = (id) => students.find((x) => x.id === id);
   const getStudentName = (id) => getStudent(id)?.name || `Student ${id}`;
@@ -211,6 +257,29 @@ export default function LeaveOutAdmin() {
     if (["revoked", "rejected", "denied", "cancelled", "expired"].includes(l.status)) return false;
     if (l.leave_type === "long" && role !== "admin") return false;
     return true;
+  };
+
+  /* ================= UNLOCK (Sub-Admin 1 code gate) =================
+     A locked row (l.locked === true, only ever set for Sub-Admin 1)
+     has no `reason` from the API and can't be approved/rejected until
+     this succeeds. The student hands Sub-Admin 1 the code they were
+     shown at submission time — this is the one place that code gets
+     typed in. */
+  const unlockLeave = async (l) => {
+    const code = (codeInputs[l.id] || "").trim();
+    if (!code) return;
+
+    setUnlockingId(l.id);
+    setUnlockError((prev) => ({ ...prev, [l.id]: "" }));
+    try {
+      await API.put(`/leave-outs/${l.id}/verify-code`, { code });
+      setCodeInputs((prev) => ({ ...prev, [l.id]: "" }));
+      await refresh();
+    } catch (err) {
+      setUnlockError((prev) => ({ ...prev, [l.id]: err?.response?.data?.message || "Incorrect code" }));
+    } finally {
+      setUnlockingId(null);
+    }
   };
 
   /* ================= ACTIONS ================= */
@@ -293,6 +362,26 @@ export default function LeaveOutAdmin() {
     }
   };
 
+  const exportApprovedCsv = () => {
+    downloadCsv(
+      `approved-leaves-${new Date().toISOString().slice(0, 10)}.csv`,
+      approvedLeaves,
+      [
+        { label: "Student", get: (r) => r.student_name || `Student ${r.student_id}` },
+        { label: "Admission No", get: (r) => r.admissionNo || "" },
+        { label: "Class", get: (r) => r.studentClass || "" },
+        { label: "Leave Type", get: (r) => leaveTypeLabel(r.leave_type) },
+        { label: "Reason", get: (r) => r.reason || "" },
+        { label: "Status", get: (r) => statusLabel(r.status) },
+        { label: "Gate Code", get: (r) => r.gate_code || "" },
+        { label: "Approved At", get: (r) => (r.approved_at ? new Date(r.approved_at).toLocaleString() : "") },
+        { label: "Approved By", get: (r) => r.final_approver_name || r.granted_by_name || "" },
+        { label: "Exit Time", get: (r) => (r.exit_time ? new Date(r.exit_time).toLocaleString() : "") },
+        { label: "Reentry Time", get: (r) => (r.reentry_time ? new Date(r.reentry_time).toLocaleString() : "") },
+      ]
+    );
+  };
+
   /* ================= FILTER ================= */
 
   const filteredLeaves = useMemo(() => {
@@ -308,6 +397,9 @@ export default function LeaveOutAdmin() {
       if (statusFilter !== "all" && statusFilter !== "pending" && l.status !== statusFilter) return false;
 
       if (!term) return true;
+      // A locked row has no reason to search by anyway — student name/
+      // admission no. still works fine since those come from the
+      // /students list on the frontend, not the redacted API row.
       return (
         getStudentName(l.student_id).toLowerCase().includes(term) ||
         getStudentAdmission(l.student_id).toLowerCase().includes(term) ||
@@ -330,6 +422,11 @@ export default function LeaveOutAdmin() {
                 ? "Review and act on Emergency leave requests."
                 : "Approvals, Emergency & Long-Stay workflows, and leave history."}
             </p>
+            {isSubAdmin1 && (
+              <p style={{ ...styles.subtitle, marginTop: 4, color: "var(--primary)" }}>
+                🔒 New requests are locked until you enter the code the student gives you.
+              </p>
+            )}
             <button onClick={() => window.history.back()} style={styles.backBtn}>
               ← Back
             </button>
@@ -437,6 +534,60 @@ export default function LeaveOutAdmin() {
               )}
             </div>
 
+            {/* ================= APPROVED LEAVES (report + download) ================= */}
+            <div style={{ ...styles.card, marginBottom: 24 }}>
+              <div style={styles.cardHeader}>
+                <h3 style={styles.cardHeaderTitle}>✅ Approved Leave Records</h3>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={styles.badge}>{approvedLeaves.length} Records</div>
+                  <button onClick={exportApprovedCsv} disabled={!approvedLeaves.length} style={styles.downloadBtn}>
+                    ⬇ Download CSV
+                  </button>
+                </div>
+              </div>
+
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Student</th>
+                      <th style={styles.th}>Type</th>
+                      <th style={styles.th}>Approved</th>
+                      <th style={styles.th}>By</th>
+                      <th style={styles.th}>Gate Code</th>
+                      <th style={styles.th}>Exit / Re-entry</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvedLeaves.length === 0 && (
+                      <tr><td colSpan={6} style={styles.emptyCell}>No approved leaves yet.</td></tr>
+                    )}
+                    {approvedLeaves.map((l) => (
+                      <tr key={l.id} style={styles.tr}>
+                        <td style={styles.td}>
+                          <div style={styles.studentName}>{l.student_name || getStudentName(l.student_id)}</div>
+                          <div style={styles.studentId}>{l.admissionNo || `ID ${l.student_id}`}</div>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={{ ...styles.typeBadge, color: LEAVE_TYPE_COLOR(l.leave_type), border: `1px solid ${LEAVE_TYPE_COLOR(l.leave_type)}` }}>
+                            {leaveTypeLabel(l.leave_type)}
+                          </span>
+                        </td>
+                        <td style={styles.td}>{l.approved_at ? new Date(l.approved_at).toLocaleString() : "—"}</td>
+                        <td style={styles.td}>{l.final_approver_name || l.granted_by_name || "—"}</td>
+                        <td style={{ ...styles.td, fontFamily: "monospace", fontWeight: 700 }}>{l.gate_code || "—"}</td>
+                        <td style={styles.td}>
+                          {l.exit_time ? new Date(l.exit_time).toLocaleTimeString() : "—"}
+                          {" → "}
+                          {l.reentry_time ? new Date(l.reentry_time).toLocaleTimeString() : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* ================= REQUESTS TABLE ================= */}
             <div style={styles.card}>
               <div style={styles.cardHeader}>
@@ -479,7 +630,13 @@ export default function LeaveOutAdmin() {
                               <div style={styles.grantedTag}>Admin Granted</div>
                             ) : null}
                           </td>
-                          <td style={{ ...styles.td, maxWidth: 220 }}>{l.reason || "—"}</td>
+                          <td style={{ ...styles.td, maxWidth: 220 }}>
+                            {l.locked ? (
+                              <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>🔒 Locked — enter code to view</span>
+                            ) : (
+                              l.reason || "—"
+                            )}
+                          </td>
                           <td style={styles.td}>{l.createdAt ? new Date(l.createdAt).toLocaleString() : "—"}</td>
                           <td style={styles.td}>
                             <span style={{ ...styles.status, color: STATUS_COLOR(l.status), border: `1px solid ${STATUS_COLOR(l.status)}` }}>
@@ -487,24 +644,47 @@ export default function LeaveOutAdmin() {
                             </span>
                           </td>
                           <td style={styles.td}>
-                            <div style={styles.actions}>
-                              {canAct(l) && (
-                                <>
-                                  <button onClick={() => approve(l)} disabled={busyId === l.id} style={styles.approve}>Approve</button>
-                                  <button onClick={() => openReject(l)} disabled={busyId === l.id} style={styles.deny}>Reject</button>
-                                </>
-                              )}
-                              {canRevoke(l) && (
-                                <button onClick={() => revoke(l)} disabled={busyId === l.id} style={styles.revoke}>Revoke</button>
-                              )}
-                              <button onClick={() => setExpandedId(expandedId === l.id ? null : l.id)} style={styles.historyBtn}>
-                                {expandedId === l.id ? "Hide" : "History"}
-                              </button>
-                            </div>
+                            {l.locked ? (
+                              <div style={styles.unlockRow}>
+                                <input
+                                  placeholder="Enter code"
+                                  value={codeInputs[l.id] || ""}
+                                  onChange={(e) => setCodeInputs((prev) => ({ ...prev, [l.id]: e.target.value }))}
+                                  onKeyDown={(e) => { if (e.key === "Enter") unlockLeave(l); }}
+                                  style={styles.unlockInput}
+                                  maxLength={12}
+                                />
+                                <button
+                                  onClick={() => unlockLeave(l)}
+                                  disabled={unlockingId === l.id || !(codeInputs[l.id] || "").trim()}
+                                  style={styles.unlockBtn}
+                                >
+                                  🔓 Unlock
+                                </button>
+                                {unlockError[l.id] && (
+                                  <div style={styles.unlockError}>{unlockError[l.id]}</div>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={styles.actions}>
+                                {canAct(l) && (
+                                  <>
+                                    <button onClick={() => approve(l)} disabled={busyId === l.id} style={styles.approve}>Approve</button>
+                                    <button onClick={() => openReject(l)} disabled={busyId === l.id} style={styles.deny}>Reject</button>
+                                  </>
+                                )}
+                                {canRevoke(l) && (
+                                  <button onClick={() => revoke(l)} disabled={busyId === l.id} style={styles.revoke}>Revoke</button>
+                                )}
+                                <button onClick={() => setExpandedId(expandedId === l.id ? null : l.id)} style={styles.historyBtn}>
+                                  {expandedId === l.id ? "Hide" : "History"}
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
 
-                        {expandedId === l.id && (
+                        {expandedId === l.id && !l.locked && (
                           <tr>
                             <td colSpan={6} style={styles.historyCell}>
                               <ApprovalHistory leave={l} />
@@ -643,6 +823,9 @@ function ApprovalHistory({ leave: l }) {
   if (l.granted_by_name) {
     rows.push({ label: "Admin Granted", who: l.granted_by_name, when: fmt(l.granted_at) });
   }
+  if (l.code_verified_by_name) {
+    rows.push({ label: "Code Verified (Sub-Admin 1)", who: l.code_verified_by_name, when: fmt(l.code_verified_at) });
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "6px 4px" }}>
@@ -710,9 +893,13 @@ const styles = {
     background: "var(--card)", borderRadius: "var(--radius)", padding: 22,
     border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)",
   },
-  cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 },
+  cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 },
   cardHeaderTitle: { margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" },
   badge: { background: "var(--primary-tint)", color: "var(--primary)", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700 },
+  downloadBtn: {
+    padding: "8px 14px", borderRadius: "var(--radius-sm)", border: "1px solid var(--success)", cursor: "pointer",
+    fontWeight: 700, fontSize: 12.5, color: "var(--success)", background: "var(--success-tint)",
+  },
   field: { marginBottom: 16 },
   label: { display: "block", marginBottom: 6, color: "var(--text-secondary)", fontSize: 12, fontWeight: 700 },
   input: {
@@ -748,6 +935,18 @@ const styles = {
   revoke: { padding: "8px 14px", border: "1px solid var(--warning)", borderRadius: "var(--radius-sm)", background: "var(--warning)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
   historyBtn: { padding: "8px 14px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--card)", color: "var(--text-secondary)", fontWeight: 700, cursor: "pointer", fontSize: 12.5 },
   cancelBtn: { padding: "10px 16px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--card)", color: "var(--text-secondary)", fontWeight: 700, cursor: "pointer" },
+
+  unlockRow: { display: "flex", flexDirection: "column", gap: 6, minWidth: 170 },
+  unlockInput: {
+    padding: "8px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--primary)",
+    background: "var(--bg)", color: "var(--text)", outline: "none", fontSize: 13, fontFamily: "monospace",
+    letterSpacing: 1, boxSizing: "border-box",
+  },
+  unlockBtn: {
+    padding: "8px 14px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--primary)",
+    color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12.5,
+  },
+  unlockError: { color: "var(--destructive)", fontSize: 11.5, fontWeight: 600 },
 
   loaderWrap: { height: "60vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" },
   loader: { width: 60, height: 60, border: "5px solid var(--border)", borderTop: "5px solid var(--primary)", borderRadius: "50%", animation: "leaveSpin 1s linear infinite" },
