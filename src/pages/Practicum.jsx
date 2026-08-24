@@ -205,17 +205,9 @@ const RESPONSIVE_CSS = `
 `;
 
 export default function Practicum() {
-  /* ================= CURRENT USER ================= */
-  // Manually adding a student to a teacher who is already at the
-  // MAX_PER_TEACHER cap is an admin-only action — a sub_admin/sub_admin_2
-  // with Practicum access can still reassign freely within the cap, but
-  // cannot push a teacher over it. This is enforced again on the backend
-  // (PUT /practicum/assign/:id) — this flag only drives the UI so
-  // non-admins get a clear warning up front instead of a rejected request.
   const currentUser = useMemo(() => getStoredUser(), []);
   const isAdmin = String(currentUser?.role || "").toLowerCase().trim() === "admin";
 
-  /* ================= DATA ================= */
   const [meta, setMeta] = useState({ regions: [], schools: [], teachers: [], students: [] });
   const [sessions, setSessions] = useState([]);
   const [sessionId, setSessionId] = useState(null);
@@ -224,7 +216,6 @@ export default function Practicum() {
   const [reportSession, setReportSession] = useState(null);
   const [reportPickDate, setReportPickDate] = useState(() => new Date().toISOString().slice(0, 10));
 
-  /* ================= UI STATE ================= */
   const [activeTab, setActiveTab] = useState("dashboard");
   const [manageTab, setManageTab] = useState("regions");
   const [loading, setLoading] = useState(false);
@@ -235,23 +226,19 @@ export default function Practicum() {
   const [editingSessionId, setEditingSessionId] = useState(null);
   const [editSessionForm, setEditSessionForm] = useState({ title: "", date: "", term: "" });
 
-  /* Manage-tab forms */
   const [regionForm, setRegionForm] = useState({ name: "" });
   const [schoolForm, setSchoolForm] = useState({ name: "", regionId: "" });
   const [teacherForm, setTeacherForm] = useState({ name: "", email: "", phone: "", regionId: "", researchDay: "Monday" });
   const [studentForm, setStudentForm] = useState({ name: "", admissionNo: "", schoolId: "" });
   const [editing, setEditing] = useState({ type: null, id: null, data: {} });
 
-  /* Assessment entry — controlled per-row edits */
   const [assessDrafts, setAssessDrafts] = useState({});
 
-  /* ================= THEME (shared with Dashboard) ================= */
   const { theme, toggleTheme } = useTheme();
   useEffect(() => {
     injectDesignTokens();
   }, []);
 
-  /* ================= ACTIVITY LOGS ================= */
   const [logs, setLogs] = useState(() => {
     try {
       const saved = localStorage.getItem("pz_logs");
@@ -260,7 +247,7 @@ export default function Practicum() {
       return [];
     }
   });
-  const [logsView, setLogsView] = useState("summary"); // "summary" | "full"
+  const [logsView, setLogsView] = useState("summary");
   const [logFilter, setLogFilter] = useState("");
 
   const addLog = (action, details, level = "info") => {
@@ -270,7 +257,7 @@ export default function Practicum() {
         ts: new Date().toISOString(),
         action,
         details: details || "",
-        level, // info | success | warn | error
+        level,
       };
       const next = [entry, ...prev].slice(0, 1000);
       try {
@@ -302,17 +289,14 @@ export default function Practicum() {
     downloadBlob(csv, "practicum-activity-log.csv", "text/csv");
   };
 
-  /* ================= AUTOMATIC PLACEMENT ================= */
-  const [schoolTargets, setSchoolTargets] = useState({}); // { [schoolId]: "5" }
+  const [schoolTargets, setSchoolTargets] = useState({});
 
-  /* ================= DEPLOYMENT (region + research day) ================= */
   const [deployRegionId, setDeployRegionId] = useState("");
-  const [deployDayMode, setDeployDayMode] = useState("research"); // "research" | "extra"
+  const [deployDayMode, setDeployDayMode] = useState("research");
   const [deployExtraDay, setDeployExtraDay] = useState("");
   const [deployExtraDate, setDeployExtraDate] = useState("");
   const [selectedTeacherIds, setSelectedTeacherIds] = useState([]);
 
-  /* ================= HELPERS ================= */
   const notify = (msg, isError = false) => {
     setToast({ msg, isError });
     setTimeout(() => setToast(null), 3500);
@@ -361,7 +345,6 @@ export default function Practicum() {
     if (window.confirm(msg)) fn();
   };
 
-  /* ================= LOAD ================= */
   const loadAll = async () => {
     setLoading(true);
     const [metaData, sessionList] = await Promise.all([
@@ -407,7 +390,6 @@ export default function Practicum() {
     loadReport(sessionId);
   };
 
-  /* ================= SESSIONS ================= */
   const createSession = async () => {
     if (!form.title || !form.date) return notify("Fill in title and date", true);
     setLoading(true);
@@ -463,7 +445,6 @@ export default function Practicum() {
     });
   };
 
-  /* ================= AUTO ASSIGN (teacher assignment — logic unchanged) ================= */
   const autoAssign = async () => {
     if (!sessionId) return notify("Create or select a session first", true);
     setLoading(true);
@@ -534,13 +515,12 @@ export default function Practicum() {
     });
   };
 
-  /* ================= DEPLOYMENT — region + research/extra day ================= */
   const regionTeachers = useMemo(
     () => meta.teachers.filter((t) => !deployRegionId || String(t.regionId) === String(deployRegionId)),
     [meta.teachers, deployRegionId]
   );
 
-  const effectiveDeployDay = deployDayMode === "extra" ? deployExtraDay : null; // null = "use each teacher's own research day"
+  const effectiveDeployDay = deployDayMode === "extra" ? deployExtraDay : null;
 
   const toggleTeacherSelected = (id) => {
     setSelectedTeacherIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -589,7 +569,6 @@ export default function Practicum() {
     refreshSessionData();
   };
 
-  /* ================= ASSESSMENTS ================= */
   const draftFor = (assessmentRowId, fallback) =>
     assessDrafts[assessmentRowId] !== undefined ? assessDrafts[assessmentRowId] : fallback;
 
@@ -612,7 +591,6 @@ export default function Practicum() {
     loadReport(sessionId);
   };
 
-  /* ================= MANAGE TAB: CRUD ================= */
   const createRegion = async () => {
     if (!regionForm.name) return notify("Region name required", true);
     const result = await safePost("/practicum/regions", regionForm);
@@ -696,7 +674,6 @@ export default function Practicum() {
   const labelForType = (type) =>
     ({ regions: "Region", schools: "School", teachers: "Teacher", students: "Student" }[type] || type);
 
-  /* ================= AUTOMATIC STUDENT PLACEMENT ================= */
   const unassignedStudents = useMemo(() => meta.students.filter((s) => !s.schoolId), [meta.students]);
 
   const schoolCounts = useMemo(() => {
@@ -719,6 +696,20 @@ export default function Practicum() {
 
   const clearTargets = () => setSchoolTargets({});
 
+  /* Places students by updating each one's schoolId. Previously this fired
+     one PUT /practicum/students/:id per student in parallel (Promise.all),
+     which — for any real batch size — opened dozens of concurrent
+     transactions against the Students table at once. Each of those updates
+     fires trg_UpdateClassesFromStudents on the backend, and that many
+     overlapping writes collided on the trigger's own updates, producing
+     repeated SQL Server deadlocks ("Transaction ... was deadlocked on lock
+     resources ... chosen as the deadlock victim", error 1205) in the
+     server logs.
+
+     Fixed by sending the whole batch in a single call to the new
+     PUT /practicum/students/bulk endpoint, which applies every update
+     inside ONE transaction on the backend — no concurrent connections
+     racing each other, no deadlocks. */
   const randomizePlacement = async () => {
     const targets = meta.schools
       .map((s) => ({ schoolId: s.id, name: s.name, count: parseInt(schoolTargets[s.id], 10) || 0 }))
@@ -752,40 +743,41 @@ export default function Practicum() {
 
     if (!placements.length) return notify("Nothing to place", true);
 
- setLoading(true);
-const bulkResult = await safePut("/practicum/students/bulk", {
-  updates: placements.map((p) => ({
-    id: p.student.id,
-    name: p.student.name,
-    admissionNo: p.student.admissionNo,
-    schoolId: p.schoolId,
-  })),
-});
-setLoading(false);
+    setLoading(true);
+    const bulkResult = await safePut("/practicum/students/bulk", {
+      updates: placements.map((p) => ({
+        id: p.student.id,
+        name: p.student.name,
+        admissionNo: p.student.admissionNo,
+        schoolId: p.schoolId,
+      })),
+    });
+    setLoading(false);
 
-const failed = bulkResult?.error ? placements.length : 0;
-const placedCount = placements.length - failed;
+    const failed = bulkResult?.error ? placements.length : 0;
+    const placedCount = placements.length - failed;
     const bySchool = targets
       .map((t) => `${placements.filter((p) => p.schoolId === t.schoolId).length} → ${t.name}`)
       .join(", ");
 
     notify(
       failed
-        ? `Placed ${placedCount} students, ${failed} failed`
+        ? `Placement failed: ${bulkResult.error}`
         : `Placed ${placedCount} students across ${targets.length} school(s)`,
       !!failed
     );
     addLog(
       "Automatic placement",
-      `Randomly placed ${placedCount} student(s): ${bySchool}.${failed ? ` ${failed} placement(s) failed.` : ""}`,
-      failed ? "warn" : "success"
+      failed
+        ? `Bulk placement of ${placements.length} student(s) failed: ${bulkResult.error}`
+        : `Randomly placed ${placedCount} student(s): ${bySchool}.`,
+      failed ? "error" : "success"
     );
 
     setSchoolTargets({});
     loadAll();
   };
 
-  /* ================= DERIVED ================= */
   const pivoted = useMemo(() => {
     const map = new Map();
     reportRows.forEach((r) => {
@@ -832,16 +824,6 @@ const placedCount = placements.length - failed;
     );
   }, [pivoted, search]);
 
-  /* Reports tab: "pick a date, see who's deployed".
-     - Standing research-day deployments (isExtra false/undefined) recur
-       every week, so these still match by WEEKDAY, same as before.
-     - One-off "extra day" deployments (isExtra true) now carry a real
-       persisted deployDate, so these match the EXACT date picked instead
-       — this is what stops a one-off Monday deployment from reappearing
-       on every other Monday in the report.
-     Rows from before the deployDate/isExtra migration was run will have
-     isExtra = false by default and simply fall back to weekday matching,
-     same as the old behaviour. */
   const toDateOnly = (value) => {
     if (!value) return "";
     const d = new Date(value);
@@ -853,7 +835,7 @@ const placedCount = placements.length - failed;
     const weekday = weekdayNameForDate(reportPickDate);
     if (!weekday) return [];
 
-    const byRegion = new Map(); // regionName -> Map(teacherName -> [studentLabel, ...])
+    const byRegion = new Map();
     assignments
       .filter((a) =>
         a.isExtra ? toDateOnly(a.deployDate) === reportPickDate : a.day === weekday
@@ -882,8 +864,6 @@ const placedCount = placements.length - failed;
     [meta.teachers, assignments]
   );
 
-  /* Full roster: every teacher, their research day, and everyone currently assigned to them
-     in the active session — the dataset behind the "Download all" export. */
   const fullRoster = useMemo(
     () =>
       meta.teachers.map((t) => {
@@ -916,7 +896,6 @@ const placedCount = placements.length - failed;
     };
   }, [meta, sessions, assignments, pivoted]);
 
-  /* ================= LOG SUMMARY ================= */
   const logSummary = useMemo(() => {
     const byAction = {};
     const byLevel = { success: 0, warn: 0, error: 0, info: 0 };
@@ -941,7 +920,6 @@ const placedCount = placements.length - failed;
     return logs.filter((l) => l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q));
   }, [logs, logFilter]);
 
-  /* ================= EXPORTS ================= */
   const printSection = (elementId, logLabel) => {
     const printContent = document.getElementById(elementId);
     if (!printContent) return;
@@ -1004,7 +982,6 @@ const placedCount = placements.length - failed;
     addLog("Export", `Exported CSV report for session "${reportSession?.title || "—"}".`, "info");
   };
 
-  /* Download every teacher, their research day, and the students/schools assigned to them. */
   const exportFullRosterCSV = () => {
     const header = ["Teacher", "Phone", "Region", "Research day", "Student", "School", "Deployment day"];
     const lines = [];
@@ -1026,8 +1003,6 @@ const placedCount = placements.length - failed;
 
   const csvSafe = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
-  /* ================= RENDER ================= */
-
   return (
     <div className="pz-app" style={styles.page}>
       <style>{RESPONSIVE_CSS}</style>
@@ -1044,7 +1019,6 @@ const placedCount = placements.length - failed;
         </div>
       )}
 
-      {/* TOPBAR */}
       <div className="pz-topbar">
         <h1 style={styles.logo}>Practicum</h1>
 
@@ -1089,7 +1063,6 @@ const placedCount = placements.length - failed;
       </div>
 
       <div className="pz-layout">
-        {/* SIDEBAR */}
         <div className="pz-sidebar">
           {TABS.map((tab) => (
             <button
@@ -1102,13 +1075,11 @@ const placedCount = placements.length - failed;
           ))}
         </div>
 
-        {/* MAIN */}
         <div className="pz-main">
           <div className={`pz-progress ${loading ? "active" : ""}`}>
   <div className="pz-progress-fill" />
 </div>
 
-          {/* ===================== DASHBOARD ===================== */}
           {activeTab === "dashboard" && (
             <div className="pz-card" style={styles.card}>
               <h2 style={styles.sectionTitle}>Overview</h2>
@@ -1139,7 +1110,6 @@ const placedCount = placements.length - failed;
             </div>
           )}
 
-          {/* ===================== MANAGE ===================== */}
           {activeTab === "manage" && (
             <div className="pz-card" style={styles.card}>
               <h2 style={styles.sectionTitle}>Manage data</h2>
@@ -1156,7 +1126,6 @@ const placedCount = placements.length - failed;
                 ))}
               </div>
 
-              {/* --- REGIONS --- */}
               {manageTab === "regions" && (
                 <>
                   <div style={styles.formRow}>
@@ -1198,7 +1167,6 @@ const placedCount = placements.length - failed;
                 </>
               )}
 
-              {/* --- SCHOOLS --- */}
               {manageTab === "schools" && (
                 <>
                   <div style={styles.formRow}>
@@ -1257,7 +1225,6 @@ const placedCount = placements.length - failed;
                 </>
               )}
 
-              {/* --- TEACHERS --- */}
               {manageTab === "teachers" && (
                 <>
                   <div style={styles.formRow}>
@@ -1345,7 +1312,6 @@ const placedCount = placements.length - failed;
                 </>
               )}
 
-              {/* --- STUDENTS --- */}
               {manageTab === "students" && (
                 <>
                   <div style={styles.formRow}>
@@ -1420,7 +1386,6 @@ const placedCount = placements.length - failed;
             </div>
           )}
 
-          {/* ===================== PLACEMENT (automatic school placement) ===================== */}
           {activeTab === "placement" && (
             <div className="pz-card" style={styles.card}>
               <h2 style={styles.sectionTitle}>Automatic school placement</h2>
@@ -1488,7 +1453,6 @@ const placedCount = placements.length - failed;
             </div>
           )}
 
-          {/* ===================== DEPLOY (region + research day / extra day) ===================== */}
           {activeTab === "deploy" && (
             <div className="pz-card" style={styles.card}>
               <h2 style={styles.sectionTitle}>Deploy teachers by region</h2>
@@ -1601,7 +1565,6 @@ const placedCount = placements.length - failed;
             </div>
           )}
 
-          {/* ===================== SESSIONS ===================== */}
           {activeTab === "sessions" && (
             <div className="pz-card" style={styles.card}>
               <h2 style={styles.sectionTitle}>Create practicum session</h2>
@@ -1674,7 +1637,6 @@ const placedCount = placements.length - failed;
             </div>
           )}
 
-          {/* ===================== ASSIGNMENTS (teacher assignment logic unchanged) ===================== */}
           {activeTab === "assignments" && (
             <div className="pz-card" style={styles.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -1772,7 +1734,6 @@ const placedCount = placements.length - failed;
             </div>
           )}
 
-          {/* ===================== ASSESSMENTS ENTRY ===================== */}
           {activeTab === "assess" && (
             <div className="pz-card" style={styles.card}>
               <h2 style={styles.sectionTitle}>Assessment entry (1–6)</h2>
@@ -1831,7 +1792,6 @@ const placedCount = placements.length - failed;
             </div>
           )}
 
-          {/* ===================== REPORTS ===================== */}
           {activeTab === "reports" && (
             <div className="pz-card" style={{ ...styles.card, marginBottom: 16 }}>
               <h2 style={styles.sectionTitle}>Deployments on a date</h2>
@@ -1938,7 +1898,6 @@ const placedCount = placements.length - failed;
             </div>
           )}
 
-          {/* ===================== LOGS ===================== */}
           {activeTab === "logs" && (
             <div className="pz-card" style={styles.card}>
               <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
@@ -2013,7 +1972,6 @@ const placedCount = placements.length - failed;
           )}
         </div>
 
-        {/* LETTER MODAL */}
         {showLetters && (
           <div className="pz-modal" style={styles.modal}>
             <div className="pz-letter-container" style={styles.letterContainer}>
@@ -2082,7 +2040,6 @@ function StatCard({ label, value, tone }) {
   );
 }
 
-/* ================= UI ================= */
 const styles = {
   page: { background: "var(--bg)", minHeight: "100vh", color: "var(--text)" },
   toast: { position: "fixed", top: 16, right: 16, zIndex: 999, color: "#fff", padding: "10px 16px", borderRadius: 8, boxShadow: "var(--shadow)", maxWidth: "90vw", textTransform: "none", fontWeight: 600, letterSpacing: 0 },
