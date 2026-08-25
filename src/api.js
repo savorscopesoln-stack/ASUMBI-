@@ -72,6 +72,18 @@ API.interceptors.response.use(
     }
 
     // ============================
+    // MANDATORY PROFILE COMPLETION (students)
+    // Same idea as above — stay logged in, bounce to the forced
+    // "complete your profile" screen instead of wiping the session.
+    // ============================
+    if (status === 403 && error.response?.data?.code === "PROFILE_INCOMPLETE") {
+      if (window.location.pathname !== "/complete-profile") {
+        window.location.href = "/complete-profile";
+      }
+      return Promise.reject(error);
+    }
+
+    // ============================
     // AUTH ISSUES (401 + 403 FIX)
     // ============================
     if (status === 401 || status === 403) {

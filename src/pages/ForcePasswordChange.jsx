@@ -57,15 +57,24 @@ export default function ForcePasswordChange() {
     try {
       setLoading(true);
 
-      await API.put("/auth/change-password", {
+      const res = await API.put("/auth/change-password", {
         oldPassword,
         newPassword,
       });
 
-      // clear the flag locally so ProtectedRoute stops bouncing us here
-      const user = getUser();
-      user.mustChangePassword = false;
+      // The response carries a freshly-minted token/user (the old
+      // token still had mustChangePassword baked in) — swap both in
+      // so ProtectedRoute and every future request see the update.
+      const { token, user: freshUser } = res.data || {};
+      if (token) localStorage.setItem("token", token);
+
+      const user = freshUser || { ...getUser(), mustChangePassword: false };
       localStorage.setItem("user", JSON.stringify(user));
+
+      if (user.profileIncomplete) {
+        navigate("/complete-profile", { replace: true });
+        return;
+      }
 
       const role = (user.role || "").toLowerCase();
       navigate(routes[role] || getDefaultRoute(user), { replace: true });

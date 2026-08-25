@@ -88,6 +88,16 @@ export default function StudentProfile() {
   const [user, setUser] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // editable profile details (everything except name/admissionNo)
+  const [studentClass, setStudentClass] = useState("");
+  const [gender, setGender] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [assessmentNumber, setAssessmentNumber] = useState("");
+  const [detailsMsg, setDetailsMsg] = useState("");
+  const [detailsTone, setDetailsTone] = useState("success");
+  const [savingDetails, setSavingDetails] = useState(false);
+
   // password change
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -107,6 +117,11 @@ export default function StudentProfile() {
       setLoading(true);
       const res = await API.get("/student/profile");
       setUser(res.data);
+      setStudentClass(res.data.studentClass || "");
+      setGender(res.data.gender || "");
+      setEmail(res.data.email || "");
+      setPhone(res.data.phone || "");
+      setAssessmentNumber(res.data.assessmentNumber || "");
     } catch (err) {
       console.log(err);
     } finally {
@@ -117,6 +132,44 @@ export default function StudentProfile() {
   useEffect(() => {
     loadProfile();
   }, []);
+
+  /* ================= SAVE PROFILE DETAILS =================
+     Everything on the Students row except name/admissionNo (those
+     stay staff-managed). Same endpoint used by the forced
+     first-login CompleteProfile screen. */
+  const saveDetails = async () => {
+    if (!studentClass.trim() || !gender.trim() || !email.trim() || !phone.trim()) {
+      setDetailsTone("error");
+      setDetailsMsg("Class, gender, email, and phone are required");
+      return;
+    }
+
+    try {
+      setDetailsMsg("");
+      setSavingDetails(true);
+
+      const res = await API.put("/student/profile", {
+        studentClass: studentClass.trim(),
+        gender: gender.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        assessmentNumber: assessmentNumber.trim(),
+      });
+
+      if (res.data?.token) localStorage.setItem("token", res.data.token);
+      if (res.data?.user) localStorage.setItem("user", JSON.stringify(res.data.user));
+
+      setUser((u) => ({ ...u, ...(res.data?.profile || {}) }));
+      setDetailsTone("success");
+      setDetailsMsg("Profile details updated");
+    } catch (err) {
+      console.log(err);
+      setDetailsTone("error");
+      setDetailsMsg(err.response?.data?.message || "Failed to update profile details");
+    } finally {
+      setSavingDetails(false);
+    }
+  };
 
   /* ================= PHOTO UPLOAD ================= */
   const handlePhotoSelect = async (e) => {
@@ -250,6 +303,88 @@ export default function StudentProfile() {
                 <span style={D.infoLabel}>Role</span>
                 <span style={D.infoValue}>{user.role || "—"}</span>
               </div>
+            </div>
+          )}
+        </section>
+
+        {/* Editable profile details — everything except name/admissionNo */}
+        <section style={D.panel} aria-label="Profile details">
+          <div style={D.panelHeader}>
+            <h3 style={D.panelTitle}>Profile Details</h3>
+          </div>
+
+          <div style={D.formGroup}>
+            <label style={D.label}>Class</label>
+            <input
+              type="text"
+              placeholder="e.g. Form 2 East"
+              value={studentClass}
+              onChange={(e) => setStudentClass(e.target.value)}
+              style={D.input}
+            />
+          </div>
+
+          <div style={D.formGroup}>
+            <label style={D.label}>Gender</label>
+            <select
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              style={D.input}
+            >
+              <option value="">Select gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </div>
+
+          <div style={D.formGroup}>
+            <label style={D.label}>Email</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={D.input}
+              autoComplete="email"
+            />
+          </div>
+
+          <div style={D.formGroup}>
+            <label style={D.label}>Phone Number</label>
+            <input
+              type="tel"
+              placeholder="07XXXXXXXX"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              style={D.input}
+              autoComplete="tel"
+            />
+          </div>
+
+          <div style={D.formGroup}>
+            <label style={D.label}>Assessment Number</label>
+            <input
+              type="text"
+              value={assessmentNumber}
+              onChange={(e) => setAssessmentNumber(e.target.value)}
+              style={D.input}
+            />
+          </div>
+
+          <button
+            onClick={saveDetails}
+            disabled={savingDetails}
+            className="profile-btn"
+            style={{ ...D.button, opacity: savingDetails ? 0.6 : 1 }}
+          >
+            {savingDetails ? <Loader2 size={15} className="dash-spin" /> : null}
+            {savingDetails ? "Saving…" : "Save Details"}
+          </button>
+
+          {detailsMsg && (
+            <div style={{ ...D.msg, color: detailsTone === "success" ? "var(--success)" : "var(--destructive)" }}>
+              {detailsTone === "success" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+              {detailsMsg}
             </div>
           )}
         </section>

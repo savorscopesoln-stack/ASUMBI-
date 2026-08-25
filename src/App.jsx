@@ -38,6 +38,7 @@ import KitchenPage from "./pages/KitchenPage";
 ========================================================= */
 import Login from "./pages/Login";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
+import CompleteProfile from "./pages/CompleteProfile";
 
 /* =========================================================
    STUDENT
@@ -148,6 +149,18 @@ const ProtectedRoute = ({
   }
 
   if (
+    user?.profileIncomplete &&
+    window.location.pathname !== "/complete-profile"
+  ) {
+    return (
+      <Navigate
+        to="/complete-profile"
+        replace
+      />
+    );
+  }
+
+  if (
     allowedRoles.length > 0 &&
     !allowedRoles.includes(role)
   ) {
@@ -208,6 +221,15 @@ const PublicRoute = ({
       return (
         <Navigate
           to="/force-password-change"
+          replace
+        />
+      );
+    }
+
+    if (user?.profileIncomplete) {
+      return (
+        <Navigate
+          to="/complete-profile"
           replace
         />
       );
@@ -348,6 +370,20 @@ export default function App() {
         element={
           isLoggedIn() ? (
             <ForcePasswordChange />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* COMPLETE PROFILE — students only, shown right after their
+          first forced password change (see ProtectedRoute/PublicRoute
+          above and api.js's response interceptor) */}
+      <Route
+        path="/complete-profile"
+        element={
+          isLoggedIn() ? (
+            <CompleteProfile />
           ) : (
             <Navigate to="/login" replace />
           )
