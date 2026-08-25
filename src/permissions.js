@@ -27,6 +27,7 @@ export const PAGES = [
   { key: "Student Council",  label: "Student Council",    route: "/student-council" },
   { key: "Gate",             label: "Gate",                route: "/gate" },
   { key: "Kitchen",          label: "Kitchen",             route: "/kitchen" },
+  { key: "Profile Change Requests", label: "Profile Change Requests", route: "/profile-change-requests" },
 ];
 
 export const PAGE_KEYS = PAGES.map((p) => p.key);

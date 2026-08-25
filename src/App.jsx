@@ -16,6 +16,7 @@ import Students from "./pages/Students";
 import Teachers from "./pages/Teachers";
 import Users from "./pages/Users";
 import AdminPasswordReset from "./pages/AdminPasswordReset";
+import ProfileChangeRequests from "./pages/ProfileChangeRequests";
 import Reports from "./pages/reports";
 import Graduation from "./pages/Graduation";
 import RegistrationPage from "./pages/RegistrationPage";
@@ -484,6 +485,18 @@ export default function App() {
             page="Password Reset"
           >
             <AdminPasswordReset />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/profile-change-requests"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="Profile Change Requests"
+          >
+            <ProfileChangeRequests />
           </ProtectedRoute>
         }
       />

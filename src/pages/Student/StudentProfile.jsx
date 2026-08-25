@@ -98,6 +98,9 @@ export default function StudentProfile() {
   const [detailsTone, setDetailsTone] = useState("success");
   const [savingDetails, setSavingDetails] = useState(false);
 
+  // pending change request (once profile is already completed once)
+  const [pendingRequest, setPendingRequest] = useState(null);
+
   // password change
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -122,6 +125,17 @@ export default function StudentProfile() {
       setEmail(res.data.email || "");
       setPhone(res.data.phone || "");
       setAssessmentNumber(res.data.assessmentNumber || "");
+
+      if (res.data.profileCompleted) {
+        try {
+          const reqRes = await API.get("/student/profile-change-requests/mine");
+          if (reqRes.data && reqRes.data.status === "pending") {
+            setPendingRequest(reqRes.data);
+          }
+        } catch (err) {
+          console.log(err);
+        }
+      }
     } catch (err) {
       console.log(err);
     } finally {
@@ -134,9 +148,10 @@ export default function StudentProfile() {
   }, []);
 
   /* ================= SAVE PROFILE DETAILS =================
-     Everything on the Students row except name/admissionNo (those
-     stay staff-managed). Same endpoint used by the forced
-     first-login CompleteProfile screen. */
+     The very first save (right after the forced password change)
+     goes straight onto the Students row and flips profileCompleted
+     to 1. Every save after that is no longer applied directly — it's
+     queued as a change request that needs admin approval instead. */
   const saveDetails = async () => {
     if (!studentClass.trim() || !gender.trim() || !email.trim() || !phone.trim()) {
       setDetailsTone("error");
@@ -144,25 +159,37 @@ export default function StudentProfile() {
       return;
     }
 
+    const payload = {
+      studentClass: studentClass.trim(),
+      gender: gender.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      assessmentNumber: assessmentNumber.trim(),
+    };
+
     try {
       setDetailsMsg("");
       setSavingDetails(true);
 
-      const res = await API.put("/student/profile", {
-        studentClass: studentClass.trim(),
-        gender: gender.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        assessmentNumber: assessmentNumber.trim(),
-      });
+      if (user.profileCompleted) {
+        // second-and-later edit — goes to the approval queue, nothing
+        // changes on the Students row yet
+        const res = await API.post("/student/profile-change-requests", payload);
+        setPendingRequest({ status: "pending", ...payload });
+        setDetailsTone("success");
+        setDetailsMsg(res.data?.message || "Change request submitted for admin approval");
+      } else {
+        // first-ever save — applies immediately
+        const res = await API.put("/student/profile", payload);
 
-      if (res.data?.token) localStorage.setItem("token", res.data.token);
-      if (res.data?.user) localStorage.setItem("user", JSON.stringify(res.data.user));
+        if (res.data?.token) localStorage.setItem("token", res.data.token);
+        if (res.data?.user) localStorage.setItem("user", JSON.stringify(res.data.user));
 
-      setUser((u) => ({ ...u, ...(res.data?.profile || {}) }));
-      setDetailsTone("success");
-      setDetailsMsg("Profile details updated");
-    } catch (err) {
+        setUser((u) => ({ ...u, ...(res.data?.profile || {}) }));
+        setDetailsTone("success");
+        setDetailsMsg("Profile details updated");
+      }
+    } catch (err){
       console.log(err);
       setDetailsTone("error");
       setDetailsMsg(err.response?.data?.message || "Failed to update profile details");
@@ -311,7 +338,19 @@ export default function StudentProfile() {
         <section style={D.panel} aria-label="Profile details">
           <div style={D.panelHeader}>
             <h3 style={D.panelTitle}>Profile Details</h3>
+            {user.profileCompleted ? (
+              <p style={D.pendingHint}>
+                Already set up once — any change now needs admin approval before it applies.
+              </p>
+            ) : null}
           </div>
+
+          {pendingRequest && (
+            <div style={{ ...D.msg, ...D.pendingBanner }}>
+              <AlertTriangle size={13} />
+              You have a change request awaiting admin approval. Submitting again will update that same request.
+            </div>
+          )}
 
           <div style={D.formGroup}>
             <label style={D.label}>Class</label>
@@ -378,7 +417,11 @@ export default function StudentProfile() {
             style={{ ...D.button, opacity: savingDetails ? 0.6 : 1 }}
           >
             {savingDetails ? <Loader2 size={15} className="dash-spin" /> : null}
-            {savingDetails ? "Saving…" : "Save Details"}
+            {savingDetails
+              ? "Saving…"
+              : user.profileCompleted
+              ? "Submit for Approval"
+              : "Save Details"}
           </button>
 
           {detailsMsg && (
@@ -471,6 +514,19 @@ const D = {
     boxShadow: "var(--shadow-sm)",
   },
   panelHeader: { marginBottom: 14 },
+  pendingHint: {
+    margin: "4px 0 0",
+    fontSize: 11.5,
+    color: "var(--warning, #B45309)",
+    fontWeight: 600,
+  },
+  pendingBanner: {
+    background: "var(--warning-tint, #FFFBEB)",
+    color: "var(--warning, #B45309)",
+    padding: "10px 12px",
+    borderRadius: "var(--radius-sm)",
+    marginBottom: 14,
+  },
   panelTitle: { margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" },
 
   loadingState: {

@@ -12,6 +12,7 @@ import {
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
   Award, Activity, Inbox, KeyRound, Bell, Settings, Vote, SlidersHorizontal,
+  UserRoundCog,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
@@ -163,6 +164,7 @@ const NAV_GROUPS = [
       { name: "Student Council", Icon: Vote },
       { name: "Gate", Icon: DoorOpen },
       { name: "Kitchen", Icon: Utensils },
+      { name: "Profile Change Requests", Icon: UserRoundCog },
       // Not part of the grantable sub-admin PAGE_KEYS list (see
       // permissions.js) on purpose — hasPage() only returns true for
       // this key when role === "admin" (its unconditional bypass), so
@@ -188,6 +190,7 @@ const ROUTES = {
   Notifications:"/notifications", "Notification Settings":"/notification-settings",
   "Student Council":"/student-council",
   Gate:"/gate", Kitchen:"/kitchen",
+  "Profile Change Requests":"/profile-change-requests",
   "Portal Pages":"/portal-pages",
 };
 
