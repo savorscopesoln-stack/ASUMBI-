@@ -173,6 +173,7 @@ export default function LeaveOutAdmin() {
   const [autoApproveModalOpen, setAutoApproveModalOpen] = useState(false);
   const [autoApproveStudentId, setAutoApproveStudentId] = useState("");
   const [autoApproveBusy, setAutoApproveBusy] = useState(false);
+  const [autoApproveSearch, setAutoApproveSearch] = useState("");
 
   const [duration, setDuration] = useState(120);
   const [search, setSearch] = useState("");
@@ -384,8 +385,33 @@ export default function LeaveOutAdmin() {
 
   const openAutoApproveModal = () => {
     setAutoApproveStudentId(students[0]?.id || "");
+    setAutoApproveSearch("");
     setAutoApproveModalOpen(true);
   };
+
+  // Students not already on the list, filtered by the search box —
+  // matches name or admission number so a long roll is easy to narrow
+  // down instead of scrolling a huge <select>.
+  const autoApproveCandidates = useMemo(() => {
+    const onListIds = new Set(autoApproveList.map((a) => a.student_id));
+    const term = autoApproveSearch.toLowerCase().trim();
+    return students.filter((s) => {
+      if (onListIds.has(s.id)) return false;
+      if (!term) return true;
+      return (
+        (s.name || "").toLowerCase().includes(term) ||
+        (s.admissionNo || "").toLowerCase().includes(term)
+      );
+    });
+  }, [students, autoApproveList, autoApproveSearch]);
+
+  // Keep the selected option valid as the search narrows the list —
+  // otherwise "Add" could silently submit a student no longer shown.
+  useEffect(() => {
+    if (!autoApproveCandidates.some((s) => String(s.id) === String(autoApproveStudentId))) {
+      setAutoApproveStudentId(autoApproveCandidates[0]?.id || "");
+    }
+  }, [autoApproveCandidates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addToAutoApprove = async () => {
     if (!autoApproveStudentId) {
@@ -869,8 +895,19 @@ export default function LeaveOutAdmin() {
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0, color: "var(--text)" }}>🔐 Auto-Approve List</h3>
             <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>
-              Students on this list have their Emergency Leave requests skip the Sub-Admin 2 review stage automatically — created already awaiting final approval.
+              Students on this list have their Emergency Leave requests fully auto-approved on submission — no review needed from anyone.
             </p>
+
+            <div style={styles.field}>
+              <label style={styles.label}>Search student</label>
+              <input
+                type="text"
+                placeholder="🔍 Search by name or admission no..."
+                value={autoApproveSearch}
+                onChange={(e) => setAutoApproveSearch(e.target.value)}
+                style={styles.input}
+              />
+            </div>
 
             <div style={styles.field}>
               <label style={styles.label}>Add a student</label>
@@ -880,11 +917,14 @@ export default function LeaveOutAdmin() {
                   onChange={(e) => setAutoApproveStudentId(e.target.value)}
                   style={{ ...styles.input, flex: 1 }}
                 >
-                  {students.map((s) => (
+                  {autoApproveCandidates.length === 0 && (
+                    <option value="">No matching students</option>
+                  )}
+                  {autoApproveCandidates.map((s) => (
                     <option key={s.id} value={s.id}>{s.name} {s.admissionNo ? `(${s.admissionNo})` : ""}</option>
                   ))}
                 </select>
-                <button onClick={addToAutoApprove} disabled={autoApproveBusy} style={styles.forceGrantBtn}>
+                <button onClick={addToAutoApprove} disabled={autoApproveBusy || !autoApproveStudentId} style={styles.forceGrantBtn}>
                   Add
                 </button>
               </div>
