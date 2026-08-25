@@ -1,10 +1,37 @@
-import React, { useEffect, useState } from "react";
-import API from "../../api";
-import { Bell, Inbox, CheckCheck, Loader2 } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { usePortalPageAccess } from "../../hooks/usePortalPageAccess";
+import useUnreadNotifications from "../../hooks/useUnreadNotifications";
+import {
+  LayoutDashboard, UserRound, Bell, BarChart3, FileText, MonitorCheck,
+  Trophy, CalendarDays, CalendarCheck, Wallet, Utensils, DoorOpen,
+  Settings, ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut,
+  Sun, Moon, GraduationCap, Vote,
+} from "lucide-react";
+/* ─── self-contained theme hook — no dependency on an external
+   ThemeContext file/path, which varies by project structure.
+   Reads/writes localStorage + the document's data-theme attribute,
+   the same attribute the token stylesheet below keys off of. If
+   your app already has its own ThemeProvider/useTheme elsewhere,
+   swap this out for that import instead so both stay in sync. ─── */
+const useTheme = () => {
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("theme") || "light"
+  );
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
+  return { theme, toggleTheme };
+};
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
-   rest of the app; a no-op if already mounted by the layout or
-   another page. ─── */
+   admin dashboard so both layouts render from one consistent
+   system and only ever inject once per page load ─── */
 const injectStyles = () => {
   if (document.getElementById("dash-tokens")) return;
   const el = document.createElement("style");
@@ -61,213 +88,493 @@ const injectStyles = () => {
 
     body { background: var(--bg); transition: background-color .2s ease; }
 
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:translateY(0);} }
+
+    .dash-nav-btn { transition: background 0.15s ease, color 0.15s ease; }
+    .dash-nav-btn:hover { background: var(--primary-tint); color: var(--primary-dark); }
+    .dash-nav-btn.active-nav { background: var(--primary-tint); color: var(--primary); font-weight: 700; }
+
+    .dash-btn { transition: filter 0.15s ease, background-color .15s ease, border-color .15s ease; }
+    .dash-btn:hover { filter: brightness(0.97); }
+    .dash-icon-btn:hover { background: var(--bg); }
+    .dash-profile-card:hover { background: var(--bg); }
+
     button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
       outline: 2px solid var(--primary);
       outline-offset: 2px;
       border-radius: 6px;
     }
 
+    .dash-mobile-toggle { display: none; }
+    .dash-backdrop { display: none; }
+
     @media (max-width: 900px) {
+      .dash-sidebar { position: fixed !important; top: 0; left: 0; height: 100vh; width: 250px !important; transform: translateX(-100%); transition: transform .25s ease; z-index: 60; }
+      .dash-sidebar.mobile-open { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,0.25); }
+      .dash-mobile-toggle { display: inline-flex !important; }
+      .dash-backdrop.open { display: block; position: fixed; inset: 0; background: rgba(15,17,21,0.45); z-index: 55; }
       .dash-main { padding: 20px 16px 48px !important; }
+
+      /* keep the hamburger reachable while scrolling on mobile —
+         without this the header (and the only way to reopen the
+         sidebar) scrolls away with the rest of the page content */
+      .dash-page-header {
+        position: sticky;
+        top: 0;
+        z-index: 45;
+        margin: -20px -16px 16px !important;
+        padding: 14px 16px !important;
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
     }
   `;
   document.head.appendChild(el);
 };
 
-export default function StudentNotifications() {
+/* ─── student nav, grouped — same shape as the admin NAV_GROUPS ─── */
+// Exported so the admin Portal Pages control screen can read the
+// exact same live nav registry that renders this sidebar — add a
+// page here and it automatically becomes controllable there too.
+export const NAV_GROUPS = [
+  {
+    label: "Core Portal",
+    items: [
+      { name: "Dashboard",     path: "/student",               Icon: LayoutDashboard },
+      { name: "Profile",       path: "/student/profile",        Icon: UserRound },
+      { name: "Notifications", path: "/student/notifications",  Icon: Bell, badgeKey: "notifications" },
+    ],
+  },
+  {
+    label: "Academics",
+    items: [
+      { name: "Marks & Grades",   path: "/student/marks",          Icon: BarChart3 },
+      { name: "Report Card",      path: "/student/report",         Icon: FileText },
+      { name: "E-Assessments",    path: "/student/e-assessments",  Icon: MonitorCheck },
+      { name: "Results Summary",  path: "/student/results",        Icon: Trophy },
+      { name: "Class Timetable",  path: "/student/timetable",      Icon: CalendarDays },
+    ],
+  },
+  {
+    label: "Management",
+    items: [
+      { name: "Attendance",      path: "/student/attendance-report", Icon: CalendarCheck },
+      { name: "Fees & Finance",  path: "/student/fees",              Icon: Wallet },
+      { name: "Meals & Dining",  path: "/student/meals",             Icon: Utensils },
+      { name: "Leave Requests",  path: "/student/leave",             Icon: DoorOpen },
+      { name: "Student Council", path: "/student/council",           Icon: Vote },
+      { name: "Settings",        path: "/student/settings",          Icon: Settings },
+    ],
+  },
+];
+
+export default function StudentLayout() {
   injectStyles();
 
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [markingAll, setMarkingAll] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const loadNotifications = async () => {
-    try {
-      const res = await API.get("/notifications");
-      setNotifications(res.data || []);
-    } catch (err) {
-      console.log(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Pages an Admin has switched off for this portal. Hides them from
+  // the sidebar below, and bounces the student back to the dashboard
+  // if they land on a disabled page's URL directly.
+  const { loaded: pagesLoaded, isEnabled, isPathDisabled } = usePortalPageAccess("student");
+  const { count: unreadCount } = useUnreadNotifications();
 
   useEffect(() => {
-    loadNotifications();
-  }, []);
-
-  const markRead = async (id) => {
-    // instant UI update
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
-    try {
-      await API.put(`/notifications/${id}/read`);
-    } catch (err) {
-      console.log(err);
+    if (!pagesLoaded) return;
+    if (isPathDisabled(location.pathname)) {
+      navigate("/student", { replace: true });
     }
+  }, [location.pathname, pagesLoaded, isPathDisabled, navigate]);
+
+  const visibleNavGroups = NAV_GROUPS
+    .map((group) => ({ ...group, items: group.items.filter((item) => isEnabled(item.path)) }))
+    .filter((group) => group.items.length > 0);
+
+  const isActive = (path) => {
+    if (path === "/student") return location.pathname === "/student";
+    return location.pathname.startsWith(path);
   };
 
-  const markAllRead = async () => {
-    setMarkingAll(true);
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    try {
-      await API.put("/notifications/read-all");
-    } catch (err) {
-      console.log(err);
-    } finally {
-      setMarkingAll(false);
-    }
+  const go = (path) => {
+    navigate(path);
+    setMobileOpen(false);
   };
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
-
-  const formatTime = (d) => {
-    if (!d) return "";
-    try {
-      return new Date(d).toLocaleString();
-    } catch {
-      return "";
-    }
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
   };
+
+  /* close the mobile drawer on route change, same as admin */
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
+  const sidebarWidth = sidebarCollapsed ? 68 : 252;
 
   return (
-    <main className="dash-main" style={D.main}>
-      <header style={D.pageHeader}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Bell size={20} color="var(--primary)" />
-          <div>
-            <h1 style={D.pageTitle}>Notifications</h1>
-            <p style={D.pageSub}>Alerts and updates from the campus system</p>
+    <div style={S.layout}>
+      {/* mobile backdrop */}
+      <div
+        className={`dash-backdrop${mobileOpen ? " open" : ""}`}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* ════════ SIDEBAR ════════ */}
+      <aside
+        className={`dash-sidebar${mobileOpen ? " mobile-open" : ""}`}
+        style={{ ...S.sidebar, width: sidebarWidth }}
+        aria-label="Sidebar navigation"
+      >
+        {/* logo row */}
+        <div style={S.logoRow}>
+          <div style={S.logoMark}>
+            <GraduationCap size={20} color="#fff" strokeWidth={2.25} />
           </div>
+          {!sidebarCollapsed && (
+            <div style={{ minWidth: 0 }}>
+              <div style={S.logoName}>Student Portal</div>
+              <div style={S.logoSub}>Smart Campus</div>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarCollapsed((p) => !p)}
+            className="dash-icon-btn"
+            style={S.collapseToggle}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? "Expand" : "Collapse"}
+          >
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
 
-        {unreadCount > 0 && (
-          <button style={D.markAllBtn} onClick={markAllRead} disabled={markingAll}>
-            <CheckCheck size={14} />
-            {markingAll ? "Marking…" : `Mark all ${unreadCount} as read`}
-          </button>
-        )}
-      </header>
-
-      <section style={D.panel}>
-        {loading ? (
-          <div style={D.emptyState}>
-            <Loader2 size={22} className="dash-spin" color="var(--text-muted)" style={{ marginBottom: 8 }} />
-            <div>Loading notifications…</div>
-          </div>
-        ) : notifications.length === 0 ? (
-          <div style={D.emptyState}>
-            <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
-            <div>No notifications yet</div>
-          </div>
-        ) : (
-          notifications.map((n) => (
-            <div
-              key={n.id}
-              style={{ ...D.row, ...(n.isRead ? {} : D.rowUnread) }}
-              onClick={() => !n.isRead && markRead(n.id)}
-              role={!n.isRead ? "button" : undefined}
-            >
-              <div style={D.rowTop}>
-                <span style={D.rowTitle}>
-                  {!n.isRead && <span style={D.dot} />}
-                  {n.title || "Notification"}
-                </span>
-                <span style={D.rowTime}>{formatTime(n.createdAt)}</span>
-              </div>
-              <div style={D.rowMessage}>{n.message}</div>
+        {/* profile card */}
+        <button
+          type="button"
+          className="dash-profile-card"
+          style={S.profileCard}
+          onClick={() => go("/student/profile")}
+          aria-label="Signed in as Active Student. Open profile."
+          title={sidebarCollapsed ? "Active Student" : undefined}
+        >
+          <div style={S.profileAvatar}>ST</div>
+          {!sidebarCollapsed && (
+            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <div style={S.profileName}>Active Student</div>
+              <span style={S.profileRoleBadge}>ID: #2026-09431</span>
             </div>
-          ))
-        )}
-      </section>
-    </main>
+          )}
+          {!sidebarCollapsed && <ChevronDown size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />}
+        </button>
+
+        <div style={S.divider} />
+
+        {/* grouped nav */}
+        <nav aria-label="Main navigation" style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+          {visibleNavGroups.map((group) => (
+            <div key={group.label} style={{ marginBottom: 14 }}>
+              {!sidebarCollapsed && <div style={S.groupLabel}>{group.label}</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {group.items.map(({ name, path, Icon, badgeKey }) => {
+                  const active = isActive(path);
+                  const showBadge = badgeKey === "notifications" && unreadCount > 0;
+                  return (
+                    <button
+                      key={path}
+                      className={`dash-nav-btn${active ? " active-nav" : ""}`}
+                      onClick={() => go(path)}
+                      aria-current={active ? "page" : undefined}
+                      title={sidebarCollapsed ? name : undefined}
+                      style={S.navBtn}
+                    >
+                      <span style={S.navIcon}><Icon size={17} strokeWidth={2} /></span>
+                      {!sidebarCollapsed && <span style={S.navLabel}>{name}</span>}
+                      {showBadge && (
+                        <span style={{ ...S.navBadge, marginLeft: sidebarCollapsed ? 0 : "auto", ...(sidebarCollapsed ? S.navBadgeCollapsed : {}) }}>
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+            <button
+          onClick={logout}
+          className="dash-btn"
+          aria-label="Log out of your account"
+          title="Log out"
+          style={{ ...S.logoutBtn, justifyContent: sidebarCollapsed ? "center" : "flex-start" }}
+        >
+          <LogOut size={17} strokeWidth={2.25} />
+          {!sidebarCollapsed && <span>Log out</span>}
+        </button>
+        </nav>
+
+        <div style={S.divider} />
+
+        {/* logout */}
+      
+      </aside>
+
+      {/* ════════ MAIN ════════ */}
+      <main className="dash-main" style={S.main}>
+        <header className="dash-page-header" style={S.pageHeader}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              className="dash-mobile-toggle dash-icon-btn"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              style={S.mobileToggleBtn}
+            >
+              <Menu size={20} />
+            </button>
+            <span style={S.mobileTitle}>Student Portal</span>
+          </div>
+          <button
+            onClick={toggleTheme}
+            className="dash-icon-btn"
+            style={S.themeToggle}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-pressed={theme === "dark"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
+        </header>
+
+        <div key={location.pathname} style={S.viewAnimator}>
+          <Outlet />
+        </div>
+      </main>
+    </div>
   );
 }
 
-const D = {
-  main: {
-    padding: "24px 32px 56px",
+/* ════════════════════════════════
+   STYLES — same token-driven approach as the admin dashboard,
+   so light/dark and collapse/expand swap without re-render
+════════════════════════════════ */
+const S = {
+  layout: {
+    display: "flex",
+    minHeight: "100vh",
     background: "var(--bg)",
     color: "var(--text)",
-    minHeight: "100vh",
     fontFamily: "'Inter', system-ui, sans-serif",
-    boxSizing: "border-box",
   },
-  pageHeader: {
-    marginBottom: 22,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  pageTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
-  pageSub: { margin: "3px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
-  markAllBtn: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    color: "var(--text-secondary)",
-    padding: "8px 14px",
-    borderRadius: "var(--radius-sm)",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: 12.5,
-  },
-  panel: {
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    padding: "20px 22px",
-    boxShadow: "var(--shadow-sm)",
-  },
-  emptyState: {
-    padding: "36px 0",
-    textAlign: "center",
-    color: "var(--text-secondary)",
-    fontSize: 13.5,
-    fontWeight: 600,
+
+  sidebar: {
     display: "flex",
     flexDirection: "column",
-    alignItems: "center",
+    height: "100vh",
+    position: "sticky",
+    top: 0,
+    background: "var(--card)",
+    borderRight: "1px solid var(--border)",
+    padding: "18px 12px",
+    transition: "width 0.2s ease",
+    overflow: "hidden",
+    zIndex: 10,
+    boxSizing: "border-box",
   },
-  row: {
-    padding: "12px 0",
-    borderBottom: "1px solid var(--border)",
-    fontSize: 13.5,
-    color: "var(--text)",
-    cursor: "pointer",
-  },
-  rowUnread: {
-    background: "var(--primary-tint)",
-    borderRadius: "var(--radius-sm)",
-    padding: "12px 14px",
-    marginBottom: 2,
-  },
-  rowTop: {
+  logoRow: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
     gap: 10,
-    marginBottom: 3,
+    marginBottom: 14,
+    padding: "0 2px",
+    minHeight: 40,
   },
-  rowTitle: {
+  logoMark: {
+    width: 36,
+    height: 36,
+    minWidth: 36,
+    background: "var(--primary)",
+    borderRadius: 10,
     display: "flex",
     alignItems: "center",
-    gap: 6,
-    fontWeight: 700,
-    color: "var(--text)",
+    justifyContent: "center",
+    flexShrink: 0,
   },
-  rowTime: { fontSize: 11.5, color: "var(--text-muted)", flexShrink: 0 },
-  rowMessage: { color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 },
-  dot: {
-    width: 7,
-    height: 7,
+  logoName: { fontSize: 13.5, fontWeight: 800, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  logoSub: { fontSize: 10.5, color: "var(--text-secondary)", whiteSpace: "nowrap", fontWeight: 600 },
+  collapseToggle: {
+    marginLeft: "auto",
+    background: "transparent",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    flexShrink: 0,
+  },
+
+  profileCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    padding: "10px",
+    marginBottom: 12,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: 12,
+    cursor: "pointer",
+    transition: "background 0.15s ease",
+    fontFamily: "inherit",
+  },
+  profileAvatar: {
+    width: 34,
+    height: 34,
+    minWidth: 34,
     borderRadius: "50%",
     background: "var(--primary)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 800,
+    fontSize: 14,
+    color: "#fff",
+    flexShrink: 0,
+  },
+  profileName: { fontSize: 13, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  profileRoleBadge: {
     display: "inline-block",
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: 700,
+    color: "var(--primary)",
+    background: "var(--primary-tint)",
+    borderRadius: 20,
+    padding: "1px 7px",
+  },
+
+  divider: { height: 1, background: "var(--border)", margin: "10px 0" },
+
+  groupLabel: {
+    fontSize: 10.5,
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--text-secondary)",
+    padding: "4px 10px",
+    marginBottom: 2,
+  },
+  navBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "9px 10px",
+    borderRadius: 9,
+    border: "none",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: "'Inter', sans-serif",
+    width: "100%",
+    textAlign: "left",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+  },
+  navIcon: { display: "flex", flexShrink: 0, width: 20, alignItems: "center", justifyContent: "center" },
+  navLabel: { overflow: "hidden", textOverflow: "ellipsis" },
+  navBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 18,
+    height: 18,
+    padding: "0 5px",
+    borderRadius: 999,
+    background: "var(--destructive)",
+    color: "#fff",
+    fontSize: 10.5,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  navBadgeCollapsed: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+  },
+
+  logoutBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    background: "transparent",
+    border: "1px solid var(--border)",
+    color: "var(--destructive)",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontSize: 13.5,
+    fontWeight: 700,
+    fontFamily: "'Inter', sans-serif",
+    minHeight: 42,
+    padding: "0 12px",
+  },
+
+  main: {
+    flex: 1,
+    padding: "24px 32px 56px",
+    overflowY: "auto",
+    minWidth: 0,
+  },
+
+  pageHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  mobileToggleBtn: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text)",
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  mobileTitle: { fontSize: 15, fontWeight: 800, color: "var(--text)" },
+  themeToggle: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+
+  viewAnimator: {
+    animation: "fadeUp 0.3s ease both",
   },
 };
