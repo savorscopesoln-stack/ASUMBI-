@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { usePortalPageAccess } from "../../hooks/usePortalPageAccess";
+import useUnreadNotifications from "../../hooks/useUnreadNotifications";
 import {
   LayoutDashboard, UserRound, Bell, BarChart3, FileText, MonitorCheck,
   Trophy, CalendarDays, CalendarCheck, Wallet, Utensils, DoorOpen,
@@ -145,7 +146,7 @@ export const NAV_GROUPS = [
     items: [
       { name: "Dashboard",     path: "/student",               Icon: LayoutDashboard },
       { name: "Profile",       path: "/student/profile",        Icon: UserRound },
-      { name: "Notifications", path: "/student/notifications",  Icon: Bell },
+      { name: "Notifications", path: "/student/notifications",  Icon: Bell, badgeKey: "notifications" },
     ],
   },
   {
@@ -185,6 +186,7 @@ export default function StudentLayout() {
   // the sidebar below, and bounces the student back to the dashboard
   // if they land on a disabled page's URL directly.
   const { loaded: pagesLoaded, isEnabled, isPathDisabled } = usePortalPageAccess("student");
+  const { count: unreadCount } = useUnreadNotifications();
 
   useEffect(() => {
     if (!pagesLoaded) return;
@@ -284,8 +286,9 @@ export default function StudentLayout() {
             <div key={group.label} style={{ marginBottom: 14 }}>
               {!sidebarCollapsed && <div style={S.groupLabel}>{group.label}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {group.items.map(({ name, path, Icon }) => {
+                {group.items.map(({ name, path, Icon, badgeKey }) => {
                   const active = isActive(path);
+                  const showBadge = badgeKey === "notifications" && unreadCount > 0;
                   return (
                     <button
                       key={path}
@@ -297,6 +300,11 @@ export default function StudentLayout() {
                     >
                       <span style={S.navIcon}><Icon size={17} strokeWidth={2} /></span>
                       {!sidebarCollapsed && <span style={S.navLabel}>{name}</span>}
+                      {showBadge && (
+                        <span style={{ ...S.navBadge, marginLeft: sidebarCollapsed ? 0 : "auto", ...(sidebarCollapsed ? S.navBadgeCollapsed : {}) }}>
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -489,6 +497,25 @@ const S = {
   },
   navIcon: { display: "flex", flexShrink: 0, width: 20, alignItems: "center", justifyContent: "center" },
   navLabel: { overflow: "hidden", textOverflow: "ellipsis" },
+  navBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 18,
+    height: 18,
+    padding: "0 5px",
+    borderRadius: 999,
+    background: "var(--destructive)",
+    color: "#fff",
+    fontSize: 10.5,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  navBadgeCollapsed: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+  },
 
   logoutBtn: {
     display: "flex",
