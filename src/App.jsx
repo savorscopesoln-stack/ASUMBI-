@@ -22,6 +22,7 @@ import RegistrationPage from "./pages/RegistrationPage";
 import AssessmentFeature from "./pages/AssessmentFeature";
 import MarksEntry from "./pages/teacher/MarksEntry";
 import LeaveOut from "./pages/LeaveOut";
+import PortalPages from "./pages/PortalPages";
 import Practicum from "./pages/Practicum";
 import Meals from "./pages/Meals";
 import AttendanceReport from "./pages/AttendanceReport";
@@ -513,6 +514,14 @@ export default function App() {
             page="Leave-out"
           >
             <LeaveOut />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/portal-pages"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+            <PortalPages />
           </ProtectedRoute>
         }
       />

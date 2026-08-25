@@ -11,7 +11,7 @@ import {
   CalendarCheck, GraduationCap, ChevronLeft, ChevronRight, ChevronDown,
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
-  Award, Activity, Inbox, KeyRound, Bell, Settings, Vote,
+  Award, Activity, Inbox, KeyRound, Bell, Settings, Vote, SlidersHorizontal,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
@@ -170,6 +170,10 @@ const NAV_GROUPS = [
       // other page. API credentials are more sensitive than the
       // broadcast-notifications feature itself.
       { name: "Notification Settings", Icon: Settings },
+      // Same admin-only treatment as above — controls which pages
+      // exist in the Student/Teacher portals at all, so it's kept
+      // out of the sub-admin-grantable list on purpose.
+      { name: "Portal Pages", Icon: SlidersHorizontal },
     ],
   },
 ];
@@ -184,6 +188,7 @@ const ROUTES = {
   Notifications:"/notifications", "Notification Settings":"/notification-settings",
   "Student Council":"/student-council",
   Gate:"/gate", Kitchen:"/kitchen",
+  "Portal Pages":"/portal-pages",
 };
 
 const formatYear = (y) => {
@@ -241,7 +246,9 @@ function Dashboard() {
   const visibleNavGroups = NAV_GROUPS
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => hasPage(user, item.name)),
+      items: group.items.filter((item) =>
+        item.name === "Portal Pages" ? String(user?.role || "").toLowerCase() === "admin" : hasPage(user, item.name)
+      ),
     }))
     .filter((group) => group.items.length > 0);
 

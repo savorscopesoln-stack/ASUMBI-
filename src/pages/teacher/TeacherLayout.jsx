@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { usePortalPageAccess } from "../../hooks/usePortalPageAccess";
 import {
   LayoutDashboard, UserRound, Bell, BarChart3, FileText, MonitorCheck,
   PenSquare, CalendarCheck, GraduationCap, ClipboardCheck, Wrench,
@@ -129,7 +130,10 @@ const injectStyles = () => {
 };
 
 /* ─── teacher nav, grouped — same shape as StudentLayout's NAV_GROUPS ─── */
-const NAV_GROUPS = [
+// Exported so the admin Portal Pages control screen can read the
+// exact same live nav registry that renders this sidebar — add a
+// page here and it automatically becomes controllable there too.
+export const NAV_GROUPS = [
   {
     label: "Core Portal",
     items: [
@@ -168,6 +172,22 @@ export default function TeacherLayout() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Pages an Admin has switched off for this portal. Hides them from
+  // the sidebar below, and bounces the teacher back to the dashboard
+  // if they land on a disabled page's URL directly.
+  const { loaded: pagesLoaded, isEnabled, isPathDisabled } = usePortalPageAccess("teacher");
+
+  useEffect(() => {
+    if (!pagesLoaded) return;
+    if (isPathDisabled(location.pathname)) {
+      navigate("/teacher/dashboard", { replace: true });
+    }
+  }, [location.pathname, pagesLoaded, isPathDisabled, navigate]);
+
+  const visibleNavGroups = NAV_GROUPS
+    .map((group) => ({ ...group, items: group.items.filter((item) => isEnabled(item.path)) }))
+    .filter((group) => group.items.length > 0);
 
   const isActive = (path) => location.pathname.startsWith(path);
 
@@ -251,7 +271,7 @@ export default function TeacherLayout() {
 
         {/* grouped nav */}
         <nav aria-label="Main navigation" style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-          {NAV_GROUPS.map((group) => (
+          {visibleNavGroups.map((group) => (
             <div key={group.label} style={{ marginBottom: 14 }}>
               {!sidebarCollapsed && <div style={S.groupLabel}>{group.label}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>

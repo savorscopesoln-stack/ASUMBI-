@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../api";
 import { NAV_GROUPS as STUDENT_NAV_GROUPS } from "./Student/StudentLayout";
-import { NAV_ITEMS as TEACHER_NAV_ITEMS } from "./teacher/TeacherLayout";
+import { NAV_GROUPS as TEACHER_NAV_GROUPS } from "./teacher/TeacherLayout";
 
 /* Pages that are the portal's landing page — disabling either would
    leave that role with nowhere to go after login, so the toggle is
@@ -16,7 +16,9 @@ const LOCKED_PATHS = new Set(["/student", "/teacher/dashboard"]);
 const STUDENT_PAGES = STUDENT_NAV_GROUPS.flatMap((g) =>
   g.items.map((i) => ({ label: i.name, path: i.path, group: g.label }))
 );
-const TEACHER_PAGES = TEACHER_NAV_ITEMS.map((i) => ({ label: i.name, path: i.path, group: "Teacher Portal" }));
+const TEACHER_PAGES = TEACHER_NAV_GROUPS.flatMap((g) =>
+  g.items.map((i) => ({ label: i.name, path: i.path, group: g.label }))
+);
 
 export default function PortalPages() {
   const [settings, setSettings] = useState([]); // rows from PortalPageSettings
