@@ -158,11 +158,21 @@ export default function LeaveOutAdmin() {
      enforces the same thing independently (see leaveOutRoutes.js). */
   const isSubAdmin2 = role === "sub_admin_2";
 
+  // Sub-Admin 2 owns this list (Admin can manage it too) — anyone on
+  // it has their Emergency Leave requests auto-approved at the
+  // Sub-Admin 2 stage instead of sitting in the review queue.
+  const canManageAutoApprove = isSubAdmin2 || isAdmin;
+
   const [leaves, setLeaves] = useState([]);
   const [analytics, setAnalytics] = useState([]);
   const [students, setStudents] = useState([]);
   const [approvedLeaves, setApprovedLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [autoApproveList, setAutoApproveList] = useState([]);
+  const [autoApproveModalOpen, setAutoApproveModalOpen] = useState(false);
+  const [autoApproveStudentId, setAutoApproveStudentId] = useState("");
+  const [autoApproveBusy, setAutoApproveBusy] = useState(false);
 
   const [duration, setDuration] = useState(120);
   const [search, setSearch] = useState("");
@@ -195,6 +205,7 @@ export default function LeaveOutAdmin() {
         ...(isSubAdmin2 ? [] : [loadAnalytics()]),
         loadStudents(),
         loadApprovedLeaves(),
+        ...(canManageAutoApprove ? [loadAutoApproveList()] : []),
       ]);
     } catch (err) {
       console.log(err);
@@ -226,6 +237,15 @@ export default function LeaveOutAdmin() {
     try {
       const res = await API.get("/leave-outs/approved");
       setApprovedLeaves(res.data || []);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const loadAutoApproveList = async () => {
+    try {
+      const res = await API.get("/leave-outs/auto-approve-list");
+      setAutoApproveList(res.data || []);
     } catch (err) {
       console.log(err);
     }
@@ -362,6 +382,40 @@ export default function LeaveOutAdmin() {
     }
   };
 
+  const openAutoApproveModal = () => {
+    setAutoApproveStudentId(students[0]?.id || "");
+    setAutoApproveModalOpen(true);
+  };
+
+  const addToAutoApprove = async () => {
+    if (!autoApproveStudentId) {
+      alert("Select a student.");
+      return;
+    }
+    try {
+      setAutoApproveBusy(true);
+      await API.post("/leave-outs/auto-approve-list", { student_id: Number(autoApproveStudentId) });
+      await loadAutoApproveList();
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to add student.");
+    } finally {
+      setAutoApproveBusy(false);
+    }
+  };
+
+  const removeFromAutoApprove = async (studentId) => {
+    if (!window.confirm(`Remove ${getStudentName(studentId)} from the auto-approve list? Future Emergency Leave requests from them will need normal review again.`)) return;
+    try {
+      setAutoApproveBusy(true);
+      await API.delete(`/leave-outs/auto-approve-list/${studentId}`);
+      await loadAutoApproveList();
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to remove student.");
+    } finally {
+      setAutoApproveBusy(false);
+    }
+  };
+
   const exportApprovedCsv = () => {
     downloadCsv(
       `approved-leaves-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -436,6 +490,11 @@ export default function LeaveOutAdmin() {
             {isAdmin && (
               <button onClick={openForceGrant} style={styles.forceGrantBtn}>
                 ⚡ Force Give Leave
+              </button>
+            )}
+            {canManageAutoApprove && (
+              <button onClick={openAutoApproveModal} style={styles.forceGrantBtn}>
+                🔐 Auto-Approve List
               </button>
             )}
             <input
@@ -629,6 +688,9 @@ export default function LeaveOutAdmin() {
                             {l.is_admin_granted ? (
                               <div style={styles.grantedTag}>Admin Granted</div>
                             ) : null}
+                            {l.subadmin2_auto_approved ? (
+                              <div style={styles.grantedTag}>Auto-Approved</div>
+                            ) : null}
                           </td>
                           <td style={{ ...styles.td, maxWidth: 220 }}>
                             {l.locked ? (
@@ -796,6 +858,71 @@ export default function LeaveOutAdmin() {
               <button onClick={submitForceGrant} disabled={busyId === "grant"} style={styles.forceGrantBtn}>
                 Grant Leave Now
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= AUTO-APPROVE LIST MODAL ================= */}
+      {autoApproveModalOpen && (
+        <div style={styles.modalOverlay} onClick={() => setAutoApproveModalOpen(false)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, color: "var(--text)" }}>🔐 Auto-Approve List</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>
+              Students on this list have their Emergency Leave requests skip the Sub-Admin 2 review stage automatically — created already awaiting final approval.
+            </p>
+
+            <div style={styles.field}>
+              <label style={styles.label}>Add a student</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select
+                  value={autoApproveStudentId}
+                  onChange={(e) => setAutoApproveStudentId(e.target.value)}
+                  style={{ ...styles.input, flex: 1 }}
+                >
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} {s.admissionNo ? `(${s.admissionNo})` : ""}</option>
+                  ))}
+                </select>
+                <button onClick={addToAutoApprove} disabled={autoApproveBusy} style={styles.forceGrantBtn}>
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div style={{ ...styles.tableWrap, marginTop: 14, maxHeight: 320, overflowY: "auto" }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Student</th>
+                    <th style={styles.th}>Added By</th>
+                    <th style={styles.th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {autoApproveList.length === 0 && (
+                    <tr><td colSpan={3} style={styles.emptyCell}>No students on the auto-approve list yet.</td></tr>
+                  )}
+                  {autoApproveList.map((a) => (
+                    <tr key={a.student_id} style={styles.tr}>
+                      <td style={styles.td}>
+                        <div style={styles.studentName}>{a.student_name || getStudentName(a.student_id)}</div>
+                        <div style={styles.studentId}>{a.admissionNo || `ID ${a.student_id}`}</div>
+                      </td>
+                      <td style={styles.td}>{a.added_by_name || "—"}</td>
+                      <td style={styles.td}>
+                        <button onClick={() => removeFromAutoApprove(a.student_id)} disabled={autoApproveBusy} style={styles.deny}>
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={styles.modalActions}>
+              <button onClick={() => setAutoApproveModalOpen(false)} style={styles.cancelBtn}>Close</button>
             </div>
           </div>
         </div>
