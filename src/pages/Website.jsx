@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import API from "../api";
+import React, { useEffect, useRef, useState } from "react";
+import API, { resolvePhotoUrl } from "../api";
 import { useTheme } from "../context/ThemeContext";
 
 /* Shares the single design-token stylesheet (CSS variables on
@@ -64,65 +64,385 @@ const injectDesignTokens = () => {
   document.head.appendChild(el);
 };
 
-/* Section registry — each entry knows its own default "new item" shape
-   and which kind of editor it needs (list-of-strings, list-of-objects,
-   or a single object form). Adding a new editable section to the
-   public site later just means adding one entry here + a matching
-   section_key in the backend's VALID_SECTIONS + website_content seed. */
+/* =========================================================
+   SECTION REGISTRY
+   One entry per editable area of the public website. This is the
+   single place that defines what an admin can edit — adding a new
+   editable field/section later means adding an entry here AND a
+   matching section_key in the backend (routes/website.js
+   VALID_SECTIONS + utils/ensureSchema.js default seed).
+
+   Field types: "text" | "textarea" | "number" | "checkbox" |
+   "image" | "select" (needs `options`).
+
+   kind "list": a top-level array.
+     - itemType "string": each item is plain text (e.g. announcements).
+     - itemType "object": each item has itemFields (e.g. news).
+   kind "object": a top-level object with `fields`, and optionally
+     `subLists` — named nested arrays (e.g. principal.bio paragraphs,
+     whyUs.items, siteMeta.socialLinks) rendered the same way a
+     top-level list would be, just scoped inside the object.
+========================================================= */
+const ICON_OPTIONS = ["Compass", "FileText", "Users", "GraduationCap", "BookOpen", "Heart"];
+
 const SECTIONS = [
-  { key: "announcements", label: "Announcements", kind: "string-list", newItem: () => "" },
-  { key: "hero", label: "Hero", kind: "object", fields: [
-    { key: "kicker", label: "Kicker pill text", type: "text" },
-    { key: "eyebrow", label: "Eyebrow line", type: "text" },
-    { key: "headline", label: "Headline (use a blank line for a line break)", type: "textarea" },
-    { key: "subtitle", label: "Subtitle paragraph", type: "textarea" },
-  ] },
-  { key: "principal", label: "Principal's Message", kind: "object", fields: [
-    { key: "name", label: "Name", type: "text" },
-    { key: "title", label: "Title / credentials line", type: "text" },
-    { key: "yearsLabel", label: "\"Years as Principal\" badge (e.g. 15 yrs)", type: "text" },
-    { key: "quote", label: "Pull-quote", type: "textarea" },
-  ], listField: { key: "bio", label: "Bio paragraphs", newItem: () => "" } },
-  { key: "stats", label: "Stats Strip", kind: "object-list", newItem: () => ({ label: "", value: 0 }),
-    itemFields: [
-      { key: "label", label: "Label", type: "text" },
-      { key: "value", label: "Value", type: "number" },
+  { key: "hero", label: "Hero (Homepage Banner)", kind: "object",
+    fields: [
+      { key: "kicker", label: "Kicker pill text", type: "text" },
+      { key: "eyebrow", label: "Eyebrow line", type: "text" },
+      { key: "headline", label: "Headline (blank line = line break)", type: "textarea" },
+      { key: "subtitle", label: "Subtitle paragraph", type: "textarea" },
+      { key: "backgroundImage", label: "Background photo (optional)", type: "image" },
     ] },
-  { key: "milestones", label: "Milestones", kind: "object-list", newItem: () => ({ year: "", text: "", current: false }),
+  { key: "announcements", label: "Announcement Ticker", kind: "list", itemType: "string", newItem: () => "" },
+  { key: "principal", label: "Principal's Message", kind: "object",
+    fields: [
+      { key: "name", label: "Name", type: "text" },
+      { key: "title", label: "Title / credentials line", type: "text" },
+      { key: "yearsLabel", label: "\"Years as Principal\" badge (e.g. 15 yrs)", type: "text" },
+      { key: "quote", label: "Pull-quote", type: "textarea" },
+      { key: "photo", label: "Portrait photo", type: "image" },
+    ],
+    subLists: [{ key: "bio", label: "Bio paragraphs", itemType: "string", newItem: () => "" }] },
+  { key: "stats", label: "Stats Strip", kind: "list", itemType: "object", newItem: () => ({ label: "", value: 0 }),
+    itemFields: [ { key: "label", label: "Label", type: "text" }, { key: "value", label: "Value", type: "number" } ] },
+  { key: "milestones", label: "Milestones (Our Story)", kind: "list", itemType: "object", newItem: () => ({ year: "", text: "", current: false }),
     itemFields: [
       { key: "year", label: "Year", type: "text" },
       { key: "text", label: "Text", type: "textarea" },
       { key: "current", label: "Mark as current milestone", type: "checkbox" },
     ] },
-  { key: "news", label: "News & Announcements", kind: "object-list", newItem: () => ({ tag: "", tagColor: "maroon", title: "", excerpt: "", date: "" }),
+  { key: "academicsIntro", label: "Academics Section Intro", kind: "object",
+    fields: [
+      { key: "kicker", label: "Kicker", type: "text" },
+      { key: "heading", label: "Heading", type: "text" },
+      { key: "intro", label: "Intro paragraph", type: "textarea" },
+    ] },
+  { key: "departments", label: "Departments", kind: "list", itemType: "object", newItem: () => ({ index: "", name: "", description: "" }),
+    itemFields: [
+      { key: "index", label: "Number (e.g. 01)", type: "text" },
+      { key: "name", label: "Name", type: "text" },
+      { key: "description", label: "Description", type: "textarea" },
+    ] },
+  { key: "programmes", label: "Programmes Table (Academics page)", kind: "list", itemType: "object", newItem: () => ({ name: "", duration: "", entry: "" }),
+    itemFields: [
+      { key: "name", label: "Programme name", type: "text" },
+      { key: "duration", label: "Duration", type: "text" },
+      { key: "entry", label: "Entry requirement", type: "text" },
+    ] },
+  { key: "quickLinks", label: "Quick Link Cards (Vision / Mission / etc.)", kind: "list", itemType: "object",
+    newItem: () => ({ icon: "Compass", title: "", text: "", linkHref: "", linkLabel: "" }),
+    itemFields: [
+      { key: "icon", label: "Icon", type: "select", options: ICON_OPTIONS },
+      { key: "title", label: "Title", type: "text" },
+      { key: "text", label: "Text", type: "textarea" },
+      { key: "linkHref", label: "Link URL (optional)", type: "text" },
+      { key: "linkLabel", label: "Link label (optional)", type: "text" },
+    ] },
+  { key: "whyUs", label: "Why Choose Us", kind: "object",
+    fields: [ { key: "kicker", label: "Kicker", type: "text" }, { key: "heading", label: "Heading", type: "text" } ],
+    subLists: [{ key: "items", label: "Reasons", itemType: "object", newItem: () => ({ num: "", title: "", text: "" }),
+      itemFields: [
+        { key: "num", label: "Number / stat (e.g. 58)", type: "text" },
+        { key: "title", label: "Title", type: "text" },
+        { key: "text", label: "Text", type: "textarea" },
+      ] }] },
+  { key: "gallery", label: "Campus Gallery", kind: "list", itemType: "object",
+    newItem: () => ({ label: "", image: null, tall: false, video: false }),
+    itemFields: [
+      { key: "label", label: "Caption / alt text", type: "text" },
+      { key: "image", label: "Photo", type: "image" },
+      { key: "tall", label: "Tall tile (spans 2 rows in the grid)", type: "checkbox" },
+      { key: "video", label: "Show \"Watch tour\" video button on this tile", type: "checkbox" },
+    ] },
+  { key: "news", label: "News & Announcements", kind: "list", itemType: "object",
+    newItem: () => ({ tag: "", tagColor: "maroon", title: "", excerpt: "", date: "", image: null }),
     itemFields: [
       { key: "title", label: "Title", type: "text" },
       { key: "tag", label: "Tag", type: "text" },
-      { key: "tagColor", label: "Tag color (maroon / green / gold)", type: "text" },
+      { key: "tagColor", label: "Tag color", type: "select", options: ["maroon", "green", "gold"] },
       { key: "excerpt", label: "Excerpt", type: "textarea" },
       { key: "date", label: "Date (display text, e.g. 24 July 2026)", type: "text" },
+      { key: "image", label: "Photo", type: "image" },
     ] },
-  { key: "testimonials", label: "Testimonials", kind: "object-list", newItem: () => ({ initials: "", quote: "", name: "", detail: "" }),
+  { key: "testimonials", label: "Testimonials", kind: "list", itemType: "object",
+    newItem: () => ({ initials: "", quote: "", name: "", detail: "", photo: null }),
     itemFields: [
       { key: "quote", label: "Quote", type: "textarea" },
       { key: "name", label: "Name", type: "text" },
-      { key: "initials", label: "Initials (avatar)", type: "text" },
+      { key: "initials", label: "Initials (used only if no photo)", type: "text" },
       { key: "detail", label: "Detail line (e.g. Diploma in Teacher Education, 2022)", type: "text" },
+      { key: "photo", label: "Photo (optional — replaces the initials circle)", type: "image" },
     ] },
-  { key: "faqs", label: "FAQs", kind: "object-list", newItem: () => ({ q: "", a: "" }),
+  { key: "partners", label: "Partner Organisations", kind: "list", itemType: "string", newItem: () => "" },
+  { key: "visit", label: "Plan Your Visit", kind: "object",
+    fields: [
+      { key: "kicker", label: "Kicker", type: "text" },
+      { key: "heading", label: "Heading", type: "text" },
+      { key: "intro", label: "Intro paragraph", type: "textarea" },
+      { key: "mapImage", label: "Map / directions photo", type: "image" },
+    ] },
+  { key: "faqs", label: "FAQs", kind: "list", itemType: "object", newItem: () => ({ q: "", a: "" }),
+    itemFields: [ { key: "q", label: "Question", type: "text" }, { key: "a", label: "Answer", type: "textarea" } ] },
+  { key: "admissionSteps", label: "How to Apply — Steps", kind: "list", itemType: "object",
+    newItem: () => ({ step: "", title: "", text: "" }),
     itemFields: [
-      { key: "q", label: "Question", type: "text" },
-      { key: "a", label: "Answer", type: "textarea" },
+      { key: "step", label: "Step number", type: "text" },
+      { key: "title", label: "Title", type: "text" },
+      { key: "text", label: "Text", type: "textarea" },
     ] },
+  { key: "admissionRequirements", label: "Admission Requirements List", kind: "list", itemType: "string", newItem: () => "" },
+  { key: "finalCta", label: "Final Call-to-Action Banner", kind: "object",
+    fields: [
+      { key: "kicker", label: "Kicker", type: "text" },
+      { key: "heading", label: "Heading", type: "text" },
+      { key: "primaryLabel", label: "Primary button label", type: "text" },
+      { key: "secondaryLabel", label: "Secondary button label", type: "text" },
+    ] },
+  { key: "aboutIntro", label: "About Page — Vision & Mission", kind: "object",
+    fields: [
+      { key: "visionHeading", label: "Vision heading", type: "text" },
+      { key: "visionText", label: "Vision text", type: "textarea" },
+      { key: "missionHeading", label: "Mission heading", type: "text" },
+      { key: "missionText", label: "Mission text", type: "textarea" },
+    ] },
+  { key: "coreValues", label: "About Page — Core Values", kind: "list", itemType: "object",
+    newItem: () => ({ title: "", text: "" }),
+    itemFields: [ { key: "title", label: "Title", type: "text" }, { key: "text", label: "Text", type: "textarea" } ] },
+  { key: "accreditations", label: "Accreditation Badges", kind: "list", itemType: "string", newItem: () => "" },
+  { key: "siteMeta", label: "Site Identity, Contact & Footer", kind: "object",
+    fields: [
+      { key: "schoolName", label: "School name (shown in header)", type: "text" },
+      { key: "tagline", label: "Tagline (shown under school name)", type: "text" },
+      { key: "logoUrl", label: "Logo (optional — replaces the default crest)", type: "image" },
+      { key: "addressLine1", label: "Address line 1", type: "text" },
+      { key: "addressLine2", label: "Address line 2", type: "text" },
+      { key: "officeHours", label: "Office hours", type: "text" },
+      { key: "phone", label: "Phone", type: "text" },
+      { key: "email", label: "Email", type: "text" },
+      { key: "copyrightText", label: "Footer copyright line", type: "text" },
+    ],
+    subLists: [{ key: "socialLinks", label: "Social media links", itemType: "object",
+      newItem: () => ({ platform: "F", url: "" }),
+      itemFields: [
+        { key: "platform", label: "Platform letter/label (e.g. F, X, Y, I)", type: "text" },
+        { key: "url", label: "URL", type: "text" },
+      ] }] },
+  { key: "pageHeroes", label: "Inner Page Banners", kind: "page-heroes" },
 ];
 
+const PAGE_HERO_KEYS = [
+  { key: "about", label: "About Page" },
+  { key: "academics", label: "Academics Page" },
+  { key: "admissions", label: "Admissions Page" },
+  { key: "contact", label: "Contact Page" },
+  { key: "news", label: "News Page" },
+];
+
+/* ================= IMAGE FIELD ================= */
+function ImageField({ label, value, onChange }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const url = resolvePhotoUrl(value);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await API.post("/website/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      onChange(res.data.url);
+    } catch (err) {
+      alert(err?.response?.data?.message || "Image upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div style={styles.field}>
+      <label style={styles.label}>{label}</label>
+      <div style={styles.imageFieldRow}>
+        {url ? (
+          <img src={url} alt="" style={styles.imageThumb} />
+        ) : (
+          <div style={styles.imageThumbEmpty}>No image</div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handleFile} />
+          <button type="button" style={styles.secondaryBtn} onClick={() => inputRef.current?.click()} disabled={uploading}>
+            {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
+          </button>
+          {url && (
+            <button type="button" style={styles.dangerBtnSm} onClick={() => onChange(null)} disabled={uploading}>
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================= FIELD RENDERER (single scalar/image field) ================= */
+function FieldInput({ field, value, onChange }) {
+  if (field.type === "image") return <ImageField label={field.label} value={value} onChange={onChange} />;
+  if (field.type === "checkbox") {
+    return (
+      <label style={styles.checkboxRow}>
+        <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
+        {field.label}
+      </label>
+    );
+  }
+  if (field.type === "select") {
+    return (
+      <div style={styles.field}>
+        <label style={styles.label}>{field.label}</label>
+        <select style={styles.input} value={value ?? field.options[0]} onChange={(e) => onChange(e.target.value)}>
+          {field.options.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+  if (field.type === "textarea") {
+    return (
+      <div style={styles.field}>
+        <label style={styles.label}>{field.label}</label>
+        <textarea style={styles.textarea} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  if (field.type === "number") {
+    return (
+      <div style={styles.field}>
+        <label style={styles.label}>{field.label}</label>
+        <input type="number" style={styles.input} value={value ?? 0} onChange={(e) => onChange(Number(e.target.value))} />
+      </div>
+    );
+  }
+  return (
+    <div style={styles.field}>
+      <label style={styles.label}>{field.label}</label>
+      <input type="text" style={styles.input} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+/* ================= STRING LIST (top-level or sub-list) ================= */
+function StringListEditor({ items, onChange, newItem }) {
+  const list = items || [];
+  return (
+    <div>
+      {list.map((item, i) => (
+        <div key={i} style={styles.listRow}>
+          <textarea style={styles.textarea} value={item} onChange={(e) => onChange(list.map((v, idx) => (idx === i ? e.target.value : v)))} />
+          <button type="button" style={styles.dangerBtnSm} onClick={() => onChange(list.filter((_, idx) => idx !== i))}>Remove</button>
+        </div>
+      ))}
+      <button type="button" style={styles.secondaryBtn} onClick={() => onChange([...list, newItem()])}>+ Add</button>
+    </div>
+  );
+}
+
+/* ================= OBJECT LIST (top-level or sub-list) ================= */
+function ObjectListEditor({ items, itemFields, onChange, newItem }) {
+  const list = items || [];
+  const updateItem = (i, fieldKey, value) =>
+    onChange(list.map((it, idx) => (idx === i ? { ...it, [fieldKey]: value } : it)));
+
+  return (
+    <div>
+      {list.map((item, i) => (
+        <div key={i} style={styles.itemCard}>
+          <div style={styles.itemCardHeader}>
+            <span style={styles.itemCardIndex}>#{i + 1}</span>
+            <button type="button" style={styles.dangerBtnSm} onClick={() => onChange(list.filter((_, idx) => idx !== i))}>Remove</button>
+          </div>
+          {itemFields.map((f) => (
+            <FieldInput key={f.key} field={f} value={item?.[f.key]} onChange={(v) => updateItem(i, f.key, v)} />
+          ))}
+        </div>
+      ))}
+      <button type="button" style={styles.secondaryBtn} onClick={() => onChange([...list, newItem()])}>+ Add</button>
+    </div>
+  );
+}
+
+/* ================= LIST SECTION (top-level "list" kind) ================= */
+function ListSection({ section, data, onChange }) {
+  if (section.itemType === "string") {
+    return <StringListEditor items={data} onChange={onChange} newItem={section.newItem} />;
+  }
+  return <ObjectListEditor items={data} itemFields={section.itemFields} onChange={onChange} newItem={section.newItem} />;
+}
+
+/* ================= OBJECT SECTION (top-level "object" kind, with optional subLists) ================= */
+function ObjectSection({ section, data, onChange }) {
+  const obj = data || {};
+  const updateField = (fieldKey, value) => onChange({ ...obj, [fieldKey]: value });
+
+  return (
+    <div>
+      {section.fields.map((f) => (
+        <FieldInput key={f.key} field={f} value={obj[f.key]} onChange={(v) => updateField(f.key, v)} />
+      ))}
+      {(section.subLists || []).map((sl) => (
+        <div key={sl.key} style={styles.field}>
+          <label style={styles.label}>{sl.label}</label>
+          {sl.itemType === "string" ? (
+            <StringListEditor items={obj[sl.key]} onChange={(v) => updateField(sl.key, v)} newItem={sl.newItem} />
+          ) : (
+            <ObjectListEditor items={obj[sl.key]} itemFields={sl.itemFields} onChange={(v) => updateField(sl.key, v)} newItem={sl.newItem} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ================= PAGE HEROES (special-cased: fixed named sub-forms, not a repeatable list) ================= */
+const PAGE_HERO_FIELDS = [
+  { key: "eyebrow", label: "Eyebrow", type: "text" },
+  { key: "title", label: "Title", type: "text" },
+  { key: "lead", label: "Lead paragraph (optional)", type: "textarea" },
+];
+function PageHeroesSection({ data, onChange }) {
+  const obj = data || {};
+  return (
+    <div>
+      {PAGE_HERO_KEYS.map((p) => (
+        <div key={p.key} style={styles.itemCard}>
+          <div style={styles.itemCardHeader}>
+            <span style={styles.itemCardIndex}>{p.label}</span>
+          </div>
+          {PAGE_HERO_FIELDS.map((f) => (
+            <FieldInput
+              key={f.key}
+              field={f}
+              value={obj[p.key]?.[f.key]}
+              onChange={(v) => onChange({ ...obj, [p.key]: { ...(obj[p.key] || {}), [f.key]: v } })}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ================= PAGE ================= */
 export default function Website() {
   const { theme, toggleTheme } = useTheme();
   useEffect(() => { injectDesignTokens(); }, []);
 
   const [activeKey, setActiveKey] = useState(SECTIONS[0].key);
-  const [data, setData] = useState({}); // { [sectionKey]: content }
-  const [meta, setMeta] = useState({}); // { [sectionKey]: { updated_by_name, updated_at } }
+  const [data, setData] = useState({});
+  const [meta, setMeta] = useState({});
   const [loadedKeys, setLoadedKeys] = useState({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -135,13 +455,17 @@ export default function Website() {
     setTimeout(() => setToast(null), 3200);
   };
 
+  const emptyValueFor = (section) => {
+    if (section.kind === "list") return [];
+    return {};
+  };
+
   const loadSection = async (key) => {
     setLoading(true);
     try {
       const res = await API.get(`/website/${key}`);
       const section = SECTIONS.find((s) => s.key === key);
-      const fallback = section.kind === "string-list" || section.kind === "object-list" ? [] : {};
-      setData((prev) => ({ ...prev, [key]: res.data?.content ?? fallback }));
+      setData((prev) => ({ ...prev, [key]: res.data?.content ?? emptyValueFor(section) }));
       setMeta((prev) => ({ ...prev, [key]: { updated_by_name: res.data?.updated_by_name, updated_at: res.data?.updated_at } }));
       setLoadedKeys((prev) => ({ ...prev, [key]: true }));
     } catch (err) {
@@ -156,9 +480,7 @@ export default function Website() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeKey]);
 
-  const setSectionData = (key, updater) => {
-    setData((prev) => ({ ...prev, [key]: typeof updater === "function" ? updater(prev[key]) : updater }));
-  };
+  const setSectionData = (key, value) => setData((prev) => ({ ...prev, [key]: value }));
 
   const saveSection = async (key) => {
     setSaving(true);
@@ -173,185 +495,14 @@ export default function Website() {
     }
   };
 
-  /* ================= RENDER HELPERS ================= */
-
-  const renderStringList = (section) => {
-    const items = data[section.key] || [];
-    return (
-      <div>
-        {items.map((item, i) => (
-          <div key={i} style={styles.listRow}>
-            <textarea
-              style={styles.textarea}
-              value={item}
-              onChange={(e) =>
-                setSectionData(section.key, (prev) => prev.map((v, idx) => (idx === i ? e.target.value : v)))
-              }
-            />
-            <button
-              style={styles.dangerBtnSm}
-              onClick={() => setSectionData(section.key, (prev) => prev.filter((_, idx) => idx !== i))}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
-        <button
-          style={styles.secondaryBtn}
-          onClick={() => setSectionData(section.key, (prev) => [...(prev || []), section.newItem()])}
-        >
-          + Add
-        </button>
-      </div>
-    );
-  };
-
-  const renderObjectListItemField = (section, item, index, field) => {
-    const value = item?.[field.key] ?? (field.type === "checkbox" ? false : "");
-    const onChange = (v) =>
-      setSectionData(section.key, (prev) =>
-        prev.map((it, idx) => (idx === index ? { ...it, [field.key]: v } : it))
-      );
-
-    if (field.type === "checkbox") {
-      return (
-        <label key={field.key} style={styles.checkboxRow}>
-          <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
-          {field.label}
-        </label>
-      );
-    }
-    if (field.type === "textarea") {
-      return (
-        <div key={field.key} style={styles.field}>
-          <label style={styles.label}>{field.label}</label>
-          <textarea style={styles.textarea} value={value} onChange={(e) => onChange(e.target.value)} />
-        </div>
-      );
-    }
-    if (field.type === "number") {
-      return (
-        <div key={field.key} style={styles.field}>
-          <label style={styles.label}>{field.label}</label>
-          <input
-            type="number"
-            style={styles.input}
-            value={value}
-            onChange={(e) => onChange(Number(e.target.value))}
-          />
-        </div>
-      );
-    }
-    return (
-      <div key={field.key} style={styles.field}>
-        <label style={styles.label}>{field.label}</label>
-        <input type="text" style={styles.input} value={value} onChange={(e) => onChange(e.target.value)} />
-      </div>
-    );
-  };
-
-  const renderObjectList = (section) => {
-    const items = data[section.key] || [];
-    return (
-      <div>
-        {items.map((item, i) => (
-          <div key={i} style={styles.itemCard}>
-            <div style={styles.itemCardHeader}>
-              <span style={styles.itemCardIndex}>#{i + 1}</span>
-              <button
-                style={styles.dangerBtnSm}
-                onClick={() => setSectionData(section.key, (prev) => prev.filter((_, idx) => idx !== i))}
-              >
-                Remove
-              </button>
-            </div>
-            {section.itemFields.map((f) => renderObjectListItemField(section, item, i, f))}
-          </div>
-        ))}
-        <button
-          style={styles.secondaryBtn}
-          onClick={() => setSectionData(section.key, (prev) => [...(prev || []), section.newItem()])}
-        >
-          + Add
-        </button>
-      </div>
-    );
-  };
-
-  const renderObjectForm = (section) => {
-    const obj = data[section.key] || {};
-    return (
-      <div>
-        {section.fields.map((f) => (
-          <div key={f.key} style={styles.field}>
-            <label style={styles.label}>{f.label}</label>
-            {f.type === "textarea" ? (
-              <textarea
-                style={styles.textarea}
-                value={obj[f.key] ?? ""}
-                onChange={(e) => setSectionData(section.key, (prev) => ({ ...prev, [f.key]: e.target.value }))}
-              />
-            ) : (
-              <input
-                type="text"
-                style={styles.input}
-                value={obj[f.key] ?? ""}
-                onChange={(e) => setSectionData(section.key, (prev) => ({ ...prev, [f.key]: e.target.value }))}
-              />
-            )}
-          </div>
-        ))}
-
-        {section.listField && (
-          <div style={styles.field}>
-            <label style={styles.label}>{section.listField.label}</label>
-            {(obj[section.listField.key] || []).map((para, i) => (
-              <div key={i} style={styles.listRow}>
-                <textarea
-                  style={styles.textarea}
-                  value={para}
-                  onChange={(e) =>
-                    setSectionData(section.key, (prev) => ({
-                      ...prev,
-                      [section.listField.key]: (prev[section.listField.key] || []).map((v, idx) => (idx === i ? e.target.value : v)),
-                    }))
-                  }
-                />
-                <button
-                  style={styles.dangerBtnSm}
-                  onClick={() =>
-                    setSectionData(section.key, (prev) => ({
-                      ...prev,
-                      [section.listField.key]: (prev[section.listField.key] || []).filter((_, idx) => idx !== i),
-                    }))
-                  }
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-            <button
-              style={styles.secondaryBtn}
-              onClick={() =>
-                setSectionData(section.key, (prev) => ({
-                  ...prev,
-                  [section.listField.key]: [...(prev[section.listField.key] || []), section.listField.newItem()],
-                }))
-              }
-            >
-              + Add paragraph
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const renderActiveSection = () => {
     if (!loadedKeys[activeKey]) return <p style={styles.hint}>Loading…</p>;
-    if (activeSection.kind === "string-list") return renderStringList(activeSection);
-    if (activeSection.kind === "object-list") return renderObjectList(activeSection);
-    return renderObjectForm(activeSection);
+    const value = data[activeKey];
+    const onChange = (v) => setSectionData(activeKey, v);
+
+    if (activeSection.kind === "page-heroes") return <PageHeroesSection data={value} onChange={onChange} />;
+    if (activeSection.kind === "list") return <ListSection section={activeSection} data={value} onChange={onChange} />;
+    return <ObjectSection section={activeSection} data={value} onChange={onChange} />;
   };
 
   const activeMeta = meta[activeKey];
@@ -368,7 +519,8 @@ export default function Website() {
         <div>
           <h1 style={styles.title}>Website Content</h1>
           <p style={styles.subtitle}>
-            Edits here go live on the public marketing website — usually within about a minute.
+            Edits here — including photos — go live on the public marketing website, usually within about a minute.
+            Site navigation (menus and page routing) isn&rsquo;t editable here; only content and images are.
           </p>
         </div>
         <button
@@ -384,11 +536,7 @@ export default function Website() {
       <div style={styles.layout}>
         <div style={styles.tabRail}>
           {SECTIONS.map((s) => (
-            <button
-              key={s.key}
-              style={activeKey === s.key ? styles.tabActive : styles.tab}
-              onClick={() => setActiveKey(s.key)}
-            >
+            <button key={s.key} style={activeKey === s.key ? styles.tabActive : styles.tab} onClick={() => setActiveKey(s.key)}>
               {s.label}
             </button>
           ))}
@@ -421,24 +569,24 @@ const styles = {
   page: { background: "var(--bg)", minHeight: "100vh", color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif", padding: 24 },
   topbar: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, gap: 16, flexWrap: "wrap" },
   title: { margin: 0, fontSize: 24, fontWeight: 800, color: "var(--text)" },
-  subtitle: { margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)" },
+  subtitle: { margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)", maxWidth: 620 },
   iconBtn: {
     background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-secondary)",
     width: 38, height: 38, borderRadius: "var(--radius-sm)", display: "flex", alignItems: "center",
     justifyContent: "center", cursor: "pointer", fontSize: 15, flexShrink: 0,
   },
   layout: { display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" },
-  tabRail: { display: "flex", flexDirection: "column", gap: 4, minWidth: 200, flexShrink: 0 },
+  tabRail: { display: "flex", flexDirection: "column", gap: 4, minWidth: 240, flexShrink: 0, maxHeight: "80vh", overflowY: "auto" },
   tab: {
-    textAlign: "left", padding: "10px 14px", borderRadius: "var(--radius-sm)", border: "1px solid transparent",
-    background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13.5, fontWeight: 600,
+    textAlign: "left", padding: "9px 14px", borderRadius: "var(--radius-sm)", border: "1px solid transparent",
+    background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, fontWeight: 600,
   },
   tabActive: {
-    textAlign: "left", padding: "10px 14px", borderRadius: "var(--radius-sm)", border: "1px solid var(--primary)",
-    background: "var(--primary-tint)", color: "var(--primary)", cursor: "pointer", fontSize: 13.5, fontWeight: 700,
+    textAlign: "left", padding: "9px 14px", borderRadius: "var(--radius-sm)", border: "1px solid var(--primary)",
+    background: "var(--primary-tint)", color: "var(--primary)", cursor: "pointer", fontSize: 13, fontWeight: 700,
   },
   card: {
-    flex: 1, minWidth: 320, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
+    flex: 1, minWidth: 340, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
     padding: 22, boxShadow: "var(--shadow-sm)",
   },
   cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 18 },
@@ -462,6 +610,9 @@ const styles = {
   primaryBtn: { background: "var(--primary)", padding: "9px 16px", color: "#fff", border: "1px solid var(--primary)", borderRadius: "var(--radius-sm)", cursor: "pointer", fontWeight: 700, fontSize: 13 },
   secondaryBtn: { border: "1px solid var(--border)", background: "var(--card)", padding: "8px 14px", borderRadius: "var(--radius-sm)", cursor: "pointer", color: "var(--text)", fontSize: 13, fontWeight: 600 },
   dangerBtnSm: { border: "1px solid var(--destructive)", background: "var(--destructive-tint)", color: "var(--destructive)", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600, flexShrink: 0 },
+  imageFieldRow: { display: "flex", gap: 12, alignItems: "flex-start" },
+  imageThumb: { width: 96, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)" },
+  imageThumbEmpty: { width: 96, height: 72, borderRadius: "var(--radius-sm)", border: "1px dashed var(--border)", background: "var(--card-elevated)", color: "var(--text-muted)", fontSize: 10.5, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 4 },
   toast: {
     position: "fixed", top: 16, right: 16, zIndex: 999, color: "#fff", padding: "10px 16px", borderRadius: 8,
     boxShadow: "var(--shadow)", maxWidth: "90vw", fontWeight: 600, fontSize: 13,
