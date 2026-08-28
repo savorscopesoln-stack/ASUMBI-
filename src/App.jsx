@@ -33,6 +33,7 @@ import AdminNotificationSettings from "./pages/AdminNotificationSettings";
 import StudentCouncil from "./pages/StudentCouncil";
 import GatePage from "./pages/GatePage";
 import KitchenPage from "./pages/KitchenPage";
+import Website from "./pages/Website";
 
 /* =========================================================
    AUTH
@@ -652,6 +653,18 @@ export default function App() {
             page="Kitchen"
           >
             <KitchenPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/website"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="Website"
+          >
+            <Website />
           </ProtectedRoute>
         }
       />

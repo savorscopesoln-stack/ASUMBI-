@@ -28,6 +28,7 @@ export const PAGES = [
   { key: "Gate",             label: "Gate",                route: "/gate" },
   { key: "Kitchen",          label: "Kitchen",             route: "/kitchen" },
   { key: "Profile Change Requests", label: "Profile Change Requests", route: "/profile-change-requests" },
+  { key: "Website",          label: "Website",             route: "/website" },
 ];
 
 export const PAGE_KEYS = PAGES.map((p) => p.key);

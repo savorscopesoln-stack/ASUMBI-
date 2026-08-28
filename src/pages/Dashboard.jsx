@@ -12,7 +12,7 @@ import {
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
   Award, Activity, Inbox, KeyRound, Bell, Settings, Vote, SlidersHorizontal,
-  UserRoundCog,
+  UserRoundCog, Globe,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
@@ -165,6 +165,13 @@ const NAV_GROUPS = [
       { name: "Gate", Icon: DoorOpen },
       { name: "Kitchen", Icon: Utensils },
       { name: "Profile Change Requests", Icon: UserRoundCog },
+      // The public marketing website's editable content (announcements,
+      // hero text, Principal's message, stats, milestones, news,
+      // testimonials, FAQs) — see backend routes/website.js. Grantable
+      // like any other sub-admin page, since editing site copy doesn't
+      // need admin-only trust the way Notification Settings/Portal
+      // Pages do.
+      { name: "Website", Icon: Globe },
       // Not part of the grantable sub-admin PAGE_KEYS list (see
       // permissions.js) on purpose — hasPage() only returns true for
       // this key when role === "admin" (its unconditional bypass), so
@@ -192,6 +199,7 @@ const ROUTES = {
   Gate:"/gate", Kitchen:"/kitchen",
   "Profile Change Requests":"/profile-change-requests",
   "Portal Pages":"/portal-pages",
+  Website:"/website",
 };
 
 const formatYear = (y) => {
