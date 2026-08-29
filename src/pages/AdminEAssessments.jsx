@@ -252,10 +252,10 @@ export default function AdminEAssessments() {
   const [selAssignments, setSelAssignments] = useState([]);
 
   /* forms */
-  const blank = { title: "", subject: "", class_id: "", duration_minutes: 30, instructions: "", total_marks: 100, exam_password: "", questions_deadline: "", question_setter_teacher_ids: [] };
+  const blank = { title: "", subject: "", class_ids: [], duration_minutes: 30, instructions: "", total_marks: 100, exam_password: "", questions_deadline: "", question_setter_teacher_ids: [] };
   const [form,          setForm]          = useState(blank);
   const [editForm,      setEditForm]      = useState(blank);
-  const [assignForm,    setAssignForm]    = useState({ teacher_id: "", subject_id: "", class_id: "" });
+  const [assignForm,    setAssignForm]    = useState({ teacher_id: "", subject_id: "", class_ids: [] });
   const [remarkComment, setRemarkComment] = useState("");
 
   /* ── Toast ── */
@@ -303,25 +303,95 @@ export default function AdminEAssessments() {
   /* ═══════════════════════════════════════════════════════════
      HANDLERS  (unchanged logic)
   ═══════════════════════════════════════════════════════════ */
+  // Resolves a ClassMultiSelect value (array of class-id strings, or
+  // ["all"] for the "All Classes" option) down to a concrete list of
+  // numeric class ids to act on. Used by Assign Teacher below, where
+  // there's no "year" concept — assigning a teacher to a subject is
+  // naturally one row per class either way, so expanding a year (or
+  // "all") into every individual class is exactly what's wanted there.
+  const resolveClassIds = (ids) => {
+    if (ids.includes("all")) return classes.map((c) => Number(c.id || c.class_id));
+    return ids.map(Number).filter(Boolean);
+  };
+
+  // Classes are named like "DTE1A".."DTE1Z" for Year 1, "DTE2A".."DTE2Z"
+  // for Year 2, etc. — the year of study is always the first digit in
+  // the class name. Students.yearOfStudy already uses this same 1/2/3
+  // scale, which is what actually decides who gets notified (see
+  // toggleEAssessmentActive on the backend) — this parse is only used
+  // here on the frontend to group classes for the picker.
+  const parseClassYear = (name) => {
+    const m = String(name || "").match(/\d/);
+    return m ? Number(m[0]) : null;
+  };
+
+  const classesByYear = useMemo(() => {
+    const map = { 1: [], 2: [], 3: [] };
+    for (const c of classes) {
+      const y = parseClassYear(c.class_name || c.name);
+      if (map[y]) map[y].push(c);
+    }
+    return map;
+  }, [classes]);
+
+  // Resolves an AssessmentTargetSelect value — a mix of "year:1"/"year:2"/
+  // "year:3" tokens (one assessment covering every class in that year)
+  // and/or raw class-id strings (one assessment per specific class) —
+  // into concrete { class_id, year_of_study, label } targets for
+  // create/edit to loop over. A year token becomes ONE target (not one
+  // per class in it): class_id is set to a representative class purely
+  // so existing class_id-based display/joins keep working, while
+  // year_of_study is what actually makes the backend treat it as
+  // spanning the whole year.
+  const resolveAssessmentTargets = (ids) => {
+    const targets = [];
+    for (const token of ids) {
+      if (!token.startsWith("year:")) continue;
+      const year = Number(token.split(":")[1]);
+      const classesInYear = classesByYear[year] || [];
+      if (!classesInYear.length) continue;
+      const rep = classesInYear[0];
+      targets.push({
+        class_id: Number(rep.id || rep.class_id),
+        year_of_study: year,
+        label: `Year ${year} (${classesInYear.length} classes)`,
+      });
+    }
+    for (const token of ids) {
+      if (token.startsWith("year:")) continue;
+      const id = Number(token);
+      if (id) targets.push({ class_id: id, year_of_study: null, label: null });
+    }
+    return targets;
+  };
+
   const createAssessment = async () => {
-    if (!form.title || !form.subject || !form.class_id) {
+    const targets = resolveAssessmentTargets(form.class_ids);
+    if (!form.title || !form.subject || !targets.length) {
       showToast("Please fill all required fields", "error"); return;
     }
     try {
       setSaving(true);
-      await API.post("/e-assessments", {
-        title:            form.title,
-        subject:          form.subject,
-        class_id:         Number(form.class_id),
-        duration_minutes: Number(form.duration_minutes),
-        instructions:     form.instructions,
-        total_marks:      Number(form.total_marks) || 100,
-        exam_password:    form.exam_password,
-        questions_deadline: form.questions_deadline || null,
-        question_setter_teacher_ids: form.question_setter_teacher_ids,
-      });
+      // One assessment per target — but a "year" target is ONE
+      // assessment covering every class in that year (via
+      // year_of_study), not one per class. Picking specific individual
+      // classes still creates one assessment per class, same as before.
+      await Promise.all(targets.map(({ class_id, year_of_study }) =>
+        API.post("/e-assessments", {
+          title:            form.title,
+          subject:          form.subject,
+          class_id,
+          year_of_study,
+          duration_minutes: Number(form.duration_minutes),
+          instructions:     form.instructions,
+          total_marks:      Number(form.total_marks) || 100,
+          exam_password:    form.exam_password,
+          questions_deadline: form.questions_deadline || null,
+          question_setter_teacher_ids: form.question_setter_teacher_ids,
+        })
+      ));
       setForm(blank); setFormOpen(false);
-      showToast("Assessment created successfully");
+      showToast(targets.length > 1 ? `Created ${targets.length} assessments` : "Assessment created successfully");
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Create failed", "error");
@@ -331,7 +401,8 @@ export default function AdminEAssessments() {
   const openEditModal = (a) => {
     setEditForm({
       id: a.id, title: a.title || "", subject: a.subject || "",
-      class_id: a.class_id || "", duration_minutes: a.duration_minutes || 30,
+      class_ids: a.year_of_study ? [`year:${a.year_of_study}`] : a.class_id ? [String(a.class_id)] : [],
+      duration_minutes: a.duration_minutes || 30,
       instructions: a.instructions || "", total_marks: a.total_marks || 100,
       exam_password: a.exam_password || "",
       questions_deadline: a.questions_deadline ? toDatetimeLocal(a.questions_deadline) : "",
@@ -341,47 +412,77 @@ export default function AdminEAssessments() {
   };
 
   const saveEditAssessment = async () => {
-    if (!editForm.title || !editForm.subject || !editForm.class_id) {
+    const targets = resolveAssessmentTargets(editForm.class_ids);
+    if (!editForm.title || !editForm.subject || !targets.length) {
       showToast("Please fill all required fields", "error"); return;
     }
     try {
       setSaving(true);
-      await API.put(`/e-assessments/${editForm.id}`, {
+      // This assessment (editForm.id) is a single row, so picking more
+      // than one target here can't turn it into one row — the first
+      // target (a class, or a whole year) updates THIS assessment, and
+      // any additional targets get a new copy of it instead.
+      const [first, ...extra] = targets;
+      const payload = {
         title:            editForm.title,
         subject:          editForm.subject,
-        class_id:         Number(editForm.class_id),
         duration_minutes: Number(editForm.duration_minutes),
         instructions:     editForm.instructions,
         total_marks:      Number(editForm.total_marks) || 100,
         exam_password:    editForm.exam_password,
         questions_deadline: editForm.questions_deadline || null,
         question_setter_teacher_ids: editForm.question_setter_teacher_ids,
-      });
+      };
+      await API.put(`/e-assessments/${editForm.id}`, { ...payload, class_id: first.class_id, year_of_study: first.year_of_study });
+      if (extra.length) {
+        await Promise.all(extra.map(({ class_id, year_of_study }) =>
+          API.post("/e-assessments", { ...payload, class_id, year_of_study })
+        ));
+      }
       setEditOpen(false);
-      showToast("Assessment updated successfully");
+      showToast(extra.length
+        ? `Updated, and copied to ${extra.length} more target${extra.length > 1 ? "s" : ""}`
+        : "Assessment updated successfully");
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Update failed", "error");
     } finally { setSaving(false); }
   };
 
-  const toggleAssessmentActive = async (id) => {
+  // Start = make an assessment live for students: approve it first if it
+  // hasn't been (an assessment awaiting review can't be started), then
+  // flip active_status to Active — but only if it isn't Active already,
+  // since the toggle endpoint flips whatever the CURRENT value is rather
+  // than setting an explicit one, and calling it on an already-active
+  // assessment would turn it back off.
+  const startAssessment = async (a) => {
     try {
-      const res = await API.put(`/e-assessments/admin/${id}/toggle-active`);
-      const next = res.data.active_status;
-      showToast(`Assessment ${next === "Active" ? "activated" : "deactivated"}`);
+      if (String(a.status || "").toLowerCase() !== "approved") {
+        await API.put(`/e-assessments/admin/${a.id}/review`, { status: "approved", admin_comment: "" });
+      }
+      if (a.active_status !== "Active") {
+        await API.put(`/e-assessments/admin/${a.id}/toggle-active`);
+      }
+      showToast(`"${a.title}" started`);
       loadAll();
-    } catch {
-      showToast("Toggle failed", "error");
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to start assessment", "error");
     }
   };
 
-  const reviewAssessment = async (id, status) => {
+  // Stop just closes the exam window (active_status -> Inactive) — it
+  // deliberately does NOT reject the assessment, so Start can reopen it
+  // later without needing another round of approval.
+  const stopAssessment = async (a) => {
     try {
-      await API.put(`/e-assessments/admin/${id}/review`, { status, admin_comment: "" });
-      showToast(`Assessment ${status}`);
+      if (a.active_status === "Active") {
+        await API.put(`/e-assessments/admin/${a.id}/toggle-active`);
+      }
+      showToast(`"${a.title}" stopped`);
       loadAll();
-    } catch { showToast("Review failed", "error"); }
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to stop assessment", "error");
+    }
   };
 
   const openQuickStats = async (item) => {
@@ -404,19 +505,22 @@ export default function AdminEAssessments() {
   };
 
   const assignTeacher = async () => {
-    if (!assignForm.teacher_id || !assignForm.subject_id || !assignForm.class_id) {
+    const targetClassIds = resolveClassIds(assignForm.class_ids);
+    if (!assignForm.teacher_id || !assignForm.subject_id || !targetClassIds.length) {
       showToast("Please complete all fields", "error"); return;
     }
     try {
       setSaving(true);
-      await API.post("/e-assessments/admin/assign-teacher", {
-        teacher_id: Number(assignForm.teacher_id),
-        subject_id: Number(assignForm.subject_id),
-        class_id:   Number(assignForm.class_id),
-      });
-      setAssignForm({ teacher_id: "", subject_id: "", class_id: "" });
+      await Promise.all(targetClassIds.map((class_id) =>
+        API.post("/e-assessments/admin/assign-teacher", {
+          teacher_id: Number(assignForm.teacher_id),
+          subject_id: Number(assignForm.subject_id),
+          class_id,
+        })
+      ));
+      setAssignForm({ teacher_id: "", subject_id: "", class_ids: [] });
       setAssignOpen(false);
-      showToast("Teacher assigned successfully");
+      showToast(targetClassIds.length > 1 ? `Teacher assigned to ${targetClassIds.length} classes` : "Teacher assigned successfully");
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Assignment failed", "error");
@@ -779,12 +883,11 @@ export default function AdminEAssessments() {
                   onSelect={() => setSelAssessments((p) =>
                     p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]
                   )}
-                  onApprove={() => reviewAssessment(a.id, "approved")}
-                  onReject={() => reviewAssessment(a.id, "rejected")}
+                  onStart={() => startAssessment(a)}
+                  onStop={() => stopAssessment(a)}
                   onStats={() => openQuickStats(a)}
                   onEdit={() => openEditModal(a)}
                   onDelete={() => deleteAssessments([a.id])}
-                  onToggle={() => toggleAssessmentActive(a.id)}
                 />
               ))}
             </div>
@@ -1109,10 +1212,12 @@ export default function AdminEAssessments() {
             options={subjects.map((s) => ({ value: s.name || s.subject_name, label: s.name || s.subject_name }))}
             placeholder="Select Subject" />
 
-          <FieldLabel>Class *</FieldLabel>
-          <ModalSelect value={form.class_id} onChange={(v) => setForm({ ...form, class_id: v })}
-            options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))}
-            placeholder="Select Class" />
+          <FieldLabel>Class(es) *</FieldLabel>
+          <AssessmentTargetSelect value={form.class_ids} onChange={(ids) => setForm({ ...form, class_ids: ids })} classes={classes} classesByYear={classesByYear} />
+          <p style={sx.formHint}>
+            Check a Year (or "All Years") to create one assessment covering every class in that
+            year — or pick specific classes below for a one-off, single-class assessment instead.
+          </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
@@ -1187,10 +1292,12 @@ export default function AdminEAssessments() {
             options={subjects.map((s) => ({ value: s.name || s.subject_name, label: s.name || s.subject_name }))}
             placeholder="Select Subject" />
 
-          <FieldLabel>Class *</FieldLabel>
-          <ModalSelect value={editForm.class_id} onChange={(v) => setEditForm({ ...editForm, class_id: v })}
-            options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))}
-            placeholder="Select Class" />
+          <FieldLabel>Class(es) *</FieldLabel>
+          <AssessmentTargetSelect value={editForm.class_ids} onChange={(ids) => setEditForm({ ...editForm, class_ids: ids })} classes={classes} classesByYear={classesByYear} />
+          <p style={sx.formHint}>
+            The first target you pick (a class, or a whole year) updates this assessment. Picking
+            more than one gives the extra targets a new copy of it instead.
+          </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
@@ -1255,9 +1362,12 @@ export default function AdminEAssessments() {
           <ModalSelect value={assignForm.subject_id} onChange={(v) => setAssignForm({ ...assignForm, subject_id: v })}
             options={subjects.map((s) => ({ value: s.id, label: s.name || s.subject_name }))} placeholder="Select Subject" />
 
-          <FieldLabel>Class *</FieldLabel>
-          <ModalSelect value={assignForm.class_id} onChange={(v) => setAssignForm({ ...assignForm, class_id: v })}
-            options={classes.map((c) => ({ value: c.id || c.class_id, label: c.class_name || c.name }))} placeholder="Select Class" />
+          <FieldLabel>Class(es) *</FieldLabel>
+          <ClassMultiSelect value={assignForm.class_ids} onChange={(ids) => setAssignForm({ ...assignForm, class_ids: ids })} classes={classes} />
+          <p style={sx.formHint}>
+            Pick one class, several, or "All Classes" to assign this teacher to that subject across
+            every class you select in one go.
+          </p>
 
           <SaveButton onClick={assignTeacher} loading={saving} label="Assign Teacher" />
           <p style={sx.formHint}>
@@ -1467,9 +1577,16 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onApprove, onReject, onStats, onEdit, onDelete, onToggle }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onStats, onEdit, onDelete }) {
   const C = useC();
-  const isActive = a.active_status !== "Inactive";
+  // Exact-match against "Active" — kept in lockstep with the backend's
+  // toggle-active logic (see eAssessment.controller.js), which only ever
+  // treats the literal string "Active" as on. Reading this as anything
+  // else here (e.g. `!== "Inactive"`) is what made the old toggle look
+  // broken: a freshly created assessment would render as "Active" on
+  // the card while the backend still considered it off, so the first
+  // click silently did nothing visible.
+  const isActive = a.active_status === "Active";
   return (
     <div className="dash-card" style={{ background: C.card, borderRadius: 12, padding: 18, border: `1px solid ${selected ? C.accent : C.border}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
@@ -1487,7 +1604,7 @@ function AssessmentCard({ a, selected, onSelect, onApprove, onReject, onStats, o
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <MetaRow label="Class"       value={a.class_name || a.class_id || "N/A"} />
+        <MetaRow label="Class"       value={a.year_of_study ? `Year ${a.year_of_study} (all classes)` : a.class_name || a.class_id || "N/A"} />
         <MetaRow label="Duration"    value={`${a.duration_minutes || 0} min`} />
         <MetaRow label="Total Marks" value={a.total_marks || 100} />
         <MetaRow label="Questions"   value={a.question_count || 0} />
@@ -1495,16 +1612,15 @@ function AssessmentCard({ a, selected, onSelect, onApprove, onReject, onStats, o
         <MetaRow label="Teacher"     value={a.teacher_name || "Not assigned"} />
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: isActive ? C.success : C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
           <IconDot size={7} /> {isActive ? "Active" : "Inactive"}
         </span>
-        <ToggleSwitch checked={isActive} onChange={onToggle} />
       </div>
 
       <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
-        <MiniBtn tone="success" grow icon={<IconCheck size={12} />} onClick={onApprove}>Approve</MiniBtn>
-        <MiniBtn tone="danger"  grow icon={<IconX size={12} />}     onClick={onReject}>Reject</MiniBtn>
+        <MiniBtn tone="success" grow icon={<IconCheck size={12} />} onClick={onStart} disabled={isActive} title={isActive ? "Already started" : "Approve (if needed) and open this assessment to students"}>Start</MiniBtn>
+        <MiniBtn tone="danger"  grow icon={<IconX size={12} />}     onClick={onStop}  disabled={!isActive} title={!isActive ? "Already stopped" : "Close this assessment to students"}>Stop</MiniBtn>
         <MiniBtn grow icon={<IconBarChart size={12} />} onClick={onStats}>Stats</MiniBtn>
         <MiniBtn icon={<IconEdit size={12} />} onClick={onEdit} title="Edit" />
         <MiniBtn tone="danger" icon={<IconTrash size={12} />} onClick={onDelete} title="Delete" />
@@ -1579,15 +1695,6 @@ function SectionHeader({ title }) {
       <h2 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.1em" }}>{title}</h2>
       <div style={{ flex: 1, height: 1, background: C.border }} />
     </div>
-  );
-}
-
-function ToggleSwitch({ checked, onChange }) {
-  const C = useC();
-  return (
-    <button onClick={onChange} style={{ width: 40, height: 22, borderRadius: 99, border: `1px solid ${C.border}`, cursor: "pointer", background: checked ? C.success : C.bgAlt, position: "relative", transition: "background 0.2s", padding: 0, flexShrink: 0 }}>
-      <span style={{ position: "absolute", top: 2, left: checked ? 20 : 2, width: 16, height: 16, borderRadius: "50%", background: C.white, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,.4)" }} />
-    </button>
   );
 }
 
@@ -1715,15 +1822,16 @@ function ActionButton({ children, icon, onClick, primary }) {
   );
 }
 
-function MiniBtn({ children, icon, onClick, tone, grow, full, neutral, title, style }) {
+function MiniBtn({ children, icon, onClick, tone, grow, full, neutral, title, style, disabled }) {
   const C = useC();
   const color = neutral || !tone ? C.textSec : C[tone] || C.textSec;
   return (
-    <button onClick={onClick} title={title} className="btn-hover" style={{
+    <button onClick={onClick} title={title} disabled={disabled} className="btn-hover" style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
       padding: children ? "7px 12px" : "7px 9px", borderRadius: 7,
       border: `1px solid ${C.border}`, background: C.bgAlt, color,
-      fontWeight: 600, fontSize: 12, cursor: "pointer",
+      fontWeight: 600, fontSize: 12, cursor: disabled ? "not-allowed" : "pointer",
+      opacity: disabled ? 0.45 : 1,
       flex: grow ? 1 : full ? "1 1 100%" : "0 0 auto",
       width: full ? "100%" : undefined,
       ...style,
@@ -1823,6 +1931,154 @@ function TeacherMultiSelect({ value, onChange, teachers }) {
           }}>
             <input type="checkbox" checked={checked} onChange={() => toggle(t.id)} style={{ cursor: "pointer" }} />
             {t.name}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CLASS MULTI-SELECT — used for Assign Teacher, where there's no
+   "year" grouping concept (a teacher/subject/class assignment is
+   naturally one row per class regardless). Supports a single
+   class, several specific classes, or "All Classes" via one
+   master checkbox. Value is an array of class-id strings, or
+   exactly ["all"] when "All Classes" is checked.
+
+   For Create/Edit Assessment, see AssessmentTargetSelect below
+   instead — that one groups classes by year of study so one
+   assessment can cover a whole year without needing a row per
+   class in it.
+═══════════════════════════════════════════════════════════ */
+function ClassMultiSelect({ value, onChange, classes }) {
+  const C = useC();
+  const isAll = value.includes("all");
+
+  const toggleAll = () => onChange(isAll ? [] : ["all"]);
+
+  const toggleOne = (id) => {
+    // Picking a specific class while "All" is checked drops "All" and
+    // starts a fresh specific-class selection with just that one.
+    if (isAll) { onChange([id]); return; }
+    const has = value.includes(id);
+    onChange(has ? value.filter((v) => v !== id) : [...value, id]);
+  };
+
+  return (
+    <div style={{
+      maxHeight: 190, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8,
+      background: C.bgAlt, marginBottom: 6, padding: classes.length ? "4px 0" : "10px 13px",
+    }}>
+      {!classes.length && <span style={{ fontSize: 13, color: C.textMuted }}>No classes found</span>}
+      {classes.length > 0 && (
+        <label style={{
+          display: "flex", alignItems: "center", gap: 9, padding: "7px 13px",
+          cursor: "pointer", fontSize: 13.5, fontWeight: 700, color: C.textPri,
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          <input type="checkbox" checked={isAll} onChange={toggleAll} style={{ cursor: "pointer" }} />
+          All Classes
+        </label>
+      )}
+      {classes.map((c) => {
+        const id = String(c.id || c.class_id);
+        const checked = isAll || value.includes(id);
+        return (
+          <label key={id} style={{
+            display: "flex", alignItems: "center", gap: 9, padding: "7px 13px",
+            cursor: isAll ? "default" : "pointer", fontSize: 13.5, color: isAll ? C.textMuted : C.textPri,
+          }}>
+            <input type="checkbox" checked={checked} disabled={isAll} onChange={() => toggleOne(id)}
+              style={{ cursor: isAll ? "default" : "pointer" }} />
+            {c.class_name || c.name}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ASSESSMENT TARGET SELECT — Create/Edit Assessment's class
+   picker. Classes are named "DTE1A".."DTE1Z" for Year 1,
+   "DTE2A".."DTE2Z" for Year 2, etc., so they're grouped here by
+   the year number in their name. Checking "Year 1" selects every
+   class in that year as ONE target — the assessment ends up
+   covering the whole year (via year_of_study) instead of needing
+   a separate copy per class, which is what made "All Classes"
+   explode into dozens of assessments to manage before. Specific
+   classes can still be picked individually below the year rows
+   for one-off, single-class assessments.
+
+   Value is an array mixing "year:1"/"year:2"/"year:3" tokens and
+   raw class-id strings — resolved by resolveAssessmentTargets()
+   above into the { class_id, year_of_study } pairs actually sent
+   to the backend.
+═══════════════════════════════════════════════════════════ */
+function AssessmentTargetSelect({ value, onChange, classes, classesByYear }) {
+  const C = useC();
+
+  const yearsWithClasses = [1, 2, 3].filter((y) => classesByYear[y]?.length);
+  const allYearTokens = yearsWithClasses.map((y) => `year:${y}`);
+  const isAllYears = allYearTokens.length > 0 && allYearTokens.every((t) => value.includes(t));
+
+  const toggleAllYears = () => onChange(isAllYears ? [] : allYearTokens);
+
+  const toggleYear = (y) => {
+    const token = `year:${y}`;
+    if (value.includes(token)) { onChange(value.filter((v) => v !== token)); return; }
+    // Selecting a year also drops any individually-picked classes that
+    // belong to it, so the same class isn't targeted twice over.
+    const idsInYear = (classesByYear[y] || []).map((c) => String(c.id || c.class_id));
+    onChange([...value.filter((v) => !idsInYear.includes(v)), token]);
+  };
+
+  const toggleClass = (id) => {
+    const has = value.includes(id);
+    onChange(has ? value.filter((v) => v !== id) : [...value, id]);
+  };
+
+  const rowStyle = (bold) => ({
+    display: "flex", alignItems: "center", gap: 9, padding: "7px 13px",
+    cursor: "pointer", fontSize: 13.5, fontWeight: bold ? 700 : 400, color: C.textPri,
+  });
+
+  return (
+    <div style={{
+      maxHeight: 240, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8,
+      background: C.bgAlt, marginBottom: 6, padding: "4px 0",
+    }}>
+      {yearsWithClasses.length > 0 && (
+        <label style={{ ...rowStyle(true), borderBottom: `1px solid ${C.border}` }}>
+          <input type="checkbox" checked={isAllYears} onChange={toggleAllYears} style={{ cursor: "pointer" }} />
+          All Years <span style={{ fontWeight: 400, color: C.textMuted }}>&mdash; {yearsWithClasses.length} assessments, one per year</span>
+        </label>
+      )}
+      {yearsWithClasses.map((y) => {
+        const checked = value.includes(`year:${y}`);
+        return (
+          <label key={y} style={rowStyle(true)}>
+            <input type="checkbox" checked={checked} onChange={() => toggleYear(y)} style={{ cursor: "pointer" }} />
+            Year {y} &mdash; all classes <span style={{ fontWeight: 400, color: C.textMuted }}>({classesByYear[y].length} classes, 1 assessment)</span>
+          </label>
+        );
+      })}
+
+      <div style={{ padding: "8px 13px 4px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: C.textMuted, borderTop: `1px solid ${C.border}` }}>
+        Or specific classes
+      </div>
+      {!classes.length && <span style={{ display: "block", padding: "6px 13px 10px", fontSize: 13, color: C.textMuted }}>No classes found</span>}
+      {classes.map((c) => {
+        const id = String(c.id || c.class_id);
+        const year = [1, 2, 3].find((y) => (classesByYear[y] || []).some((cy) => String(cy.id || cy.class_id) === id));
+        const lockedByYear = year != null && value.includes(`year:${year}`);
+        const checked = lockedByYear || value.includes(id);
+        return (
+          <label key={id} style={{ ...rowStyle(false), cursor: lockedByYear ? "default" : "pointer", color: lockedByYear ? C.textMuted : C.textPri }}>
+            <input type="checkbox" checked={checked} disabled={lockedByYear} onChange={() => toggleClass(id)}
+              style={{ cursor: lockedByYear ? "default" : "pointer" }} />
+            {c.class_name || c.name}
           </label>
         );
       })}

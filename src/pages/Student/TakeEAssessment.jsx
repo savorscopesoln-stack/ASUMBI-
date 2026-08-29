@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
+import EssayEditor from "./EssayEditor";
 import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
@@ -155,6 +156,12 @@ const getDeviceId = () => {
 };
 
 const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
+
+// Local autosave for in-progress answers, scoped per assessment. Without
+// this, `answers` is pure React state — any refresh, accidental reload,
+// flaky connection, or the browser restoring a crashed tab wipes every
+// answer the student has entered, with the countdown still running.
+const answersKey = (assessmentId) => `exam_answers_${assessmentId}`;
 
 /* ─── read the JWT payload without a decode library ───
    Only used to decide, client-side, whether the token already in
@@ -325,14 +332,42 @@ export default function TakeEAssessment() {
     setPhase("verify");
   };
 
-  /* ── step 3: fetch the actual questions and enter the locked-down exam ── */
+  /* ── step 3: fetch the actual questions and enter the locked-down exam ──
+     Uses the server-computed `remaining_seconds` (true elapsed-aware
+     time) when available, instead of always resetting to the full
+     nominal duration — otherwise every refresh or lock/unlock resume
+     would hand the student a brand new full countdown. See the
+     matching comment in backend/controllers/eAssessment.controller.js
+     (getEAssessmentById) for where remaining_seconds comes from. */
   const enterActive = useCallback(async () => {
     const detail = await API.get(`/e-assessments/${id}`);
     setAssessment(detail.data.assessment);
     setQuestions(detail.data.questions || []);
-    setSecondsLeft((detail.data.assessment.duration_minutes || 30) * 60);
+    const fullDuration = (detail.data.assessment.duration_minutes || 30) * 60;
+    const remaining = detail.data.remaining_seconds;
+    setSecondsLeft(typeof remaining === "number" ? remaining : fullDuration);
+
+    // Restore any answers autosaved locally before this refresh/resume —
+    // see the autosave effect below for where these get written.
+    try {
+      const saved = localStorage.getItem(answersKey(id));
+      if (saved) setAnswers(JSON.parse(saved));
+    } catch {
+      /* corrupt/unreadable autosave — start with whatever's in state (likely empty) rather than block entry */
+    }
+
     setPhase("active");
   }, [id]);
+
+  /* ── autosave answers locally on every change, while the exam is active ── */
+  useEffect(() => {
+    if (phase !== "active") return;
+    try {
+      localStorage.setItem(answersKey(id), JSON.stringify(answers));
+    } catch {
+      /* storage full/unavailable — non-fatal, submission still works from in-memory state */
+    }
+  }, [answers, phase, id]);
 
   /* ── step 2: the student re-types the token to prove they saved it,
        this also performs the device-binding activation ── */
@@ -399,12 +434,24 @@ export default function TakeEAssessment() {
     return () => clearInterval(heartbeatRef.current);
   }, [phase, token, deviceId]);
 
-  /* ── countdown timer ── */
+  /* ── countdown timer ──
+     BUG FIX: this interval is created once, when phase first becomes
+     "active" (deps=[phase] only, intentionally, so the 1-second tick
+     doesn't reset/drift every time an answer changes). That means its
+     callback closure is frozen at creation time — calling
+     `handleSubmit` directly here would call the version captured at
+     mount, which itself closed over `answers` as it was at that exact
+     instant (essentially empty, since the student hadn't answered
+     anything yet). Every time-based auto-submit would silently submit
+     blank/stale answers regardless of what the student actually
+     selected. Routing through a ref that's kept current on every
+     render (see handleSubmitRef below) fixes this without needing to
+     restart the interval. */
   useEffect(() => {
     if (phase !== "active") return;
     timerRef.current = setInterval(() => {
       setSecondsLeft((s) => {
-        if (s <= 1) { clearInterval(timerRef.current); handleSubmit(true); return 0; }
+        if (s <= 1) { clearInterval(timerRef.current); handleSubmitRef.current(true); return 0; }
         return s - 1;
       });
     }, 1000);
@@ -539,6 +586,7 @@ export default function TakeEAssessment() {
       };
       await API.post("/e-assessments/submit", payload);
       localStorage.removeItem(lockKey(id));
+      localStorage.removeItem(answersKey(id));
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       setPhase("ended");
       setErrorMsg(auto ? "Time's up — your assessment was submitted automatically." : "Assessment submitted successfully.");
@@ -548,6 +596,14 @@ export default function TakeEAssessment() {
       setSubmitting(false);
     }
   };
+
+  /* Always points at the current render's handleSubmit (with today's
+     `answers`) — see the countdown timer effect above for why this
+     exists instead of calling handleSubmit directly from that interval. */
+  const handleSubmitRef = useRef(handleSubmit);
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  });
 
   const mmss = (total) => {
     const m = Math.floor(total / 60).toString().padStart(2, "0");
@@ -819,11 +875,10 @@ export default function TakeEAssessment() {
             </p>
 
             {q.question_type === "essay" ? (
-              <textarea
-                style={S.essayInput}
-                placeholder="Type your answer here…"
+              <EssayEditor
                 value={answers[q.id] || ""}
-                onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                onChange={(html) => setAnswers({ ...answers, [q.id]: html })}
+                placeholder="Type your answer here…"
               />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -868,7 +923,7 @@ const S = {
     color: "var(--text)",
     minHeight: "100vh",
     fontFamily: "'Inter', system-ui, sans-serif",
-    maxWidth: 900,
+    maxWidth: "85%",
     margin: "0 auto",
     boxSizing: "border-box",
   },

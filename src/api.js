@@ -85,17 +85,31 @@ API.interceptors.response.use(
 
     // ============================
     // AUTH ISSUES (401 + 403 FIX)
+    // A failed /auth/login POST itself is never a "session expired,
+    // force logout" event — it's just wrong credentials, and every
+    // login form (the main portal Login page, the student exam
+    // Picker's own inline login) already catches this and shows its
+    // own inline error. Letting this block run for that request was
+    // hijacking the response before the form's own catch could ever
+    // render anything, bouncing the user to /login mid-attempt.
     // ============================
-    if (status === 401 || status === 403) {
+    const isLoginAttempt = error.config?.url === "/auth/login";
+
+    if (!isLoginAttempt && (status === 401 || status === 403)) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
-      // A student on the standalone exam page never went through the
+      // A student on the standalone exam flow never went through the
       // normal /login screen — if their exam-scoped session expires or
-      // gets rejected mid-exam, send them back to that same page (which
-      // re-shows the username + exam-password gate) instead of dumping
-      // them on the full portal login they may not have credentials for.
-      const onExamPage = window.location.pathname.startsWith("/take-assessment/");
+      // gets rejected mid-exam (or while browsing the assessment list
+      // on the picker itself, before an id is chosen), send them back
+      // to that same page (which re-shows its own login/expired gate)
+      // instead of dumping them on the full portal login they may not
+      // have credentials for. Matches both /take-assessment (the
+      // picker, no id yet) and /take-assessment/:id (a specific exam).
+      const onExamPage =
+        window.location.pathname === "/take-assessment" ||
+        window.location.pathname.startsWith("/take-assessment/");
 
       if (onExamPage) {
         if (!window.location.search.includes("expired=1")) {
