@@ -149,6 +149,16 @@ export default function Login() {
     admin: "/dashboard",
   };
 
+  /* ================= SESSION-EXPIRED MESSAGE ================= */
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("expired");
+    if (reason === "idle") {
+      setError("You were logged out after 5 minutes of inactivity. Please log in again.");
+    } else if (reason === "session") {
+      setError("Your session expired after 24 hours. Please log in again.");
+    }
+  }, []);
+
   /* ================= AUTO REDIRECT (unchanged) ================= */
   useEffect(() => {
     injectAuthStyles();
@@ -203,6 +213,11 @@ export default function Login() {
 
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
+      // Marks the start of this session for the 5-min-idle / 24-hr
+      // absolute session-timeout checks in useSessionTimeout.
+      const now = String(Date.now());
+      localStorage.setItem("loginAt", now);
+      localStorage.setItem("lastActivityAt", now);
 
       if (user.mustChangePassword) {
         navigate("/force-password-change", { replace: true });

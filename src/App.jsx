@@ -7,6 +7,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { getDefaultRoute, hasPage } from "./permissions";
+import useSessionTimeout from "./hooks/useSessionTimeout";
 
 /* =========================================================
    ADMIN PAGES
@@ -300,6 +301,10 @@ const TakeAssessmentRedirect = () => {
 ========================================================= */
 
 export default function App() {
+  // Global: 5-minute inactivity logout + 24-hour absolute session
+  // limit, enforced for every logged-in user across every route.
+  useSessionTimeout();
+
   return (
     <Routes>
 

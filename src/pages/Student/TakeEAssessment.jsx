@@ -923,7 +923,7 @@ const S = {
     color: "var(--text)",
     minHeight: "100vh",
     fontFamily: "'Inter', system-ui, sans-serif",
-    maxWidth: "85%",
+    maxWidth: 900,
     margin: "0 auto",
     boxSizing: "border-box",
   },

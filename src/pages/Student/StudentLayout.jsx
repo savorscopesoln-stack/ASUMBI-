@@ -195,9 +195,14 @@ export default function StudentLayout() {
     }
   }, [location.pathname, pagesLoaded, isPathDisabled, navigate]);
 
-  const visibleNavGroups = NAV_GROUPS
-    .map((group) => ({ ...group, items: group.items.filter((item) => isEnabled(item.path)) }))
-    .filter((group) => group.items.length > 0);
+  // Before the disabled-pages list has loaded, isEnabled() would say
+  // "yes" to everything — showing every nav item for a moment even if
+  // an admin turned some off. Show nothing until we actually know.
+  const visibleNavGroups = pagesLoaded
+    ? NAV_GROUPS
+        .map((group) => ({ ...group, items: group.items.filter((item) => isEnabled(item.path)) }))
+        .filter((group) => group.items.length > 0)
+    : [];
 
   const isActive = (path) => {
     if (path === "/student") return location.pathname === "/student";
@@ -356,7 +361,11 @@ export default function StudentLayout() {
         </header>
 
         <div key={location.pathname} style={S.viewAnimator}>
-          <Outlet />
+          {/* Don't mount the routed page until we know whether this
+              path is actually enabled — otherwise a disabled page's
+              content renders for one frame before the redirect effect
+              above kicks it back to /student. */}
+          {pagesLoaded && !isPathDisabled(location.pathname) ? <Outlet /> : null}
         </div>
       </main>
     </div>
