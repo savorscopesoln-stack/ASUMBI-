@@ -86,6 +86,7 @@ const injectDesignTokens = () => {
 const ICON_OPTIONS = ["Compass", "FileText", "Users", "GraduationCap", "BookOpen", "Heart"];
 
 const SECTIONS = [
+  { key: "theme", label: "Site Color Theme", kind: "theme-picker" },
   { key: "hero", label: "Hero (Homepage Banner)", kind: "object",
     fields: [
       { key: "kicker", label: "Kicker pill text", type: "text" },
@@ -605,6 +606,79 @@ function PageHeroesSection({ data, onChange }) {
   );
 }
 
+// Mirrors asumbi-website-main/lib/theme-presets.ts — only the label
+// + two preview swatch colors are needed here since the admin just
+// stores a presetKey; the Next.js site owns the actual full CSS
+// variable definitions for each preset. Keep this list's keys in
+// sync with that file if a preset is added, renamed, or removed.
+const THEME_PRESETS = [
+  { key: "default", label: "Maroon & Gold", primary: "#7A1E29", accent: "#C9A227" },
+  { key: "forest", label: "Forest & Gold", primary: "#1E5C36", accent: "#C9A227" },
+  { key: "navy", label: "Navy & Gold", primary: "#1E3A66", accent: "#C9A227" },
+  { key: "burgundy_sage", label: "Burgundy & Sage", primary: "#7A1E29", accent: "#7E9A6D" },
+  { key: "charcoal_copper", label: "Charcoal & Copper", primary: "#3D3D3D", accent: "#C9713E" },
+  { key: "indigo_amber", label: "Indigo & Amber", primary: "#3A2E85", accent: "#E0A526" },
+];
+const DEFAULT_THEME_PRESET_KEY = "default";
+
+function ThemePickerSection({ data, onChange }) {
+  const obj = data || {};
+  const current = obj.presetKey || DEFAULT_THEME_PRESET_KEY;
+
+  const randomize = () => {
+    // Picks from every OTHER preset first so clicking Randomize
+    // always visibly changes something; only falls back to the full
+    // list (which could re-pick the current one) if that's somehow
+    // the only option.
+    const others = THEME_PRESETS.filter((p) => p.key !== current);
+    const pool = others.length > 0 ? others : THEME_PRESETS;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    onChange({ ...obj, presetKey: pick.key });
+  };
+
+  return (
+    <div>
+      <p style={styles.hint}>
+        Choose the color theme applied across the whole public website — every button, header, and badge follows
+        this. Pick a swatch, or use Randomize to try one, then click Save above to make it live.
+      </p>
+      <div style={styles.themeActionsRow}>
+        <button
+          type="button"
+          style={styles.secondaryBtn}
+          onClick={() => onChange({ ...obj, presetKey: DEFAULT_THEME_PRESET_KEY })}
+          disabled={current === DEFAULT_THEME_PRESET_KEY}
+        >
+          Reset to Default
+        </button>
+        <button type="button" style={styles.secondaryBtn} onClick={randomize}>
+          🎲 Randomize
+        </button>
+      </div>
+      <div style={styles.themeSwatchGrid}>
+        {THEME_PRESETS.map((p) => {
+          const selected = p.key === current;
+          return (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => onChange({ ...obj, presetKey: p.key })}
+              style={{ ...styles.themeSwatchCard, ...(selected ? styles.themeSwatchCardSelected : {}) }}
+            >
+              <span style={styles.themeSwatchChips}>
+                <span style={{ ...styles.themeSwatchChip, background: p.primary }} />
+                <span style={{ ...styles.themeSwatchChip, background: p.accent }} />
+              </span>
+              <span style={styles.themeSwatchLabel}>{p.label}</span>
+              {selected && <span style={styles.themeSwatchBadge}>Current</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ================= PAGE ================= */
 export default function Website() {
   const { theme, toggleTheme } = useTheme();
@@ -704,6 +778,7 @@ export default function Website() {
     const onChange = (v) => setSectionData(activeKey, v);
 
     if (activeSection.kind === "page-heroes") return <PageHeroesSection data={value} onChange={onChange} />;
+    if (activeSection.kind === "theme-picker") return <ThemePickerSection data={value} onChange={onChange} />;
     if (activeSection.kind === "list") return <ListSection section={activeSection} data={value} onChange={onChange} />;
     return <ObjectSection section={activeSection} data={value} onChange={onChange} />;
   };
@@ -869,6 +944,14 @@ const styles = {
   imageThumb: { width: 96, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)" },
   imageThumbEmpty: { width: 96, height: 72, borderRadius: "var(--radius-sm)", border: "1px dashed var(--border)", background: "var(--card-elevated)", color: "var(--text-muted)", fontSize: 10.5, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 4 },
   fileLink: { display: "flex", alignItems: "center", width: 220, minHeight: 72, padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--primary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", wordBreak: "break-all" },
+  themeActionsRow: { display: "flex", gap: 10, marginBottom: 18 },
+  themeSwatchGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 },
+  themeSwatchCard: { position: "relative", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10, padding: 14, borderRadius: "var(--radius-md)", border: "1.5px solid var(--border)", background: "var(--card)", cursor: "pointer", textAlign: "left" },
+  themeSwatchCardSelected: { borderColor: "var(--primary)", boxShadow: "0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent)" },
+  themeSwatchChips: { display: "flex", gap: 6 },
+  themeSwatchChip: { width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.1)" },
+  themeSwatchLabel: { fontSize: 13, fontWeight: 700, color: "var(--text)" },
+  themeSwatchBadge: { position: "absolute", top: 10, right: 10, fontSize: 10, fontWeight: 700, color: "var(--success)", background: "color-mix(in srgb, var(--success) 15%, transparent)", padding: "2px 8px", borderRadius: 999 },
   imageListGrid: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 4 },
   imageListThumbWrap: { position: "relative", width: 96, height: 72 },
   imageListRemoveBtn: { position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--destructive)", background: "var(--destructive)", color: "#fff", fontSize: 11, lineHeight: "18px", cursor: "pointer", padding: 0 },
