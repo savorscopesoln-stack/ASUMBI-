@@ -118,13 +118,14 @@ const SECTIONS = [
       { key: "heading", label: "Heading", type: "text" },
       { key: "intro", label: "Intro paragraph", type: "textarea" },
     ] },
-  { key: "departments", label: "Departments", kind: "list", itemType: "object", newItem: () => ({ index: "", slug: "", name: "", description: "", overview: "" }),
+  { key: "departments", label: "Departments", kind: "list", itemType: "object", newItem: () => ({ index: "", slug: "", name: "", description: "", overview: "", staff: "" }),
     itemFields: [
       { key: "index", label: "Number (e.g. 01)", type: "text" },
       { key: "name", label: "Name", type: "text" },
       { key: "slug", label: "URL slug (e.g. sciences-mathematics — leave blank to auto-generate from name)", type: "text" },
       { key: "description", label: "Short description (shown on cards)", type: "textarea" },
       { key: "overview", label: "Full overview (shown on the department's own page)", type: "textarea" },
+      { key: "staff", label: "Department staff (one name per line, optional)", type: "textarea" },
     ] },
   { key: "programmes", label: "Programmes (Academics page + detail pages)", kind: "list", itemType: "object",
     newItem: () => ({ name: "", slug: "", duration: "", entry: "", overview: "", subjects: "", careerPathways: "", entryRequirements: "" }),
@@ -257,6 +258,24 @@ const SECTIONS = [
         { key: "url", label: "URL", type: "text" },
       ] }] },
   { key: "pageHeroes", label: "Inner Page Banners", kind: "page-heroes" },
+  { key: "leadership", label: "College Leadership", kind: "list", itemType: "object",
+    newItem: () => ({ name: "", position: "", bio: "", qualifications: "", photo: null }),
+    itemFields: [
+      { key: "name", label: "Name", type: "text" },
+      { key: "position", label: "Position (e.g. Deputy Principal)", type: "text" },
+      { key: "qualifications", label: "Qualifications (optional)", type: "text" },
+      { key: "bio", label: "Short biography", type: "textarea" },
+      { key: "photo", label: "Photograph", type: "image" },
+    ] },
+  { key: "downloads", label: "Downloads & Resources", kind: "list", itemType: "object",
+    newItem: () => ({ title: "", category: "General", file: null, date: "" }),
+    itemFields: [
+      { key: "title", label: "Document title", type: "text" },
+      { key: "category", label: "Category", type: "select",
+        options: ["Prospectus", "Forms", "Policies", "Handbooks", "Calendars", "General"] },
+      { key: "file", label: "File (PDF, Word, or Excel)", type: "file" },
+      { key: "date", label: "Date / last updated (display text)", type: "text" },
+    ] },
 ];
 
 const PAGE_HERO_KEYS = [
@@ -265,6 +284,12 @@ const PAGE_HERO_KEYS = [
   { key: "admissions", label: "Admissions Page" },
   { key: "contact", label: "Contact Page" },
   { key: "news", label: "News Page" },
+  { key: "programmes", label: "Programmes Page" },
+  { key: "departments", label: "Departments Page" },
+  { key: "gallery", label: "Campus Gallery Page" },
+  { key: "events", label: "Events Page" },
+  { key: "downloads", label: "Downloads Page" },
+  { key: "leadership", label: "Leadership Page" },
 ];
 
 /* ================= IMAGE FIELD ================= */
@@ -315,9 +340,61 @@ function ImageField({ label, value, onChange }) {
   );
 }
 
+/* ================= FILE FIELD (documents — PDF/Word/Excel) ================= */
+function FileField({ label, value, onChange }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const url = value ? resolvePhotoUrl(value) : null;
+  const filename = value ? String(value).split("/").pop() : null;
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await API.post("/website/upload-file", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      onChange(res.data.url);
+    } catch (err) {
+      alert(err?.response?.data?.message || "File upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div style={styles.field}>
+      <label style={styles.label}>{label}</label>
+      <div style={styles.imageFieldRow}>
+        {url ? (
+          <a href={url} target="_blank" rel="noopener noreferrer" style={styles.fileLink}>
+            {filename}
+          </a>
+        ) : (
+          <div style={styles.imageThumbEmpty}>No file</div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input ref={inputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }} onChange={handleFile} />
+          <button type="button" style={styles.secondaryBtn} onClick={() => inputRef.current?.click()} disabled={uploading}>
+            {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
+          </button>
+          {url && (
+            <button type="button" style={styles.dangerBtnSm} onClick={() => onChange(null)} disabled={uploading}>
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ================= FIELD RENDERER (single scalar/image field) ================= */
 function FieldInput({ field, value, onChange }) {
   if (field.type === "image") return <ImageField label={field.label} value={value} onChange={onChange} />;
+  if (field.type === "file") return <FileField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "checkbox") {
     return (
       <label style={styles.checkboxRow}>
@@ -641,6 +718,7 @@ const styles = {
   imageFieldRow: { display: "flex", gap: 12, alignItems: "flex-start" },
   imageThumb: { width: 96, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)" },
   imageThumbEmpty: { width: 96, height: 72, borderRadius: "var(--radius-sm)", border: "1px dashed var(--border)", background: "var(--card-elevated)", color: "var(--text-muted)", fontSize: 10.5, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 4 },
+  fileLink: { display: "flex", alignItems: "center", width: 220, minHeight: 72, padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--primary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", wordBreak: "break-all" },
   toast: {
     position: "fixed", top: 16, right: 16, zIndex: 999, color: "#fff", padding: "10px 16px", borderRadius: 8,
     boxShadow: "var(--shadow)", maxWidth: "90vw", fontWeight: 600, fontSize: 13,
