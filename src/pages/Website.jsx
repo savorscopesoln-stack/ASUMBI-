@@ -210,14 +210,15 @@ const SECTIONS = [
       { key: "note", label: "Note shown alongside the button", type: "textarea" },
     ] },
   { key: "events", label: "Events", kind: "list", itemType: "object",
-    newItem: () => ({ title: "", description: "", date: "", time: "", location: "", image: null, status: "upcoming", featured: false }),
+    newItem: () => ({ title: "", description: "", date: "", time: "", location: "", image: null, images: [], status: "upcoming", featured: false }),
     itemFields: [
       { key: "title", label: "Event title", type: "text" },
       { key: "description", label: "Description", type: "textarea" },
       { key: "date", label: "Date (display text, e.g. 14 November 2026)", type: "text" },
       { key: "time", label: "Time (optional)", type: "text" },
       { key: "location", label: "Location", type: "text" },
-      { key: "image", label: "Photo", type: "image" },
+      { key: "image", label: "Cover photo (shown on the event card)", type: "image" },
+      { key: "images", label: "Additional photos (shown as a gallery on the event's own page)", type: "image-list" },
       { key: "status", label: "Status", type: "select", options: ["upcoming", "past"] },
       { key: "featured", label: "Featured event", type: "checkbox" },
     ] },
@@ -259,13 +260,24 @@ const SECTIONS = [
       ] }] },
   { key: "pageHeroes", label: "Inner Page Banners", kind: "page-heroes" },
   { key: "leadership", label: "College Leadership", kind: "list", itemType: "object",
-    newItem: () => ({ name: "", position: "", bio: "", qualifications: "", photo: null }),
+    newItem: () => ({ name: "", position: "", bio: "", qualifications: "", photo: null, size: "medium" }),
     itemFields: [
       { key: "name", label: "Name", type: "text" },
       { key: "position", label: "Position (e.g. Deputy Principal)", type: "text" },
       { key: "qualifications", label: "Qualifications (optional)", type: "text" },
       { key: "bio", label: "Short biography", type: "textarea" },
       { key: "photo", label: "Photograph", type: "image" },
+      { key: "size", label: "Photo size on the Leadership page", type: "select", options: ["small", "medium", "large"] },
+    ] },
+  { key: "staff", label: "Department Staff", kind: "list", itemType: "object",
+    newItem: () => ({ name: "", position: "", department: "", bio: "", photo: null, size: "medium" }),
+    itemFields: [
+      { key: "name", label: "Name", type: "text" },
+      { key: "position", label: "Position / title", type: "text" },
+      { key: "department", label: "Department (must match a department's name exactly, so this profile shows on that department's page)", type: "text" },
+      { key: "bio", label: "Short biography (optional)", type: "textarea" },
+      { key: "photo", label: "Photograph", type: "image" },
+      { key: "size", label: "Photo size on the department page", type: "select", options: ["small", "medium", "large"] },
     ] },
   { key: "downloads", label: "Downloads & Resources", kind: "list", itemType: "object",
     newItem: () => ({ title: "", category: "General", file: null, date: "" }),
@@ -290,6 +302,7 @@ const PAGE_HERO_KEYS = [
   { key: "events", label: "Events Page" },
   { key: "downloads", label: "Downloads Page" },
   { key: "leadership", label: "Leadership Page" },
+  { key: "faqs", label: "FAQ Page" },
 ];
 
 /* ================= IMAGE FIELD ================= */
@@ -336,6 +349,57 @@ function ImageField({ label, value, onChange }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ================= IMAGE LIST FIELD (multiple photos — e.g. an event gallery) ================= */
+function ImageListField({ label, value, onChange }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const urls = Array.isArray(value) ? value : [];
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await API.post("/website/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      onChange([...urls, res.data.url]);
+    } catch (err) {
+      alert(err?.response?.data?.message || "Image upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAt = (i) => onChange(urls.filter((_, idx) => idx !== i));
+
+  return (
+    <div style={styles.field}>
+      <label style={styles.label}>{label}</label>
+      <div style={styles.imageListGrid}>
+        {urls.map((u, i) => (
+          <div key={`${u}-${i}`} style={styles.imageListThumbWrap}>
+            <img src={resolvePhotoUrl(u)} alt="" style={styles.imageThumb} />
+            <button type="button" style={styles.imageListRemoveBtn} onClick={() => removeAt(i)} aria-label="Remove photo">
+              ✕
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          style={styles.imageListAddBtn}
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? "Uploading…" : "+ Add Photo"}
+        </button>
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handleFile} />
     </div>
   );
 }
@@ -394,6 +458,7 @@ function FileField({ label, value, onChange }) {
 /* ================= FIELD RENDERER (single scalar/image field) ================= */
 function FieldInput({ field, value, onChange }) {
   if (field.type === "image") return <ImageField label={field.label} value={value} onChange={onChange} />;
+  if (field.type === "image-list") return <ImageListField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "file") return <FileField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "checkbox") {
     return (
@@ -552,6 +617,10 @@ export default function Website() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyVersions, setHistoryVersions] = useState([]);
+  const [restoringId, setRestoringId] = useState(null);
 
   const activeSection = SECTIONS.find((s) => s.key === activeKey);
 
@@ -597,6 +666,35 @@ export default function Website() {
       notify(err?.response?.data?.message || "Save failed", true);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openHistory = async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const res = await API.get(`/website/${activeKey}/history`);
+      setHistoryVersions(res.data?.versions || []);
+    } catch (err) {
+      notify(err?.response?.data?.message || "Failed to load history", true);
+      setHistoryVersions([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const restoreVersion = async (id) => {
+    if (!window.confirm("Restore this version? The current content for this section will be replaced (this itself can be undone from History afterwards).")) return;
+    setRestoringId(id);
+    try {
+      await API.post(`/website/${activeKey}/restore/${id}`);
+      notify("Restored — live on the website within about a minute.");
+      setHistoryOpen(false);
+      loadSection(activeKey);
+    } catch (err) {
+      notify(err?.response?.data?.message || "Restore failed", true);
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -657,6 +755,9 @@ export default function Website() {
                   {activeMeta.updated_by_name ? ` by ${activeMeta.updated_by_name}` : ""}
                 </span>
               )}
+              <button style={styles.secondaryBtn} onClick={openHistory} disabled={loading}>
+                History
+              </button>
               <button style={styles.primaryBtn} onClick={() => saveSection(activeKey)} disabled={saving || loading}>
                 {saving ? "Saving…" : "Save"}
               </button>
@@ -666,12 +767,61 @@ export default function Website() {
           {renderActiveSection()}
         </div>
       </div>
+
+      {historyOpen && (
+        <div style={styles.modalOverlay} onClick={() => setHistoryOpen(false)}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={styles.sectionTitle}>History — {activeSection.label}</h3>
+              <button style={styles.iconBtn} onClick={() => setHistoryOpen(false)} aria-label="Close">✕</button>
+            </div>
+            <p style={styles.hint}>
+              The last {historyVersions.length || 0} saved version{historyVersions.length === 1 ? "" : "s"} of this
+              section. Restoring replaces the current content — it's saved as a new version too, so it can be undone.
+            </p>
+            {historyLoading ? (
+              <p style={styles.hint}>Loading…</p>
+            ) : historyVersions.length === 0 ? (
+              <p style={styles.hint}>No saved history yet for this section.</p>
+            ) : (
+              <div style={styles.historyList}>
+                {historyVersions.map((v, i) => (
+                  <div key={v.id} style={styles.historyRow}>
+                    <div>
+                      <div style={styles.historyWhen}>
+                        {new Date(v.updated_at).toLocaleString()}
+                        {i === 0 && <span style={styles.historyCurrentBadge}>Most recent</span>}
+                      </div>
+                      <div style={styles.hint}>{v.updated_by_name || "Unknown"}</div>
+                    </div>
+                    <button
+                      style={styles.secondaryBtn}
+                      onClick={() => restoreVersion(v.id)}
+                      disabled={restoringId === v.id || i === 0}
+                      title={i === 0 ? "This is already the current version" : "Restore this version"}
+                    >
+                      {restoringId === v.id ? "Restoring…" : "Restore"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 const styles = {
   page: { background: "var(--bg)", minHeight: "100vh", color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif", padding: 24 },
+  modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 },
+  modalCard: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 22, width: "100%", maxWidth: 520, maxHeight: "80vh", overflowY: "auto" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  historyList: { display: "flex", flexDirection: "column", gap: 10, marginTop: 14 },
+  historyRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--card-elevated)" },
+  historyWhen: { fontSize: 13, fontWeight: 600, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 },
+  historyCurrentBadge: { fontSize: 10.5, fontWeight: 700, color: "var(--success)", background: "color-mix(in srgb, var(--success) 15%, transparent)", padding: "2px 7px", borderRadius: 999 },
   topbar: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, gap: 16, flexWrap: "wrap" },
   title: { margin: 0, fontSize: 24, fontWeight: 800, color: "var(--text)" },
   subtitle: { margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)", maxWidth: 620 },
@@ -719,6 +869,10 @@ const styles = {
   imageThumb: { width: 96, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)" },
   imageThumbEmpty: { width: 96, height: 72, borderRadius: "var(--radius-sm)", border: "1px dashed var(--border)", background: "var(--card-elevated)", color: "var(--text-muted)", fontSize: 10.5, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 4 },
   fileLink: { display: "flex", alignItems: "center", width: 220, minHeight: 72, padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--primary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", wordBreak: "break-all" },
+  imageListGrid: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 4 },
+  imageListThumbWrap: { position: "relative", width: 96, height: 72 },
+  imageListRemoveBtn: { position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--destructive)", background: "var(--destructive)", color: "#fff", fontSize: 11, lineHeight: "18px", cursor: "pointer", padding: 0 },
+  imageListAddBtn: { width: 96, height: 72, borderRadius: "var(--radius-sm)", border: "1px dashed var(--border)", background: "var(--card-elevated)", color: "var(--text-secondary)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" },
   toast: {
     position: "fixed", top: 16, right: 16, zIndex: 999, color: "#fff", padding: "10px 16px", borderRadius: 8,
     boxShadow: "var(--shadow)", maxWidth: "90vw", fontWeight: 600, fontSize: 13,
