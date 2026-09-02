@@ -158,12 +158,12 @@ const SECTIONS = [
         { key: "text", label: "Text", type: "textarea" },
       ] }] },
   { key: "gallery", label: "Campus Gallery", kind: "list", itemType: "object",
-    newItem: () => ({ label: "", image: null, tall: false, video: false }),
+    newItem: () => ({ label: "", image: null, tall: false, video: null }),
     itemFields: [
       { key: "label", label: "Caption / alt text", type: "text" },
-      { key: "image", label: "Photo", type: "image" },
+      { key: "image", label: "Photo (also used as the video's cover thumbnail)", type: "image" },
       { key: "tall", label: "Tall tile (spans 2 rows in the grid)", type: "checkbox" },
-      { key: "video", label: "Show \"Watch tour\" video button on this tile", type: "checkbox" },
+      { key: "video", label: "Video clip (optional — adds a \"Watch tour\" play button on this tile)", type: "video" },
     ] },
   { key: "news", label: "News & Announcements", kind: "list", itemType: "object",
     newItem: () => ({ tag: "", tagColor: "maroon", title: "", slug: "", excerpt: "", body: "", date: "", image: null }),
@@ -456,11 +456,60 @@ function FileField({ label, value, onChange }) {
   );
 }
 
+/* ================= VIDEO FIELD (e.g. Gallery "Watch tour" clips) ================= */
+function VideoField({ label, value, onChange }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const url = value ? resolvePhotoUrl(value) : null;
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("video", file);
+      const res = await API.post("/website/upload-video", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      onChange(res.data.url);
+    } catch (err) {
+      alert(err?.response?.data?.message || "Video upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div style={styles.field}>
+      <label style={styles.label}>{label}</label>
+      <div style={styles.imageFieldRow}>
+        {url ? (
+          <video src={url} controls style={styles.videoThumb} />
+        ) : (
+          <div style={styles.imageThumbEmpty}>No video</div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input ref={inputRef} type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mov" style={{ display: "none" }} onChange={handleFile} />
+          <button type="button" style={styles.secondaryBtn} onClick={() => inputRef.current?.click()} disabled={uploading}>
+            {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
+          </button>
+          {url && (
+            <button type="button" style={styles.dangerBtnSm} onClick={() => onChange(null)} disabled={uploading}>
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ================= FIELD RENDERER (single scalar/image field) ================= */
 function FieldInput({ field, value, onChange }) {
   if (field.type === "image") return <ImageField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "image-list") return <ImageListField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "file") return <FileField label={field.label} value={value} onChange={onChange} />;
+  if (field.type === "video") return <VideoField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "checkbox") {
     return (
       <label style={styles.checkboxRow}>
@@ -942,6 +991,7 @@ const styles = {
   dangerBtnSm: { border: "1px solid var(--destructive)", background: "var(--destructive-tint)", color: "var(--destructive)", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600, flexShrink: 0 },
   imageFieldRow: { display: "flex", gap: 12, alignItems: "flex-start" },
   imageThumb: { width: 96, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)" },
+  videoThumb: { width: 200, height: 112, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "#000" },
   imageThumbEmpty: { width: 96, height: 72, borderRadius: "var(--radius-sm)", border: "1px dashed var(--border)", background: "var(--card-elevated)", color: "var(--text-muted)", fontSize: 10.5, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 4 },
   fileLink: { display: "flex", alignItems: "center", width: 220, minHeight: 72, padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--primary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", wordBreak: "break-all" },
   themeActionsRow: { display: "flex", gap: 10, marginBottom: 18 },
