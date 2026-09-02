@@ -25,8 +25,8 @@ const injectAuthStyles = () => {
       --card: #FFFFFF;
       --border: #E2E5EA;
       --text: #0B0F19;
-      --text-secondary: #384152;
-      --text-muted: #64748B;
+      --text-secondary: #000000;
+      --text-muted: #000307;
       --primary: #8B1E2D;
       --primary-dark: #6F1725;
       --primary-tint: #FBEAEC;
@@ -57,11 +57,16 @@ const injectAuthStyles = () => {
     html, body { overflow-x: hidden; width: 100%; }
     body { background: var(--bg); }
 
-    @keyframes authFadeUp { from { opacity:0; transform:translateY(12px);} to { opacity:1; transform:translateY(0);} }
+    @keyframes authFadeUp { from { opacity:0; transform:translateY(14px);} to { opacity:1; transform:translateY(0);} }
     @keyframes authSpin { to { transform: rotate(360deg); } }
+    @keyframes authDrift {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      50% { transform: translate(14px, -18px) rotate(6deg); }
+    }
 
     .auth-spin { animation: authSpin 0.8s linear infinite; }
-    .auth-card { animation: authFadeUp 0.28s ease both; }
+    .auth-card { animation: authFadeUp 0.32s ease both; }
+    .auth-blob { animation: authDrift 9s ease-in-out infinite; }
 
     .auth-input:focus, .auth-btn:focus-visible, .theme-toggle-btn:focus-visible, button:focus-visible {
       outline: 2px solid var(--primary);
@@ -81,34 +86,15 @@ const injectAuthStyles = () => {
 
     .auth-submit-btn:hover:not(:disabled) { background: var(--primary-dark) !important; border-color: var(--primary-dark) !important; }
 
-    .auth-visual-caption {
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-    }
-
-    /* ── layout: two columns on desktop/tablet, single column
-       (image collapses into a compact top banner) on phones ── */
-    .auth-page {
-      grid-template-columns: 1.05fr 1fr;
-    }
-
-    @media (max-width: 980px) {
-      .auth-visual { display: none !important; }
-      .auth-visual-mobile { display: flex !important; }
-      .auth-page { grid-template-columns: 1fr !important; }
-    }
-    @media (min-width: 981px) {
-      .auth-visual-mobile { display: none !important; }
+    .auth-card-shell {
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
     }
 
     /* ── phone-specific spacing/type tightening ── */
-    @media (max-width: 640px) {
-      .auth-form-panel { padding: 20px 16px !important; }
-      .auth-heading { font-size: 25px !important; }
-      .auth-visual-mobile { height: 140px !important; }
-    }
-    @media (max-width: 380px) {
-      .auth-form-panel { padding: 16px 12px !important; }
+    @media (max-width: 480px) {
+      .auth-card-shell { padding: 26px 22px !important; }
+      .auth-heading { font-size: 23px !important; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -249,115 +235,125 @@ export default function Login() {
   };
 
   return (
-    <div className="auth-page" style={S.page}>
-      {/* ── Left: visual panel (desktop/tablet) ── */}
-      <div className="auth-visual" style={S.visual}>
-        <div style={S.visualGlow} aria-hidden="true" />
-        {heroImageOk && (
-          <img
-            src={HERO_IMAGE_SRC}
-            alt="Asumbi student carrying books on campus"
-            style={S.visualImg}
-            onError={() => setHeroImageOk(false)}
-          />
-        )}
-        <div style={S.visualOverlay} aria-hidden="true" />
-        <div className="auth-visual-caption" style={S.visualCaption}>
-          <div style={S.visualCaptionTitle}>Asumbi Teachers Training College</div>
-          <div style={S.visualCaptionSub}>Smart Campus Management System</div>
+    <div className="auth-stage" style={S.stage}>
+      {/* ── hero photo, dimmed under the gradient so it reads as
+           texture rather than competing with the card ── */}
+      {heroImageOk && (
+        <img
+          src={HERO_IMAGE_SRC}
+          alt=""
+          aria-hidden="true"
+          style={S.heroImg}
+          onError={() => setHeroImageOk(false)}
+        />
+      )}
+
+      {/* ── decorative gradient + blob backdrop ── */}
+      <div style={S.glowTop} aria-hidden="true" />
+      <div style={S.glowBottom} aria-hidden="true" />
+      <svg
+        className="auth-blob"
+        aria-hidden="true"
+        viewBox="0 0 200 200"
+        style={{ ...S.blob, top: "8%", left: "8%", width: 160, animationDelay: "0s" }}
+      >
+        <path
+          fill="rgba(255,255,255,0.10)"
+          d="M45,-58C59,-49,71,-35,75,-19C79,-3,75,15,66,30C57,45,43,57,26,64C9,71,-11,73,-29,66C-47,59,-63,43,-70,24C-77,5,-75,-17,-64,-33C-53,-49,-33,-59,-13,-63C7,-67,31,-67,45,-58Z"
+          transform="translate(100 100)"
+        />
+      </svg>
+      <svg
+        className="auth-blob"
+        aria-hidden="true"
+        viewBox="0 0 200 200"
+        style={{ ...S.blob, bottom: "10%", right: "10%", width: 200, animationDelay: "2.5s" }}
+      >
+        <path
+          fill="rgba(251, 251, 251, 0.08)"
+          d="M39,-51C51,-42,61,-30,66,-15C71,0,71,17,64,32C57,47,43,60,26,66C9,72,-11,71,-28,64C-45,57,-59,44,-67,27C-75,10,-77,-11,-69,-27C-61,-43,-43,-54,-25,-62C-7,-70,13,-75,39,-51Z"
+          transform="translate(100 100)"
+        />
+      </svg>
+
+      {/* ── centered glass card. Fixed comfortable width instead of
+           the old 90%-shell/40vh split so it reads the same, and
+           legibly, on every screen size ── */}
+      <div className="auth-card auth-card-shell" style={S.cardShell}>
+        <div style={S.cardInner}>
+        {/* Brand + theme toggle */}
+        <div style={S.brandRow}>
+          <div style={S.brandMark}>
+            <div style={S.logoSquare}>
+              <GraduationCap size={20} color="#fff" strokeWidth={2.25} />
+            </div>
+            <div>
+              <div style={S.brandName}>ASUMBI</div>
+              <div style={S.brandSub}>Smart Campus</div>
+            </div>
+          </div>
+          <ThemeToggle />
         </div>
-      </div>
 
-      {/* ── Compact banner (mobile only) ── */}
-      <div className="auth-visual-mobile" style={S.visualMobile}>
-        {heroImageOk && (
-          <img
-            src={HERO_IMAGE_SRC}
-            alt="Asumbi student carrying books on campus"
-            style={S.visualImg}
-            onError={() => setHeroImageOk(false)}
-          />
+        <div style={{ marginTop: 26, textAlign: "center" }}>
+          <h1 className="auth-heading" style={S.heading}>Welcome back</h1>
+          <p style={S.subheading}>Sign in to continue to your account.</p>
+        </div>
+
+        {error && (
+          <div role="alert" style={S.errorBanner}>
+            <AlertTriangle size={16} color="var(--destructive)" style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
         )}
-        <div style={S.visualOverlay} aria-hidden="true" />
-      </div>
 
-      {/* ── Right: form panel ── */}
-      <div className="auth-form-panel" style={S.formPanel}>
-        <div className="auth-card" style={S.formCard}>
-
-          {/* Brand + theme toggle */}
-          <div style={S.brandRow}>
-            <div style={S.brandMark}>
-              <div style={S.logoSquare}>
-                <GraduationCap size={20} color="#fff" strokeWidth={2.25} />
-              </div>
-              <div>
-                <div style={S.brandName}>ASUMBI</div>
-                <div style={S.brandSub}>Smart Campus</div>
-              </div>
-            </div>
-            <ThemeToggle />
-          </div>
-
-          <div style={{ marginTop: 34 }}>
-            <h1 className="auth-heading" style={S.heading}>Welcome back</h1>
-            <p style={S.subheading}>Sign in to continue to your account.</p>
-          </div>
-
-          {error && (
-            <div role="alert" style={S.errorBanner}>
-              <AlertTriangle size={16} color="var(--destructive)" style={{ flexShrink: 0 }} />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={login} style={S.form} noValidate>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label htmlFor="username" style={authStyles.label}>Username</label>
-              <input
-                id="username"
-                type="text"
-                className="auth-input"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                required
-                style={authStyles.input}
-              />
-            </div>
-
-            <PasswordInput
-              id="password"
-              label="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              inputStyle={{}}
+        <form onSubmit={login} style={S.form} noValidate>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label htmlFor="username" style={authStyles.label}>Username</label>
+            <input
+              id="username"
+              type="text"
+              className="auth-input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              required
+              style={authStyles.input}
             />
+          </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="auth-btn auth-submit-btn"
-              style={{
-                ...S.submitBtn,
-                opacity: loading ? 0.75 : 1,
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={17} className="auth-spin" />
-                  Signing in…
-                </>
-              ) : (
-                "SIGN IN"
-              )}
-            </button>
-          </form>
+          <PasswordInput
+            id="password"
+            label="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            inputStyle={{}}
+          />
 
-          <p style={S.footerNote}>
-            © {new Date().getFullYear()} Asumbi Teachers Training College
-          </p>
+          <button
+            type="submit"
+            disabled={loading}
+            className="auth-btn auth-submit-btn"
+            style={{
+              ...S.submitBtn,
+              opacity: loading ? 0.75 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? (
+              <>
+                <Loader2 size={17} className="auth-spin" />
+                Signing in…
+              </>
+            ) : (
+              "Sign in"
+            )}
+          </button>
+        </form>
+
+        <p style={S.footerNote}>
+          © {new Date().getFullYear()} Asumbi Teachers Training College
+        </p>
         </div>
       </div>
     </div>
@@ -368,82 +364,85 @@ export default function Login() {
    STYLES
 ════════════════════════════════ */
 const S = {
-  page: {
+  /* full-bleed gradient stage that hosts the centered card,
+     built from the same maroon tones as the old split-panel
+     visual, so the brand feel carries over 1:1 */
+  stage: {
+    position: "relative",
     minHeight: "100vh",
-    display: "grid",
-    // column count itself now lives in the .auth-page CSS class so
-    // it can be overridden by a media query on phones (inline
-    // styles can't respond to @media). Value here is just the
-    // desktop/tablet fallback.
-    gridTemplateColumns: "1.05fr 1fr",
-    background: "var(--bg)",
+    width: "100%",
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "32px 24px",
+    background: "linear-gradient(160deg, #3A0E15 66%, #6F1725 99%, #8B1E2D 100%)",
     fontFamily: "'Inter', system-ui, sans-serif",
   },
-
-  /* ── visual panel (desktop) ── */
-  visual: {
-    position: "relative",
-    overflow: "hidden",
-    background: "linear-gradient(160deg, #3A0E15 0%, #6F1725 45%, #8B1E2D 100%)",
-    minHeight: "100vh",
-  },
-  visualGlow: {
-    position: "absolute",
-    top: -120,
-    left: -120,
-    width: 340,
-    height: 340,
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(255,255,255,0.16), transparent 70%)",
-    filter: "blur(10px)",
-  },
-  visualImg: {
+  heroImg: {
     position: "absolute",
     inset: 0,
     width: "100%",
     height: "100%",
     objectFit: "cover",
     objectPosition: "center top",
+    opacity: 0.50,
   },
-  visualOverlay: {
+  glowTop: {
     position: "absolute",
-    inset: 0,
-    background: "linear-gradient(to top, rgba(15,8,9,0.55) 0%, rgba(15,8,9,0.05) 45%, transparent 70%)",
+    top: -140,
+    left: -120,
+    width: 380,
+    height: 380,
+    borderRadius: "50%",
+    background: "radial-gradient(circle, rgba(255,255,255,0.14), transparent 70%)",
+    filter: "blur(10px)",
   },
-  visualCaption: {
+  glowBottom: {
     position: "absolute",
-    left: 28,
-    bottom: 28,
-    right: 28,
-    background: "rgba(15,8,9,0.35)",
-    border: "1px solid rgba(255,255,255,0.16)",
-    borderRadius: 14,
-    padding: "14px 18px",
-    color: "#fff",
+    bottom: -120,
+    right: -140,
+    width: 420,
+    height: 420,
+    borderRadius: "50%",
+    background: "radial-gradient(circle, rgba(255,255,255,0.10), transparent 70%)",
+    filter: "blur(10px)",
   },
-  visualCaptionTitle: { fontSize: 15, fontWeight: 700, letterSpacing: "0.01em" },
-  visualCaptionSub: { fontSize: 12.5, fontWeight: 500, color: "rgba(255,255,255,0.82)", marginTop: 2 },
+  blob: {
+    position: "absolute",
+    pointerEvents: "none",
+  },
 
-  /* ── compact banner (mobile) ── */
-  visualMobile: {
-    display: "none",
+  /* ── centered glassmorphic card ──
+     FIXED: was `position: "CENTER"` (not a real CSS value) and
+     `width: 70%` fighting `maxWidth: 60%`, which made the card's
+     effective size unpredictable across breakpoints. Also bumped
+     the fill opacity from 10% -> 94% (light) so body text keeps
+     proper contrast instead of the maroon gradient bleeding
+     through and muddying it. */
+  cardShell: {
     position: "relative",
-    height: 180,
-    overflow: "hidden",
-    background: "linear-gradient(160deg, #3A0E15 0%, #6F1725 45%, #8B1E2D 100%)",
-  },
-
-  /* ── form panel ── */
-  formPanel: {
-    display: "flex",
+    width: "100%",
+    maxWidth: 1200,
+    height: "90%",
+    MaxHeight: 700,
+  display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "32px 24px",
-    background: "var(--bg)",
+    background: "color-mix(in srgb, var(--card) 1%, transparent)",
+    border: "1px solid rgba(255,255,255,0.28)",
+    borderRadius: 20,
+    boxShadow: "0 24px 60px -20px rgba(15,8,9,0.55)",
+    padding: "32px 28px",
   },
-  formCard: {
-    width: "50%",
-    maxWidth: 100,
+  /* content block inside the card.
+     FIXED: was `maxWidth: "90"` — a number with no unit is invalid
+     CSS and silently does nothing, so the block never actually
+     constrained itself. */
+  cardInner: {
+    width: "100%",
+    maxWidth: 400,
+    margin: "0 auto",
   },
 
   brandRow: {
@@ -467,7 +466,7 @@ const S = {
 
   heading: {
     margin: 0,
-    fontSize: 30,
+    fontSize: 27,
     fontWeight: 800,
     color: "var(--text)",
     letterSpacing: "-0.01em",
@@ -497,7 +496,7 @@ const S = {
     display: "flex",
     flexDirection: "column",
     gap: 18,
-    marginTop: 26,
+    marginTop: 24,
   },
 
   submitBtn: {
@@ -513,13 +512,13 @@ const S = {
     borderRadius: 11,
     fontSize: 14.5,
     fontWeight: 700,
-    letterSpacing: "0.03em",
+    letterSpacing: "0.01em",
     fontFamily: "inherit",
     transition: "background-color 0.15s ease, border-color 0.15s ease",
   },
 
   footerNote: {
-    marginTop: 28,
+    marginTop: 24,
     textAlign: "center",
     fontSize: 11.5,
     color: "var(--text-muted)",
