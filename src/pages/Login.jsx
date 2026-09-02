@@ -12,24 +12,6 @@ import { getDefaultRoute } from "../permissions";
    seamless whether a user lands on /login or /dashboard first.
    Injected under its own id so it's safe to mount before or
    alongside Dashboard's stylesheet.
-
-   NOTE: layout-critical responsive properties (display,
-   grid-template-columns, banner height) live ENTIRELY in this
-   stylesheet now — not in inline styles — so there's no race
-   between "inline style wins" and "CSS !important wins" before
-   this effect has run. That mismatch was the actual cause of the
-   mobile banner disappearing / form taking over the screen.
-
-   FIX (mobile "80% blank space" bug): .auth-page is a CSS grid
-   with min-height: 100vh and grid-auto-rows: auto. With the
-   default align-content, leftover viewport height gets
-   distributed into the auto rows, so .auth-form-panel's row was
-   being stretched well past its content height — and because that
-   panel also centers its content vertically, the sign-in card got
-   pushed down into a big empty gap under the banner. Adding
-   `align-content: start` on the grid (so rows size to content only)
-   and switching the form panel to top-aligned content on mobile
-   fixes it. See the two "NEW" comments below.
 */
 const injectAuthStyles = () => {
   if (document.getElementById("auth-tokens")) return;
@@ -104,87 +86,29 @@ const injectAuthStyles = () => {
       -webkit-backdrop-filter: blur(6px);
     }
 
-    /* ══════════════════════════════════════════════
-       LAYOUT — single source of truth, no inline
-       style fighting these values, no !important
-       needed because nothing else sets them.
-       ══════════════════════════════════════════════ */
-
-    /* desktop/tablet default: two columns */
+    /* ── layout: two columns on desktop/tablet, single column
+       (image collapses into a compact top banner) on phones ── */
     .auth-page {
-      min-height: 100vh;
-      display: grid;
       grid-template-columns: 1.05fr 1fr;
-      background: var(--bg);
-      font-family: 'Inter', system-ui, sans-serif;
-    }
-
-    .auth-visual {
-      display: block;
-      position: relative;
-      overflow: hidden;
-      min-height: 100vh;
-      background: linear-gradient(160deg, #3A0E15 0%, #6F1725 45%, #8B1E2D 100%);
-      flex-shrink: 0;
-    }
-
-    .auth-visual-mobile {
-      display: none; /* shown only under the breakpoint below */
-      position: relative;
-      width: 100%;
-      height: 220px;
-      overflow: hidden;
-      flex-shrink: 0;
-      background: linear-gradient(160deg, #3A0E15 0%, #6F1725 45%, #8B1E2D 100%);
-    }
-
-    .auth-form-panel {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 32px 24px;
-      background: var(--bg);
-      min-width: 0; /* let grid item shrink instead of overflowing */
     }
 
     @media (max-width: 980px) {
-      .auth-page {
-        grid-template-columns: 1fr; /* single column */
-        grid-auto-rows: auto;
-        min-height: 0; /* NEW — stop forcing the page to be exactly 100vh tall
-                           on mobile. That's what was reserving leftover space
-                           below the (shorter) stacked content: banner + card
-                           add up to less than one screen height, so with
-                           min-height:100vh still in force the browser had
-                           space left to hand out no matter where align-content
-                           put it. Letting the page size to its own content
-                           removes the extra space entirely instead of just
-                           relocating it. */
-        align-content: start; /* keeps rows from stretching if content ever
-                                  does exceed the viewport */
-      }
-      .auth-visual {
-        display: none; /* desktop panel hidden */
-      }
-      .auth-visual-mobile {
-        display: block; /* compact banner shown */
-      }
-      .auth-form-panel {
-        align-items: flex-start; /* NEW — hug the top of its row instead of
-                                     centering in the (now correctly-sized) row */
-        padding-top: 28px; /* NEW — small breathing room under the banner */
-      }
+      .auth-visual { display: none !important; }
+      .auth-visual-mobile { display: flex !important; }
+      .auth-page { grid-template-columns: 1fr !important; }
+    }
+    @media (min-width: 981px) {
+      .auth-visual-mobile { display: none !important; }
     }
 
     /* ── phone-specific spacing/type tightening ── */
     @media (max-width: 640px) {
-      .auth-form-panel { padding: 20px 16px; padding-top: 24px; }
+      .auth-form-panel { padding: 20px 16px !important; }
       .auth-heading { font-size: 25px !important; }
-      .auth-visual-mobile { height: 170px; }
+      .auth-visual-mobile { height: 140px !important; }
     }
     @media (max-width: 380px) {
-      .auth-form-panel { padding: 16px 12px; padding-top: 20px; }
-      .auth-visual-mobile { height: 150px; }
+      .auth-form-panel { padding: 16px 12px !important; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -202,11 +126,6 @@ const injectAuthStyles = () => {
   Add the real photo at:  frontend/public/assets/student-hero.jpg
   (a college student holding books, portrait/vertical orientation
   works best — see the redesign brief for full guidance).
-
-  If the banner is still empty on mobile after this fix, check the
-  browser Network tab for a 404 on this path — that means the file
-  isn't actually at frontend/public/assets/student-hero.jpg yet,
-  which onError silently swaps for the plain gradient.
 */
 const HERO_IMAGE_SRC = "/assets/student-hero.jpg";
 
@@ -330,9 +249,9 @@ export default function Login() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" style={S.page}>
       {/* ── Left: visual panel (desktop/tablet) ── */}
-      <div className="auth-visual">
+      <div className="auth-visual" style={S.visual}>
         <div style={S.visualGlow} aria-hidden="true" />
         {heroImageOk && (
           <img
@@ -350,7 +269,7 @@ export default function Login() {
       </div>
 
       {/* ── Compact banner (mobile only) ── */}
-      <div className="auth-visual-mobile">
+      <div className="auth-visual-mobile" style={S.visualMobile}>
         {heroImageOk && (
           <img
             src={HERO_IMAGE_SRC}
@@ -363,7 +282,7 @@ export default function Login() {
       </div>
 
       {/* ── Right: form panel ── */}
-      <div className="auth-form-panel">
+      <div className="auth-form-panel" style={S.formPanel}>
         <div className="auth-card" style={S.formCard}>
 
           {/* Brand + theme toggle */}
@@ -447,12 +366,27 @@ export default function Login() {
 
 /* ════════════════════════════════
    STYLES
-   (only non-responsive / decorative
-   values live here now — layout-
-   critical display/grid rules moved
-   into the injected stylesheet above)
 ════════════════════════════════ */
 const S = {
+  page: {
+    minHeight: "100vh",
+    display: "grid",
+    // column count itself now lives in the .auth-page CSS class so
+    // it can be overridden by a media query on phones (inline
+    // styles can't respond to @media). Value here is just the
+    // desktop/tablet fallback.
+    gridTemplateColumns: "1.05fr 1fr",
+    background: "var(--bg)",
+    fontFamily: "'Inter', system-ui, sans-serif",
+  },
+
+  /* ── visual panel (desktop) ── */
+  visual: {
+    position: "relative",
+    overflow: "hidden",
+    background: "linear-gradient(160deg, #3A0E15 0%, #6F1725 45%, #8B1E2D 100%)",
+    minHeight: "100vh",
+  },
   visualGlow: {
     position: "absolute",
     top: -120,
@@ -490,9 +424,26 @@ const S = {
   visualCaptionTitle: { fontSize: 15, fontWeight: 700, letterSpacing: "0.01em" },
   visualCaptionSub: { fontSize: 12.5, fontWeight: 500, color: "rgba(255,255,255,0.82)", marginTop: 2 },
 
+  /* ── compact banner (mobile) ── */
+  visualMobile: {
+    display: "none",
+    position: "relative",
+    height: 180,
+    overflow: "hidden",
+    background: "linear-gradient(160deg, #3A0E15 0%, #6F1725 45%, #8B1E2D 100%)",
+  },
+
+  /* ── form panel ── */
+  formPanel: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "32px 24px",
+    background: "var(--bg)",
+  },
   formCard: {
-    width: "100%",
-    maxWidth: 420,
+    width: "50%",
+    maxWidth: 100,
   },
 
   brandRow: {
