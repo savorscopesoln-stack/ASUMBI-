@@ -151,9 +151,17 @@ const injectAuthStyles = () => {
       .auth-page {
         grid-template-columns: 1fr; /* single column */
         grid-auto-rows: auto;
-        align-content: start; /* NEW — stop auto rows stretching to fill 100vh,
-                                  which was pushing the form panel row (and the
-                                  card centered inside it) down the page */
+        min-height: 0; /* NEW — stop forcing the page to be exactly 100vh tall
+                           on mobile. That's what was reserving leftover space
+                           below the (shorter) stacked content: banner + card
+                           add up to less than one screen height, so with
+                           min-height:100vh still in force the browser had
+                           space left to hand out no matter where align-content
+                           put it. Letting the page size to its own content
+                           removes the extra space entirely instead of just
+                           relocating it. */
+        align-content: start; /* keeps rows from stretching if content ever
+                                  does exceed the viewport */
       }
       .auth-visual {
         display: none; /* desktop panel hidden */
