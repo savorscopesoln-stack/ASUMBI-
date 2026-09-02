@@ -567,6 +567,7 @@ const printStyles = {
   header: {
     textAlign: "center",
     marginBottom: 20,
+    borderBottom: "2px solid #000",
   },
 
   logoRow: {
@@ -673,11 +674,7 @@ const printStyles = {
     marginBottom: 5,
   },
 
-  header: { textAlign: "center", borderBottom: "2px solid #000" },
-
   meta: { fontSize: 12, marginTop: 10 },
-
-  table: { width: "100%", fontSize: 12, borderCollapse: "collapse" },
 
   signature: { marginTop: 40, textAlign: "center" }
 };
