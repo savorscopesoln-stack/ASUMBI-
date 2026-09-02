@@ -163,7 +163,7 @@ const SECTIONS = [
       { key: "label", label: "Caption / alt text", type: "text" },
       { key: "image", label: "Photo (also used as the video's cover thumbnail)", type: "image" },
       { key: "tall", label: "Tall tile (spans 2 rows in the grid)", type: "checkbox" },
-      { key: "video", label: "Video clip (optional — adds a \"Watch tour\" play button on this tile)", type: "video" },
+      { key: "video", label: "Video clip (optional — adds a \"Watch tour\" play button on this tile)", type: "image" },
     ] },
   { key: "news", label: "News & Announcements", kind: "list", itemType: "object",
     newItem: () => ({ tag: "", tagColor: "maroon", title: "", slug: "", excerpt: "", body: "", date: "", image: null }),
@@ -306,11 +306,21 @@ const PAGE_HERO_KEYS = [
   { key: "faqs", label: "FAQ Page" },
 ];
 
-/* ================= IMAGE FIELD ================= */
+// Extensions considered a video for preview purposes — everything else
+// (or an unresolvable value) is rendered as a photo. Matches the
+// backend's ALLOWED_VIDEO_EXT in middleware/websitePhotoUpload.js.
+const VIDEO_EXT_RE = /\.(mp4|webm|ogg|ogv|mov)(\?.*)?$/i;
+const isVideoUrl = (u) => !!u && VIDEO_EXT_RE.test(u);
+
+const MEDIA_ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/webm,video/ogg,video/quicktime,.mov";
+
+/* ================= MEDIA FIELD (photo OR video — e.g. hero background,
+   principal photo, news thumbnails, gallery tiles/clips) ================= */
 function ImageField({ label, value, onChange }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const url = resolvePhotoUrl(value);
+  const isVideo = isVideoUrl(value);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -323,7 +333,7 @@ function ImageField({ label, value, onChange }) {
       const res = await API.post("/website/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
       onChange(res.data.url);
     } catch (err) {
-      alert(err?.response?.data?.message || "Image upload failed");
+      alert(err?.response?.data?.message || "Upload failed");
     } finally {
       setUploading(false);
     }
@@ -334,14 +344,18 @@ function ImageField({ label, value, onChange }) {
       <label style={styles.label}>{label}</label>
       <div style={styles.imageFieldRow}>
         {url ? (
-          <img src={url} alt="" style={styles.imageThumb} />
+          isVideo ? (
+            <video src={url} controls style={styles.imageThumb} />
+          ) : (
+            <img src={url} alt="" style={styles.imageThumb} />
+          )
         ) : (
-          <div style={styles.imageThumbEmpty}>No image</div>
+          <div style={styles.imageThumbEmpty}>No photo or video</div>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handleFile} />
+          <input ref={inputRef} type="file" accept={MEDIA_ACCEPT} style={{ display: "none" }} onChange={handleFile} />
           <button type="button" style={styles.secondaryBtn} onClick={() => inputRef.current?.click()} disabled={uploading}>
-            {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
+            {uploading ? "Uploading…" : url ? "Replace" : "Upload photo or video"}
           </button>
           {url && (
             <button type="button" style={styles.dangerBtnSm} onClick={() => onChange(null)} disabled={uploading}>
@@ -354,7 +368,7 @@ function ImageField({ label, value, onChange }) {
   );
 }
 
-/* ================= IMAGE LIST FIELD (multiple photos — e.g. an event gallery) ================= */
+/* ================= IMAGE LIST FIELD (multiple photos/videos — e.g. an event gallery) ================= */
 function ImageListField({ label, value, onChange }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -371,7 +385,7 @@ function ImageListField({ label, value, onChange }) {
       const res = await API.post("/website/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
       onChange([...urls, res.data.url]);
     } catch (err) {
-      alert(err?.response?.data?.message || "Image upload failed");
+      alert(err?.response?.data?.message || "Upload failed");
     } finally {
       setUploading(false);
     }
@@ -385,8 +399,12 @@ function ImageListField({ label, value, onChange }) {
       <div style={styles.imageListGrid}>
         {urls.map((u, i) => (
           <div key={`${u}-${i}`} style={styles.imageListThumbWrap}>
-            <img src={resolvePhotoUrl(u)} alt="" style={styles.imageThumb} />
-            <button type="button" style={styles.imageListRemoveBtn} onClick={() => removeAt(i)} aria-label="Remove photo">
+            {isVideoUrl(u) ? (
+              <video src={resolvePhotoUrl(u)} muted playsInline style={styles.imageThumb} />
+            ) : (
+              <img src={resolvePhotoUrl(u)} alt="" style={styles.imageThumb} />
+            )}
+            <button type="button" style={styles.imageListRemoveBtn} onClick={() => removeAt(i)} aria-label="Remove item">
               ✕
             </button>
           </div>
@@ -397,10 +415,10 @@ function ImageListField({ label, value, onChange }) {
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
         >
-          {uploading ? "Uploading…" : "+ Add Photo"}
+          {uploading ? "Uploading…" : "+ Add Photo/Video"}
         </button>
       </div>
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handleFile} />
+      <input ref={inputRef} type="file" accept={MEDIA_ACCEPT} style={{ display: "none" }} onChange={handleFile} />
     </div>
   );
 }
@@ -456,60 +474,13 @@ function FileField({ label, value, onChange }) {
   );
 }
 
-/* ================= VIDEO FIELD (e.g. Gallery "Watch tour" clips) ================= */
-function VideoField({ label, value, onChange }) {
-  const inputRef = useRef(null);
-  const [uploading, setUploading] = useState(false);
-  const url = value ? resolvePhotoUrl(value) : null;
-
-  const handleFile = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("video", file);
-      const res = await API.post("/website/upload-video", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      onChange(res.data.url);
-    } catch (err) {
-      alert(err?.response?.data?.message || "Video upload failed");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <div style={styles.field}>
-      <label style={styles.label}>{label}</label>
-      <div style={styles.imageFieldRow}>
-        {url ? (
-          <video src={url} controls style={styles.videoThumb} />
-        ) : (
-          <div style={styles.imageThumbEmpty}>No video</div>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <input ref={inputRef} type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mov" style={{ display: "none" }} onChange={handleFile} />
-          <button type="button" style={styles.secondaryBtn} onClick={() => inputRef.current?.click()} disabled={uploading}>
-            {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
-          </button>
-          {url && (
-            <button type="button" style={styles.dangerBtnSm} onClick={() => onChange(null)} disabled={uploading}>
-              Remove
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ================= FIELD RENDERER (single scalar/image field) ================= */
 function FieldInput({ field, value, onChange }) {
-  if (field.type === "image") return <ImageField label={field.label} value={value} onChange={onChange} />;
+  // "video" kept as an alias of "image" — ImageField accepts both photos
+  // and video clips through the same shared upload endpoint.
+  if (field.type === "image" || field.type === "video") return <ImageField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "image-list") return <ImageListField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "file") return <FileField label={field.label} value={value} onChange={onChange} />;
-  if (field.type === "video") return <VideoField label={field.label} value={value} onChange={onChange} />;
   if (field.type === "checkbox") {
     return (
       <label style={styles.checkboxRow}>
@@ -631,6 +602,7 @@ const PAGE_HERO_FIELDS = [
   { key: "eyebrow", label: "Eyebrow", type: "text" },
   { key: "title", label: "Title", type: "text" },
   { key: "lead", label: "Lead paragraph (optional)", type: "textarea" },
+  { key: "background", label: "Banner background photo or video (optional)", type: "image" },
 ];
 function PageHeroesSection({ data, onChange }) {
   const obj = data || {};
@@ -991,7 +963,6 @@ const styles = {
   dangerBtnSm: { border: "1px solid var(--destructive)", background: "var(--destructive-tint)", color: "var(--destructive)", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600, flexShrink: 0 },
   imageFieldRow: { display: "flex", gap: 12, alignItems: "flex-start" },
   imageThumb: { width: 96, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)" },
-  videoThumb: { width: 200, height: 112, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "#000" },
   imageThumbEmpty: { width: 96, height: 72, borderRadius: "var(--radius-sm)", border: "1px dashed var(--border)", background: "var(--card-elevated)", color: "var(--text-muted)", fontSize: 10.5, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 4 },
   fileLink: { display: "flex", alignItems: "center", width: 220, minHeight: 72, padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--primary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", wordBreak: "break-all" },
   themeActionsRow: { display: "flex", gap: 10, marginBottom: 18 },
