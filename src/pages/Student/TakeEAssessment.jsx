@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
-import EssayEditor from "./EssayEditor";
 import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
+  Camera, CameraOff, Eye, EyeOff,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
@@ -36,6 +36,10 @@ import {
         keyboard/mouse input on THIS page until the exam ends
         or an admin clears the lock. That overlay persists
         across refresh (via localStorage) for this device.
+     4. Webcam face-presence monitoring (best-effort, and
+        deliberately scoped honestly — see the note above the
+        FACE_ABSENT_LIMIT_MS constant below for exactly what
+        this can and can't detect).
    ═════════════════════════════════════════════════════════ */
 
 /* ─── shared design-token stylesheet ───
@@ -146,6 +150,31 @@ const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
 const REVEAL_SECONDS = 15; // minimum time the student must sit with the token before continuing
 
+/* ── webcam face-presence monitoring ──────────────────────────────
+   HONEST SCOPE NOTE: a browser has no reliable way to compute exact
+   on-screen gaze coordinates without a per-student calibration step
+   (look at 9 dots, etc.) that most exam platforms skip because it's
+   slow and finicky. What this DOES implement, which is the practical
+   and enforceable version of "flag if their eyes leave the screen":
+   a lightweight face detector (face-api.js's tiny_face_detector model,
+   ~190KB, runs client-side, nothing is ever uploaded) checks the
+   webcam feed roughly once a second. If no face is detected — which
+   is what actually happens when someone looks far off to the side,
+   leans out of frame, or someone else steps in front of the camera —
+   for FACE_ABSENT_LIMIT_MS of continuous absence, it feeds into the
+   exact same registerViolation() escalation path as the other
+   detectors above (tab-switch, devtools, etc.), so it counts toward
+   the same 3-strikes lockout.
+   Camera access is requested but never made mandatory to start the
+   exam — a student without a webcam, or who denies the permission,
+   simply continues without this particular check (a one-time notice
+   is shown, not an error) rather than being locked out of an exam
+   entirely over a hardware/permission issue outside their control. */
+const FACE_ABSENT_LIMIT_MS = 30000;
+const FACE_CHECK_INTERVAL_MS = 1000;
+const FACE_API_SCRIPT_SRC = "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js";
+const FACE_API_MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights";
+
 const getDeviceId = () => {
   let id = localStorage.getItem("exam_device_id");
   if (!id) {
@@ -157,11 +186,35 @@ const getDeviceId = () => {
 
 const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
 
-// Local autosave for in-progress answers, scoped per assessment. Without
-// this, `answers` is pure React state — any refresh, accidental reload,
-// flaky connection, or the browser restoring a crashed tab wipes every
-// answer the student has entered, with the countdown still running.
-const answersKey = (assessmentId) => `exam_answers_${assessmentId}`;
+/* Loads the face-api.js UMD bundle from CDN exactly once, however many
+   times this is called (e.g. StrictMode double-invoke, remounts) — the
+   in-flight/loaded promise is memoized at module scope. */
+let faceApiLoadPromise = null;
+const loadFaceApi = () => {
+  if (window.faceapi) return Promise.resolve(window.faceapi);
+  if (faceApiLoadPromise) return faceApiLoadPromise;
+  faceApiLoadPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${FACE_API_SCRIPT_SRC}"]`);
+    const onReady = () => {
+      window.faceapi.nets.tinyFaceDetector
+        .loadFromUri(FACE_API_MODEL_URL)
+        .then(() => resolve(window.faceapi))
+        .catch(reject);
+    };
+    if (existing) {
+      if (window.faceapi) onReady();
+      else existing.addEventListener("load", onReady);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = FACE_API_SCRIPT_SRC;
+    script.async = true;
+    script.onload = onReady;
+    script.onerror = () => reject(new Error("Failed to load face-api.js"));
+    document.head.appendChild(script);
+  });
+  return faceApiLoadPromise;
+};
 
 /* ─── read the JWT payload without a decode library ───
    Only used to decide, client-side, whether the token already in
@@ -223,6 +276,11 @@ export default function TakeEAssessment() {
   const [violations, setViolations] = useState(0);
   const [lockReason, setLockReason] = useState("");
 
+  // camera/face-presence monitoring — see FACE_ABSENT_LIMIT_MS note above
+  const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | denied | unsupported | error
+  const [faceVisible, setFaceVisible] = useState(true);
+  const [faceAbsentSeconds, setFaceAbsentSeconds] = useState(0);
+
   // exam-login step (username + this assessment's exam password —
   // no portal account required)
   const [examUsername, setExamUsername] = useState("");
@@ -240,6 +298,10 @@ export default function TakeEAssessment() {
 
   const heartbeatRef = useRef(null);
   const timerRef = useRef(null);
+  const videoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
+  const faceCheckIntervalRef = useRef(null);
+  const faceAbsentSinceRef = useRef(null); // timestamp, or null while a face is visible
 
   /* ── restore a persisted local lock (survives refresh) ── */
   useEffect(() => {
@@ -332,42 +394,14 @@ export default function TakeEAssessment() {
     setPhase("verify");
   };
 
-  /* ── step 3: fetch the actual questions and enter the locked-down exam ──
-     Uses the server-computed `remaining_seconds` (true elapsed-aware
-     time) when available, instead of always resetting to the full
-     nominal duration — otherwise every refresh or lock/unlock resume
-     would hand the student a brand new full countdown. See the
-     matching comment in backend/controllers/eAssessment.controller.js
-     (getEAssessmentById) for where remaining_seconds comes from. */
+  /* ── step 3: fetch the actual questions and enter the locked-down exam ── */
   const enterActive = useCallback(async () => {
     const detail = await API.get(`/e-assessments/${id}`);
     setAssessment(detail.data.assessment);
     setQuestions(detail.data.questions || []);
-    const fullDuration = (detail.data.assessment.duration_minutes || 30) * 60;
-    const remaining = detail.data.remaining_seconds;
-    setSecondsLeft(typeof remaining === "number" ? remaining : fullDuration);
-
-    // Restore any answers autosaved locally before this refresh/resume —
-    // see the autosave effect below for where these get written.
-    try {
-      const saved = localStorage.getItem(answersKey(id));
-      if (saved) setAnswers(JSON.parse(saved));
-    } catch {
-      /* corrupt/unreadable autosave — start with whatever's in state (likely empty) rather than block entry */
-    }
-
+    setSecondsLeft((detail.data.assessment.duration_minutes || 30) * 60);
     setPhase("active");
   }, [id]);
-
-  /* ── autosave answers locally on every change, while the exam is active ── */
-  useEffect(() => {
-    if (phase !== "active") return;
-    try {
-      localStorage.setItem(answersKey(id), JSON.stringify(answers));
-    } catch {
-      /* storage full/unavailable — non-fatal, submission still works from in-memory state */
-    }
-  }, [answers, phase, id]);
 
   /* ── step 2: the student re-types the token to prove they saved it,
        this also performs the device-binding activation ── */
@@ -434,24 +468,12 @@ export default function TakeEAssessment() {
     return () => clearInterval(heartbeatRef.current);
   }, [phase, token, deviceId]);
 
-  /* ── countdown timer ──
-     BUG FIX: this interval is created once, when phase first becomes
-     "active" (deps=[phase] only, intentionally, so the 1-second tick
-     doesn't reset/drift every time an answer changes). That means its
-     callback closure is frozen at creation time — calling
-     `handleSubmit` directly here would call the version captured at
-     mount, which itself closed over `answers` as it was at that exact
-     instant (essentially empty, since the student hadn't answered
-     anything yet). Every time-based auto-submit would silently submit
-     blank/stale answers regardless of what the student actually
-     selected. Routing through a ref that's kept current on every
-     render (see handleSubmitRef below) fixes this without needing to
-     restart the interval. */
+  /* ── countdown timer ── */
   useEffect(() => {
     if (phase !== "active") return;
     timerRef.current = setInterval(() => {
       setSecondsLeft((s) => {
-        if (s <= 1) { clearInterval(timerRef.current); handleSubmitRef.current(true); return 0; }
+        if (s <= 1) { clearInterval(timerRef.current); handleSubmit(true); return 0; }
         return s - 1;
       });
     }, 1000);
@@ -548,6 +570,89 @@ export default function TakeEAssessment() {
     };
   }, [phase, registerViolation]);
 
+  /* ── webcam face-presence monitoring ──
+     Only runs during the active exam, same lifecycle as the other
+     detectors above. Requests the camera, then polls a lightweight
+     face detector roughly once a second; sustained absence feeds into
+     the same registerViolation() escalation as everything else. */
+  useEffect(() => {
+    if (phase !== "active") return;
+    let cancelled = false;
+
+    const stopCamera = () => {
+      clearInterval(faceCheckIntervalRef.current);
+      faceCheckIntervalRef.current = null;
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+        cameraStreamRef.current = null;
+      }
+    };
+
+    const startMonitoring = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraStatus("unsupported");
+        return;
+      }
+      setCameraStatus("requesting");
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false });
+      } catch {
+        if (!cancelled) setCameraStatus("denied");
+        return;
+      }
+      if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+
+      cameraStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        try { await videoRef.current.play(); } catch { /* autoplay quirks — detection loop below still starts */ }
+      }
+
+      let faceapi;
+      try {
+        faceapi = await loadFaceApi();
+      } catch {
+        if (!cancelled) setCameraStatus("error");
+        return;
+      }
+      if (cancelled) return;
+
+      setCameraStatus("active");
+      const detectorOptions = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+
+      faceCheckIntervalRef.current = setInterval(async () => {
+        if (!videoRef.current || videoRef.current.readyState < 2) return;
+        let detection;
+        try {
+          detection = await faceapi.detectSingleFace(videoRef.current, detectorOptions);
+        } catch {
+          return; // transient decode error — try again next tick
+        }
+
+        const now = Date.now();
+        if (detection) {
+          faceAbsentSinceRef.current = null;
+          setFaceVisible(true);
+          setFaceAbsentSeconds(0);
+        } else {
+          if (!faceAbsentSinceRef.current) faceAbsentSinceRef.current = now;
+          const absentMs = now - faceAbsentSinceRef.current;
+          setFaceVisible(false);
+          setFaceAbsentSeconds(Math.floor(absentMs / 1000));
+          if (absentMs >= FACE_ABSENT_LIMIT_MS) {
+            faceAbsentSinceRef.current = now; // require another full window before flagging again
+            setFaceAbsentSeconds(0);
+            registerViolation("face/eyes not visible on camera for 30+ seconds");
+          }
+        }
+      }, FACE_CHECK_INTERVAL_MS);
+    };
+
+    startMonitoring();
+    return () => { cancelled = true; stopCamera(); };
+  }, [phase, registerViolation]);
+
   /* ── while locked, keep polling in case an admin unlocks this session ── */
   useEffect(() => {
     if (phase !== "locked" || !token) return;
@@ -586,7 +691,6 @@ export default function TakeEAssessment() {
       };
       await API.post("/e-assessments/submit", payload);
       localStorage.removeItem(lockKey(id));
-      localStorage.removeItem(answersKey(id));
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       setPhase("ended");
       setErrorMsg(auto ? "Time's up — your assessment was submitted automatically." : "Assessment submitted successfully.");
@@ -596,14 +700,6 @@ export default function TakeEAssessment() {
       setSubmitting(false);
     }
   };
-
-  /* Always points at the current render's handleSubmit (with today's
-     `answers`) — see the countdown timer effect above for why this
-     exists instead of calling handleSubmit directly from that interval. */
-  const handleSubmitRef = useRef(handleSubmit);
-  useEffect(() => {
-    handleSubmitRef.current = handleSubmit;
-  });
 
   const mmss = (total) => {
     const m = Math.floor(total / 60).toString().padStart(2, "0");
@@ -859,6 +955,36 @@ export default function TakeEAssessment() {
         </div>
       )}
 
+      {cameraStatus === "denied" && (
+        <div style={S.warningStrip}>
+          <CameraOff size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
+          <span>Camera access was not granted, so face-visibility monitoring is off for this session. This alone will not affect your submission.</span>
+        </div>
+      )}
+
+      {/* Floating camera-monitor widget — visible to the student the whole
+          time their camera is on, on purpose: the point is honest, visible
+          monitoring, not a hidden check. */}
+      {(cameraStatus === "requesting" || cameraStatus === "active") && (
+        <div style={S.camWidget}>
+          <div style={{ ...S.camDot, background: faceVisible ? "var(--success)" : "var(--destructive)" }} />
+          <video ref={videoRef} muted playsInline style={S.camVideo} />
+          <div style={S.camStatusText}>
+            {cameraStatus === "requesting" ? (
+              <><Camera size={12} /> Starting camera…</>
+            ) : faceVisible ? (
+              <><Eye size={12} /> Face detected</>
+            ) : (
+              <><EyeOff size={12} color="var(--destructive)" />
+                <span style={{ color: "var(--destructive)" }}>
+                  Face not visible — {faceAbsentSeconds}s
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {assessment?.instructions && (
         <div className="dash-card" style={S.instructionsBox}>
           <ClipboardList size={16} color="var(--text-secondary)" style={{ flexShrink: 0, marginTop: 1 }} />
@@ -875,10 +1001,11 @@ export default function TakeEAssessment() {
             </p>
 
             {q.question_type === "essay" ? (
-              <EssayEditor
-                value={answers[q.id] || ""}
-                onChange={(html) => setAnswers({ ...answers, [q.id]: html })}
+              <textarea
+                style={S.essayInput}
                 placeholder="Type your answer here…"
+                value={answers[q.id] || ""}
+                onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
               />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -960,6 +1087,26 @@ const S = {
     background: "var(--warning-tint)", border: "1px solid var(--warning)",
     color: "var(--warning)", borderRadius: "var(--radius-sm)",
     padding: "10px 14px", fontSize: 13, fontWeight: 600, marginBottom: 16,
+  },
+  camWidget: {
+    position: "fixed", bottom: 18, right: 18, zIndex: 500,
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+    background: "var(--card)", border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)", padding: 8,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+  },
+  camVideo: {
+    width: 120, height: 90, borderRadius: 8, objectFit: "cover",
+    background: "#000", transform: "scaleX(-1)", // mirror, like a real camera preview
+  },
+  camDot: {
+    position: "absolute", top: 14, right: 14,
+    width: 9, height: 9, borderRadius: "50%",
+    boxShadow: "0 0 0 2px var(--card)",
+  },
+  camStatusText: {
+    display: "flex", alignItems: "center", gap: 5,
+    fontSize: 11, fontWeight: 600, color: "var(--text-secondary)",
   },
   instructionsBox: {
     display: "flex", gap: 10,
