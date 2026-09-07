@@ -36,10 +36,10 @@ import {
         keyboard/mouse input on THIS page until the exam ends
         or an admin clears the lock. That overlay persists
         across refresh (via localStorage) for this device.
-     4. Webcam face-presence monitoring (best-effort, and
-        deliberately scoped honestly — see the note above the
-        FACE_ABSENT_LIMIT_MS constant below for exactly what
-        this can and can't detect).
+     4. Webcam eye/gaze monitoring — both eyes open and the head
+        facing the screen (best-effort, and deliberately scoped
+        honestly — see the note above the EYES_OFF_LIMIT_MS
+        constant below for exactly what this can and can't detect).
    ═════════════════════════════════════════════════════════ */
 
 /* ─── shared design-token stylesheet ───
@@ -142,6 +142,12 @@ const injectExamStyles = () => {
       .exam-top-bar > div:last-child { align-self: stretch !important; justify-content: space-between !important; }
     }
     .exam-option-row:hover { border-color: var(--primary) !important; }
+
+    @keyframes eyesOffFlash {
+      0%, 100% { box-shadow: 0 0 0 0 var(--destructive); }
+      50%      { box-shadow: 0 0 14px 3px var(--destructive); }
+    }
+    .eyes-off-flash { animation: eyesOffFlash 0.6s ease-in-out infinite; }
   `;
   document.head.appendChild(el);
 };
@@ -150,30 +156,87 @@ const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
 const REVEAL_SECONDS = 15; // minimum time the student must sit with the token before continuing
 
-/* ── webcam face-presence monitoring ──────────────────────────────
+/* ── webcam eye/gaze monitoring ──────────────────────────────────
    HONEST SCOPE NOTE: a browser has no reliable way to compute exact
-   on-screen gaze coordinates without a per-student calibration step
-   (look at 9 dots, etc.) that most exam platforms skip because it's
-   slow and finicky. What this DOES implement, which is the practical
-   and enforceable version of "flag if their eyes leave the screen":
-   a lightweight face detector (face-api.js's tiny_face_detector model,
-   ~190KB, runs client-side, nothing is ever uploaded) checks the
-   webcam feed roughly once a second. If no face is detected — which
-   is what actually happens when someone looks far off to the side,
-   leans out of frame, or someone else steps in front of the camera —
-   for FACE_ABSENT_LIMIT_MS of continuous absence, it feeds into the
-   exact same registerViolation() escalation path as the other
-   detectors above (tab-switch, devtools, etc.), so it counts toward
-   the same 3-strikes lockout.
+   on-screen gaze coordinates (pixel x/y) without a per-student
+   calibration step (look at 9 dots, etc.) that most exam platforms
+   skip because it's slow and finicky, AND without iris-level
+   landmarks that this lightweight model doesn't provide. What this
+   DOES implement, which is the practical and enforceable version of
+   "make sure both eyes are looking at the screen": a client-side
+   face detector + 68-point facial landmark model (face-api.js's
+   tiny_face_detector + faceLandmark68TinyNet, ~190KB + ~1.4MB, runs
+   entirely in-browser, nothing is ever uploaded) checks the webcam
+   feed roughly once a second and, from the landmark positions,
+   evaluates two things every real "looking at the screen" needs:
+     1. HEAD ORIENTATION — is the face actually turned toward the
+        camera, or turned away to the side/up/down? Estimated from
+        where the nose sits relative to the eye line and jaw width
+        (a standard 2D-landmark heuristic, not true 3D head-pose
+        solving, but accurate enough to catch "looking at a second
+        monitor" or "talking to someone beside them").
+     2. EYE OPENNESS — are both eyes actually open, via the
+        well-known Eye-Aspect-Ratio (EAR) formula on each eye's 6
+        landmark points? Catches eyes closed/mostly-shut (reading
+        notes below the desk, eyes down) even while the head is
+        still facing forward.
+   Both eyes must be open AND the head must be reasonably front-on
+   for a frame to count as "looking at the screen". If neither holds
+   — or no face is found at all — for EYES_OFF_LIMIT_MS of continuous
+   time, it feeds into the exact same registerViolation() escalation
+   path as the other detectors above (tab-switch, devtools, etc.), so
+   it counts toward the same 3-strikes lockout.
    Camera access is requested but never made mandatory to start the
    exam — a student without a webcam, or who denies the permission,
    simply continues without this particular check (a one-time notice
    is shown, not an error) rather than being locked out of an exam
    entirely over a hardware/permission issue outside their control. */
-const FACE_ABSENT_LIMIT_MS = 30000;
+const EYES_OFF_LIMIT_MS = 10000;
 const FACE_CHECK_INTERVAL_MS = 1000;
+const EAR_CLOSED_THRESHOLD = 0.20;   // below this, an eye counts as closed (typical open EAR is ~0.28-0.35)
+const YAW_OFFSET_LIMIT = 0.16;       // how far the nose may sit off-center (as a fraction of face width) before "turned away"
 const FACE_API_SCRIPT_SRC = "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js";
 const FACE_API_MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights";
+
+/* Distance between two face-api.js landmark points ({x,y}). */
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/* Eye Aspect Ratio: the standard measure of how "open" an eye is from
+   its 6 outline landmark points, ordered [outerCorner, top1, top2,
+   innerCorner, bottom2, bottom1] — which is exactly what face-api.js's
+   getLeftEye()/getRightEye() return. Falls as the eyelid closes. */
+const eyeAspectRatio = (eye) => {
+  const vertical = dist(eye[1], eye[5]) + dist(eye[2], eye[4]);
+  const horizontal = 2 * dist(eye[0], eye[3]);
+  return horizontal === 0 ? 0 : vertical / horizontal;
+};
+
+/* Is this frame's landmarks a person actually looking at the screen?
+   Requires both eyes open (EAR check) AND the head roughly front-on
+   (nose-position yaw check) — see the HONEST SCOPE NOTE above for
+   exactly what this can and can't detect. */
+const isLookingAtScreen = (landmarks) => {
+  const leftEye = landmarks.getLeftEye();
+  const rightEye = landmarks.getRightEye();
+  const jaw = landmarks.getJawOutline();
+  const nose = landmarks.getNose();
+
+  const leftEAR = eyeAspectRatio(leftEye);
+  const rightEAR = eyeAspectRatio(rightEye);
+  const eyesOpen = leftEAR >= EAR_CLOSED_THRESHOLD && rightEAR >= EAR_CLOSED_THRESHOLD;
+
+  // jaw[0] and jaw[16] are the leftmost/rightmost face-outline points;
+  // nose[3] is the nose tip. A centered nose tip sits near the midpoint
+  // between them — how far it drifts, as a fraction of face width,
+  // approximates how far the head is turned left/right.
+  const faceLeft = jaw[0], faceRight = jaw[16], noseTip = nose[3];
+  const faceWidth = dist(faceLeft, faceRight);
+  const faceMidX = (faceLeft.x + faceRight.x) / 2;
+  const yawOffset = faceWidth === 0 ? 0 : Math.abs(noseTip.x - faceMidX) / faceWidth;
+  const facingForward = yawOffset <= YAW_OFFSET_LIMIT;
+
+  return eyesOpen && facingForward;
+};
 
 const getDeviceId = () => {
   let id = localStorage.getItem("exam_device_id");
@@ -191,13 +254,15 @@ const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
    in-flight/loaded promise is memoized at module scope. */
 let faceApiLoadPromise = null;
 const loadFaceApi = () => {
-  if (window.faceapi) return Promise.resolve(window.faceapi);
+  if (window.faceapi?.nets?.faceLandmark68TinyNet?.isLoaded) return Promise.resolve(window.faceapi);
   if (faceApiLoadPromise) return faceApiLoadPromise;
   faceApiLoadPromise = new Promise((resolve, reject) => {
     const existing = document.querySelector(`script[src="${FACE_API_SCRIPT_SRC}"]`);
     const onReady = () => {
-      window.faceapi.nets.tinyFaceDetector
-        .loadFromUri(FACE_API_MODEL_URL)
+      Promise.all([
+        window.faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL),
+        window.faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL),
+      ])
         .then(() => resolve(window.faceapi))
         .catch(reject);
     };
@@ -276,10 +341,10 @@ export default function TakeEAssessment() {
   const [violations, setViolations] = useState(0);
   const [lockReason, setLockReason] = useState("");
 
-  // camera/face-presence monitoring — see FACE_ABSENT_LIMIT_MS note above
+  // camera/eye-gaze monitoring — see EYES_OFF_LIMIT_MS note above
   const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | denied | unsupported | error
-  const [faceVisible, setFaceVisible] = useState(true);
-  const [faceAbsentSeconds, setFaceAbsentSeconds] = useState(0);
+  const [faceVisible, setFaceVisible] = useState(true); // true = "looking at the screen" (see isLookingAtScreen)
+  const [faceAbsentSeconds, setFaceAbsentSeconds] = useState(0); // seconds of continuous not-looking-at-screen
 
   // exam-login step (username + this assessment's exam password —
   // no portal account required)
@@ -301,7 +366,7 @@ export default function TakeEAssessment() {
   const videoRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const faceCheckIntervalRef = useRef(null);
-  const faceAbsentSinceRef = useRef(null); // timestamp, or null while a face is visible
+  const faceAbsentSinceRef = useRef(null); // timestamp, or null while looking at the screen
 
   /* ── restore a persisted local lock (survives refresh) ── */
   useEffect(() => {
@@ -570,10 +635,12 @@ export default function TakeEAssessment() {
     };
   }, [phase, registerViolation]);
 
-  /* ── webcam face-presence monitoring ──
+  /* ── webcam eye/gaze monitoring ──
      Only runs during the active exam, same lifecycle as the other
      detectors above. Requests the camera, then polls a lightweight
-     face detector roughly once a second; sustained absence feeds into
+     face+landmark detector roughly once a second to check both eyes
+     are open and the head is facing the screen (see isLookingAtScreen
+     and the HONEST SCOPE NOTE above); sustained failure feeds into
      the same registerViolation() escalation as everything else. */
   useEffect(() => {
     if (phase !== "active") return;
@@ -623,15 +690,19 @@ export default function TakeEAssessment() {
 
       faceCheckIntervalRef.current = setInterval(async () => {
         if (!videoRef.current || videoRef.current.readyState < 2) return;
-        let detection;
+        let result;
         try {
-          detection = await faceapi.detectSingleFace(videoRef.current, detectorOptions);
+          result = await faceapi
+            .detectSingleFace(videoRef.current, detectorOptions)
+            .withFaceLandmarks(true); // true = the lighter "tiny" landmark model, matching tinyFaceDetector
         } catch {
           return; // transient decode error — try again next tick
         }
 
         const now = Date.now();
-        if (detection) {
+        const looking = !!result && isLookingAtScreen(result.landmarks);
+
+        if (looking) {
           faceAbsentSinceRef.current = null;
           setFaceVisible(true);
           setFaceAbsentSeconds(0);
@@ -640,10 +711,10 @@ export default function TakeEAssessment() {
           const absentMs = now - faceAbsentSinceRef.current;
           setFaceVisible(false);
           setFaceAbsentSeconds(Math.floor(absentMs / 1000));
-          if (absentMs >= FACE_ABSENT_LIMIT_MS) {
+          if (absentMs >= EYES_OFF_LIMIT_MS) {
             faceAbsentSinceRef.current = now; // require another full window before flagging again
             setFaceAbsentSeconds(0);
-            registerViolation("face/eyes not visible on camera for 30+ seconds");
+            registerViolation("eyes not on the screen for 10+ seconds");
           }
         }
       }, FACE_CHECK_INTERVAL_MS);
@@ -948,6 +1019,13 @@ export default function TakeEAssessment() {
         </div>
       </div>
 
+      {cameraStatus === "active" && !faceVisible && (
+        <div className="eyes-off-flash" style={S.eyesOffBanner}>
+          <EyeOff size={18} color="#fff" style={{ flexShrink: 0 }} />
+          <span style={S.eyesOffBannerText}>Keep your eyes on the computer</span>
+        </div>
+      )}
+
       {violations > 0 && (
         <div style={S.warningStrip}>
           <ShieldAlert size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
@@ -958,7 +1036,7 @@ export default function TakeEAssessment() {
       {cameraStatus === "denied" && (
         <div style={S.warningStrip}>
           <CameraOff size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
-          <span>Camera access was not granted, so face-visibility monitoring is off for this session. This alone will not affect your submission.</span>
+          <span>Camera access was not granted, so eye-gaze monitoring is off for this session. This alone will not affect your submission.</span>
         </div>
       )}
 
@@ -973,11 +1051,11 @@ export default function TakeEAssessment() {
             {cameraStatus === "requesting" ? (
               <><Camera size={12} /> Starting camera…</>
             ) : faceVisible ? (
-              <><Eye size={12} /> Face detected</>
+              <><Eye size={12} /> Looking at screen</>
             ) : (
               <><EyeOff size={12} color="var(--destructive)" />
                 <span style={{ color: "var(--destructive)" }}>
-                  Face not visible — {faceAbsentSeconds}s
+                  Eyes off screen — {faceAbsentSeconds}s
                 </span>
               </>
             )}
@@ -1087,6 +1165,14 @@ const S = {
     background: "var(--warning-tint)", border: "1px solid var(--warning)",
     color: "var(--warning)", borderRadius: "var(--radius-sm)",
     padding: "10px 14px", fontSize: 13, fontWeight: 600, marginBottom: 16,
+  },
+  eyesOffBanner: {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+    background: "var(--destructive)", border: "1px solid var(--destructive)",
+    borderRadius: "var(--radius-sm)", padding: "12px 14px", marginBottom: 16,
+  },
+  eyesOffBannerText: {
+    color: "#fff", fontSize: 14, fontWeight: 800, letterSpacing: "0.01em",
   },
   camWidget: {
     position: "fixed", bottom: 18, right: 18, zIndex: 500,
