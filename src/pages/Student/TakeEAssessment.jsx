@@ -403,8 +403,19 @@ export default function TakeEAssessment() {
   }, [id]);
 
   useEffect(() => {
-    // don't re-fetch a token if we booted straight into a persisted lock
-    if (phase === "locked") return;
+    // Don't re-fetch a token if we booted straight into a persisted lock.
+    // Deliberately re-reads localStorage here rather than checking the
+    // `phase` state: this effect and the lock-restore effect above both
+    // run once on mount, and this one's closure would otherwise see the
+    // pre-update "examlogin" phase from the initial render — the two
+    // effects fire in the same commit, before React has flushed the
+    // other effect's setPhase("locked") into a value this closure can
+    // see. That race is exactly what let a locked exam un-lock itself
+    // on refresh: this effect would find a still-valid exam-only token
+    // in localStorage and happily call bootStart() again, bypassing a
+    // lock that (from the server's point of view) never happened in the
+    // first place — it's purely a local, client-side violation lock.
+    if (localStorage.getItem(lockKey(id))) return;
     // already have a usable session for this exact assessment (a full
     // portal login, or a previously-issued exam-only token) — skip the
     // login form and go straight to starting the exam
