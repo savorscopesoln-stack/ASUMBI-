@@ -77,6 +77,50 @@ const injectStyles = () => {
       border-radius: 6px;
     }
 
+    /* ── glass badge (tutor badge) ──
+       Matches the glassmorphic product cards from the reference
+       clip: frosted translucent surface + blur, a soft radial glow
+       that blooms in behind it on hover, a gentle lift/scale "pop",
+       and a pulsing ring echoing the clip's sound-wave ripple. */
+    .glass-badge {
+      position: relative;
+      z-index: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: transform .3s cubic-bezier(.2,.8,.2,1), background-color .3s ease, border-color .3s ease;
+      cursor: default;
+    }
+    .glass-badge::before {
+      content: "";
+      position: absolute;
+      inset: -10px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(251,191,36,0.55), transparent 70%);
+      opacity: 0;
+      transform: scale(.7);
+      transition: opacity .35s ease, transform .35s ease;
+      z-index: -1;
+      pointer-events: none;
+    }
+    .glass-badge:hover {
+      transform: translateY(-2px) scale(1.07);
+      background: rgba(255,255,255,0.22) !important;
+      border-color: rgba(255,255,255,0.55) !important;
+      animation: badgePulse 1.4s ease-out infinite;
+    }
+    .glass-badge:hover::before {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+    @keyframes badgePulse {
+      0%   { box-shadow: 0 0 0 0 rgba(251,191,36,0.45); }
+      70%  { box-shadow: 0 0 0 12px rgba(251,191,36,0); }
+      100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .glass-badge:hover { animation: none; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
     }
@@ -189,7 +233,7 @@ export default function TeacherProfile() {
               <b>Subject:</b> {user.subject || "N/A"}
             </p>
 
-            <span style={styles.tutorBadge}>
+            <span style={styles.tutorBadge} className="glass-badge">
               {user.isClassTeacher
                 ? "🎓 Class Teacher"
                 : "📘 Subject Teacher"}
@@ -355,12 +399,16 @@ const styles = {
     fontWeight: 500,
   },
 
+  /* Frosted-glass pill — translucent white over the maroon ID
+     card, so the blur and glow actually have something to bend
+     light around, same as the glass cards in the reference clip. */
   tutorBadge: {
     marginTop: 8,
-    padding: "4px 10px",
+    padding: "5px 12px",
     borderRadius: 20,
-    background: "var(--warning-tint)",
-    color: "var(--warning)",
+    background: "rgba(255,255,255,0.14)",
+    border: "1px solid rgba(255,255,255,0.35)",
+    color: "#FDE68A",
     fontWeight: 800,
     fontSize: 11,
     width: "fit-content",
