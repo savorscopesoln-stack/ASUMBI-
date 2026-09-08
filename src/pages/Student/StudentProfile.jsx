@@ -511,123 +511,9 @@ export default function StudentProfile() {
         </div>
       </header>
 
-      {/* ================= STUDENT ID CARD (flippable) ================= */}
-      {!loading && (
-        <div style={{ marginBottom: 26 }}>
-          <div className="id-card-shell">
-            <div
-              className={`id-card-flip${flipped ? " is-flipped" : ""}`}
-              onClick={() => setFlipped((f) => !f)}
-              role="button"
-              tabIndex={0}
-              aria-label={flipped ? "Showing back of ID card, tap to flip" : "Showing front of ID card, tap to flip"}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") setFlipped((f) => !f);
-              }}
-            >
-              {/* ---- FRONT FACE ---- */}
-              <div className="id-card-face id-card-front">
-                <div className="id-card-shine" />
-                <div style={idFrontStyles.contentWrap}>
-                  <div style={idFrontStyles.topBar}>
-                    <div style={idFrontStyles.crest}>
-                      <GraduationCap size={15} />
-                    </div>
-                    <span style={idFrontStyles.schoolName}>ASUMBI TTC</span>
-                    <span style={idFrontStyles.subtitle}>STUDENT IDENTIFICATION</span>
-                  </div>
-
-                  <div style={idFrontStyles.photoBlock}>
-                    <div style={idFrontStyles.avatarWrap}>
-                      {user.photoUrl ? (
-                        <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={idFrontStyles.avatarImg} />
-                      ) : (
-                        <div style={idFrontStyles.avatar}>{user.name?.charAt(0) || "S"}</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <h2 style={idFrontStyles.name}>{user.name || "Student Name"}</h2>
-                  <span style={idFrontStyles.role} className="glass-badge">
-                    🎓 {studentClass || "Unassigned Class"}
-                  </span>
-
-                  <div style={idFrontStyles.detailsBox}>
-                    <div style={idFrontStyles.detailRow}>
-                      <span style={idFrontStyles.detailLabel}>ADM NO.</span>
-                      <span style={idFrontStyles.detailValue}>{user.admissionNo || "N/A"}</span>
-                    </div>
-                    <div style={idFrontStyles.detailRow}>
-                      <span style={idFrontStyles.detailLabel}>CLASS</span>
-                      <span style={idFrontStyles.detailValue}>{studentClass || "N/A"}</span>
-                    </div>
-                  </div>
-
-                  <span style={idFrontStyles.footerTag}>STUDENT ID</span>
-                </div>
-                <div className="id-card-hologram">
-                  <ShieldCheck size={14} />
-                </div>
-              </div>
-
-              {/* ---- BACK FACE ---- */}
-              <div className="id-card-face id-card-back">
-                <div className="id-card-shine" />
-                <div style={idFrontStyles.contentWrap}>
-                  <span style={idBackStyles.headerSub}>STUDENT ID — REVERSE</span>
-
-                  <div style={idBackStyles.magStripe} />
-
-                  <div style={idBackStyles.barcodeCard}>
-                    <div style={idBackStyles.barcode} />
-                    <span style={idBackStyles.barcodeNum}>{(user.admissionNo || "N/A").toUpperCase()}</span>
-                  </div>
-
-                  <div style={idBackStyles.metaRow}>
-                    <div style={idBackStyles.metaDates}>
-                      <div style={idBackStyles.metaLine}>
-                        <span style={idBackStyles.detailLabel}>ISSUED</span>
-                        <span style={idBackStyles.detailValue}>{issueYear}</span>
-                      </div>
-                      <div style={idBackStyles.metaLine}>
-                        <span style={idBackStyles.detailLabel}>VALID THRU</span>
-                        <span style={idBackStyles.detailValue}>{expiryYear}</span>
-                      </div>
-                    </div>
-                    <div style={idBackStyles.qrBox} />
-                  </div>
-
-                  <div style={idBackStyles.signatureRow}>
-                    <div style={idBackStyles.signatureLine} />
-                    <span style={idBackStyles.signatureLabel}>Authorized Signature</span>
-                  </div>
-
-                  <p style={idBackStyles.fineprint}>
-                    Property of ASUMBI TTC. If found, please return to the school
-                    administration office.
-                  </p>
-                </div>
-                <div className="id-card-hologram">
-                  <ShieldCheck size={14} />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setFlipped((f) => !f)}
-            style={idBackStyles.flipBtn}
-            aria-label={flipped ? "Show front of ID card" : "Show back of ID card"}
-          >
-            <RotateCw size={12} />
-            {flipped ? "View Front" : "View Back"}
-          </button>
-        </div>
-      )}
-
       <div className="profile-two-col" style={D.twoCol}>
-        {/* Profile info */}
+        {/* Account Details — now leads with the flippable Student ID card,
+            followed by every field on record for this student. */}
         <section style={D.panel} aria-label="Profile information">
           <div style={D.panelHeader}>
             <h3 style={D.panelTitle}>Account Details</h3>
@@ -640,7 +526,119 @@ export default function StudentProfile() {
             </div>
           ) : (
             <div>
-              <div style={D.photoBlock}>
+              {/* ================= STUDENT ID CARD (flippable) ================= */}
+              <div className="id-card-shell">
+                <div
+                  className={`id-card-flip${flipped ? " is-flipped" : ""}`}
+                  onClick={() => setFlipped((f) => !f)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={flipped ? "Showing back of ID card, tap to flip" : "Showing front of ID card, tap to flip"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setFlipped((f) => !f);
+                  }}
+                >
+                  {/* ---- FRONT FACE ---- */}
+                  <div className="id-card-face id-card-front">
+                    <div className="id-card-shine" />
+                    <div style={idFrontStyles.contentWrap}>
+                      <div style={idFrontStyles.topBar}>
+                        <div style={idFrontStyles.crest}>
+                          <GraduationCap size={15} />
+                        </div>
+                        <span style={idFrontStyles.schoolName}>ASUMBI TTC</span>
+                        <span style={idFrontStyles.subtitle}>STUDENT IDENTIFICATION</span>
+                      </div>
+
+                      <div style={idFrontStyles.photoBlock}>
+                        <div style={idFrontStyles.avatarWrap}>
+                          {user.photoUrl ? (
+                            <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={idFrontStyles.avatarImg} />
+                          ) : (
+                            <div style={idFrontStyles.avatar}>{user.name?.charAt(0) || "S"}</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <h2 style={idFrontStyles.name}>{user.name || "Student Name"}</h2>
+                      <span style={idFrontStyles.role} className="glass-badge">
+                        🎓 {studentClass || "Unassigned Class"}
+                      </span>
+
+                      <div style={idFrontStyles.detailsBox}>
+                        <div style={idFrontStyles.detailRow}>
+                          <span style={idFrontStyles.detailLabel}>ADM NO.</span>
+                          <span style={idFrontStyles.detailValue}>{user.admissionNo || "N/A"}</span>
+                        </div>
+                        <div style={idFrontStyles.detailRow}>
+                          <span style={idFrontStyles.detailLabel}>CLASS</span>
+                          <span style={idFrontStyles.detailValue}>{studentClass || "N/A"}</span>
+                        </div>
+                      </div>
+
+                      <span style={idFrontStyles.footerTag}>STUDENT ID</span>
+                    </div>
+                    <div className="id-card-hologram">
+                      <ShieldCheck size={14} />
+                    </div>
+                  </div>
+
+                  {/* ---- BACK FACE ---- */}
+                  <div className="id-card-face id-card-back">
+                    <div className="id-card-shine" />
+                    <div style={idFrontStyles.contentWrap}>
+                      <span style={idBackStyles.headerSub}>STUDENT ID — REVERSE</span>
+
+                      <div style={idBackStyles.magStripe} />
+
+                      <div style={idBackStyles.barcodeCard}>
+                        <div style={idBackStyles.barcode} />
+                        <span style={idBackStyles.barcodeNum}>{(user.admissionNo || "N/A").toUpperCase()}</span>
+                      </div>
+
+                      <div style={idBackStyles.metaRow}>
+                        <div style={idBackStyles.metaDates}>
+                          <div style={idBackStyles.metaLine}>
+                            <span style={idBackStyles.detailLabel}>ISSUED</span>
+                            <span style={idBackStyles.detailValue}>{issueYear}</span>
+                          </div>
+                          <div style={idBackStyles.metaLine}>
+                            <span style={idBackStyles.detailLabel}>VALID THRU</span>
+                            <span style={idBackStyles.detailValue}>{expiryYear}</span>
+                          </div>
+                        </div>
+                        <div style={idBackStyles.qrBox} />
+                      </div>
+
+                      <div style={idBackStyles.signatureRow}>
+                        <div style={idBackStyles.signatureLine} />
+                        <span style={idBackStyles.signatureLabel}>Authorized Signature</span>
+                      </div>
+
+                      <p style={idBackStyles.fineprint}>
+                        Property of ASUMBI TTC. If found, please return to the school
+                        administration office.
+                      </p>
+                    </div>
+                    <div className="id-card-hologram">
+                      <ShieldCheck size={14} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setFlipped((f) => !f)}
+                style={idBackStyles.flipBtn}
+                aria-label={flipped ? "Show front of ID card" : "Show back of ID card"}
+              >
+                <RotateCw size={12} />
+                {flipped ? "View Front" : "View Back"}
+              </button>
+
+              {/* Photo upload control — still updates the card above */}
+              <div style={{ ...D.photoBlock, marginTop: 18 }}>
                 <div style={D.photoWrap}>
                   {user.photoUrl ? (
                     <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={D.photoImg} />
@@ -680,17 +678,44 @@ export default function StudentProfile() {
                 </div>
               </div>
 
-              <div style={D.infoRow}>
-                <span style={D.infoLabel}>Name</span>
-                <span style={D.infoValue}>{user.name || "—"}</span>
-              </div>
-              <div style={D.infoRow}>
-                <span style={D.infoLabel}>Admission No</span>
-                <span style={D.infoValue}>{user.admissionNo || "—"}</span>
-              </div>
-              <div style={{ ...D.infoRow, borderBottom: "none" }}>
-                <span style={D.infoLabel}>Role</span>
-                <span style={D.infoValue}>{user.role || "—"}</span>
+              {/* Full record — every field on file for this student */}
+              <div style={{ marginTop: 4 }}>
+                <div style={D.infoRow}>
+                  <span style={D.infoLabel}>Name</span>
+                  <span style={D.infoValue}>{user.name || "—"}</span>
+                </div>
+                <div style={D.infoRow}>
+                  <span style={D.infoLabel}>Admission No</span>
+                  <span style={D.infoValue}>{user.admissionNo || "—"}</span>
+                </div>
+                <div style={D.infoRow}>
+                  <span style={D.infoLabel}>Role</span>
+                  <span style={D.infoValue}>{user.role || "—"}</span>
+                </div>
+                <div style={D.infoRow}>
+                  <span style={D.infoLabel}>Class</span>
+                  <span style={D.infoValue}>{user.studentClass || "—"}</span>
+                </div>
+                <div style={D.infoRow}>
+                  <span style={D.infoLabel}>Gender</span>
+                  <span style={D.infoValue}>{user.gender || "—"}</span>
+                </div>
+                <div style={D.infoRow}>
+                  <span style={D.infoLabel}>Email</span>
+                  <span style={D.infoValue}>{user.email || "—"}</span>
+                </div>
+                <div style={D.infoRow}>
+                  <span style={D.infoLabel}>Phone</span>
+                  <span style={D.infoValue}>{user.phone || "—"}</span>
+                </div>
+                <div style={D.infoRow}>
+                  <span style={D.infoLabel}>Assessment Number</span>
+                  <span style={D.infoValue}>{user.assessmentNumber || "—"}</span>
+                </div>
+                <div style={{ ...D.infoRow, borderBottom: "none" }}>
+                  <span style={D.infoLabel}>Profile Status</span>
+                  <span style={D.infoValue}>{user.profileCompleted ? "Completed" : "Incomplete"}</span>
+                </div>
               </div>
             </div>
           )}
