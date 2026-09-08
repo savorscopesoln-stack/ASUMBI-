@@ -76,6 +76,25 @@ const injectStyles = () => {
       outline-offset: 2px;
       border-radius: 6px;
     }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── glass-badge stylesheet (separate id on purpose) ───
+   This MUST be its own <style> tag, not appended onto the shared
+   "dash-tokens" block above. That block is guarded by
+   `if (document.getElementById("dash-tokens")) return;`, and
+   Dashboard.jsx / AddQuestions.jsx / TeacherReports.jsx all inject
+   under that same id — so if the user visits any of those pages
+   first in the same session, #dash-tokens already exists and this
+   page's injectStyles() would bail out before ever adding the
+   badge's hover/glow/pulse rules. Keeping this under its own id
+   means it always mounts, no matter what page loaded first. */
+const injectBadgeStyles = () => {
+  if (document.getElementById("glass-badge-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "glass-badge-tokens";
+  el.textContent = `
 
     /* ── glass badge (tutor badge) ──
        Matches the glassmorphic product cards from the reference
@@ -130,6 +149,7 @@ const injectStyles = () => {
 
 export default function TeacherProfile() {
   injectStyles();
+  injectBadgeStyles();
 
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const [user, setUser] = useState(storedUser);
