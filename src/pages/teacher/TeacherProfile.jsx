@@ -166,73 +166,97 @@ const injectIdCardStyles = () => {
   const el = document.createElement("style");
   el.id = "id-card-tokens";
   el.textContent = `
+    /* Outer shell just centers a fixed, card-shaped area on the
+       page and hosts the 3D perspective — it has no background or
+       padding of its own, so nothing "stretches" edge to edge. */
     .id-card-shell {
+      width: min(272px, 84vw);
+      margin: 0 auto 14px;
       position: relative;
-      perspective: 1400px;
+      perspective: 1600px;
     }
 
+    /* CR80 badge proportions (53.98mm x 85.60mm), portrait —
+       real staff-lanyard ratio, not a wide banner. */
     .id-card-flip {
       position: relative;
       width: 100%;
-      height: 232px;
+      aspect-ratio: 0.6285;
       transform-style: preserve-3d;
       transition: transform 0.7s cubic-bezier(.4,.2,.2,1);
+      cursor: pointer;
     }
     .id-card-flip.is-flipped {
       transform: rotateY(180deg);
     }
 
+    /* Each face IS the physical card: printed maroon base +
+       frosted glass lamination on top, full card size, real
+       rounded-corner card radius and a floating drop shadow. */
     .id-card-face {
       position: absolute;
       inset: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      border-radius: var(--radius-sm);
-      padding: 16px;
+      border-radius: 16px;
+      padding: 14px 12px 12px;
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
+      background:
+        linear-gradient(rgba(255,255,255,0.16), rgba(255,255,255,0.16)),
+        linear-gradient(150deg, var(--primary), var(--primary-dark));
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
-      background: rgba(255,255,255,0.14);
-      border: 1px solid rgba(255,255,255,0.35);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.25);
-      transition: transform .3s cubic-bezier(.2,.8,.2,1), background-color .3s ease, border-color .3s ease;
+      border: 1px solid rgba(255,255,255,0.4);
+      box-shadow: 0 2px 4px rgba(16,24,40,0.15), 0 14px 28px rgba(16,24,40,0.28), inset 0 1px 0 rgba(255,255,255,0.3);
+      transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease;
       z-index: 1;
     }
     .id-card-face.id-card-back {
       transform: rotateY(180deg);
     }
 
-    /* glow bloom, card-shaped rather than circular */
+    /* lanyard hole-punch slot at the top edge — the detail that
+       actually reads as "a badge", not a generic rounded rect */
+    .id-card-face::after {
+      content: "";
+      position: absolute;
+      top: 9px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 34px;
+      height: 7px;
+      border-radius: 5px;
+      background: rgba(0,0,0,0.32);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+      z-index: 3;
+    }
+
+    /* amber glow bloom behind the card, card-shaped */
     .id-card-face::before {
       content: "";
       position: absolute;
-      inset: -16px;
-      border-radius: calc(var(--radius-sm) + 16px);
-      background: radial-gradient(ellipse at center, rgba(251,191,36,0.5), transparent 70%);
+      inset: -14px;
+      border-radius: 26px;
+      background: radial-gradient(ellipse at center, rgba(251,191,36,0.5), transparent 72%);
       opacity: 0;
-      transform: scale(.85);
+      transform: scale(.9);
       transition: opacity .35s ease, transform .35s ease;
       z-index: -1;
       pointer-events: none;
     }
 
-    /* hover lift + glow — same feel as .glass-badge, applied to
-       whichever face is currently facing the viewer */
-    .id-card-shell:hover .id-card-face {
-      background: rgba(255,255,255,0.20);
-      border-color: rgba(255,255,255,0.5);
-    }
+    /* hover lift + glow, only on the face currently facing up */
     .id-card-shell:hover .id-card-flip:not(.is-flipped) .id-card-face.id-card-front {
-      transform: translateY(-2px) scale(1.07);
+      transform: translateY(-4px) scale(1.035);
     }
     .id-card-shell:hover .id-card-flip.is-flipped .id-card-face.id-card-back {
-      transform: rotateY(180deg) translateY(-2px) scale(1.07);
+      transform: rotateY(180deg) translateY(-4px) scale(1.035);
     }
     .id-card-shell:hover .id-card-face::before {
       opacity: 1;
-      transform: scale(1.15);
+      transform: scale(1.08);
     }
 
     /* pulsing ring ripple, only on the face currently on top */
@@ -243,9 +267,9 @@ const injectIdCardStyles = () => {
       animation: idCardPulse 1.6s ease-out infinite;
     }
     @keyframes idCardPulse {
-      0%   { box-shadow: 0 0 0 0 rgba(251,191,36,0.45), inset 0 1px 0 rgba(255,255,255,0.25); }
-      70%  { box-shadow: 0 0 0 14px rgba(251,191,36,0), inset 0 1px 0 rgba(255,255,255,0.25); }
-      100% { box-shadow: 0 0 0 0 rgba(251,191,36,0), inset 0 1px 0 rgba(255,255,255,0.25); }
+      0%   { box-shadow: 0 0 0 0 rgba(251,191,36,0.45), 0 14px 28px rgba(16,24,40,0.28); }
+      70%  { box-shadow: 0 0 0 14px rgba(251,191,36,0), 0 14px 28px rgba(16,24,40,0.28); }
+      100% { box-shadow: 0 0 0 0 rgba(251,191,36,0), 0 14px 28px rgba(16,24,40,0.28); }
     }
     @media (prefers-reduced-motion: reduce) {
       .id-card-shell:hover .id-card-face { animation: none; }
@@ -256,7 +280,8 @@ const injectIdCardStyles = () => {
       -webkit-backdrop-filter: blur(6px);
     }
     .id-card-flip-btn:hover {
-      background: rgba(255,255,255,0.28) !important;
+      background: var(--primary-tint) !important;
+      border-color: var(--primary) !important;
     }
   `;
   document.head.appendChild(el);
@@ -350,45 +375,30 @@ export default function TeacherProfile() {
       <h2 style={styles.title}>👤 Teacher Profile</h2>
 
       {/* ================= ID CARD (flippable) ================= */}
-      <div style={styles.idCard} className="id-card-shell">
-        <div className={`id-card-flip${flipped ? " is-flipped" : ""}`}>
+      <div className="id-card-shell">
+        <div
+          className={`id-card-flip${flipped ? " is-flipped" : ""}`}
+          onClick={() => setFlipped((f) => !f)}
+          role="button"
+          tabIndex={0}
+          aria-label={flipped ? "Showing back of ID card, tap to flip" : "Showing front of ID card, tap to flip"}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") setFlipped((f) => !f);
+          }}
+        >
           {/* ---- FRONT FACE ---- */}
           <div className="id-card-face id-card-front">
-            <div style={styles.header}>
-              <div>
-                <h3 style={styles.school}>ASUMBI TTC</h3>
-                <span style={styles.subtitle}>STAFF IDENTIFICATION</span>
-              </div>
-
-              <span style={styles.badge}>STAFF ID</span>
+            <div style={idFrontStyles.topBar}>
+              <span style={idFrontStyles.schoolName}>ASUMBI TTC</span>
+              <span style={idFrontStyles.subtitle}>STAFF IDENTIFICATION</span>
             </div>
 
-            <div style={styles.body}>
-              {/* LEFT SIDE */}
-              <div style={styles.info}>
-                <h2 style={styles.name}>{user.name || "Teacher Name"}</h2>
-
-                <p style={styles.meta}>
-                  <b>ID:</b> {user.username || "N/A"}
-                </p>
-
-                <p style={styles.meta}>
-                  <b>Subject:</b> {user.subject || "N/A"}
-                </p>
-
-                <span style={styles.tutorBadge} className="glass-badge">
-                  {user.isClassTeacher
-                    ? "🎓 Class Teacher"
-                    : "📘 Subject Teacher"}
-                </span>
-              </div>
-
-              {/* RIGHT SIDE */}
+            <div style={idFrontStyles.photoBlock}>
               <div style={styles.avatarWrap}>
                 {user.photoUrl ? (
-                  <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={styles.avatarImg} />
+                  <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={idFrontStyles.avatarImg} />
                 ) : (
-                  <div style={styles.avatar}>{user.name?.charAt(0) || "T"}</div>
+                  <div style={idFrontStyles.avatar}>{user.name?.charAt(0) || "T"}</div>
                 )}
                 <button
                   type="button"
@@ -412,14 +422,29 @@ export default function TeacherProfile() {
                 />
               </div>
             </div>
+
+            <h2 style={idFrontStyles.name}>{user.name || "Teacher Name"}</h2>
+            <span style={idFrontStyles.role} className="glass-badge">
+              {user.isClassTeacher ? "🎓 Class Teacher" : "📘 Subject Teacher"}
+            </span>
+
+            <div style={idFrontStyles.detailsBox}>
+              <div style={idFrontStyles.detailRow}>
+                <span style={idFrontStyles.detailLabel}>ID NO.</span>
+                <span style={idFrontStyles.detailValue}>{user.username || "N/A"}</span>
+              </div>
+              <div style={idFrontStyles.detailRow}>
+                <span style={idFrontStyles.detailLabel}>SUBJECT</span>
+                <span style={idFrontStyles.detailValue}>{user.subject || "N/A"}</span>
+              </div>
+            </div>
+
+            <span style={idFrontStyles.footerTag}>STAFF ID</span>
           </div>
 
           {/* ---- BACK FACE ---- */}
           <div className="id-card-face id-card-back">
-            <div style={idBackStyles.header}>
-              <span style={idBackStyles.headerTitle}>ASUMBI TTC</span>
-              <span style={idBackStyles.headerSub}>STAFF ID — REVERSE</span>
-            </div>
+            <span style={idBackStyles.headerSub}>STAFF ID — REVERSE</span>
 
             <div style={idBackStyles.magStripe} />
 
@@ -434,28 +459,28 @@ export default function TeacherProfile() {
             </div>
 
             <p style={idBackStyles.fineprint}>
-              This card is property of ASUMBI TTC. If found, please return to the
-              school administration office.
+              Property of ASUMBI TTC. If found, please return to the school
+              administration office.
             </p>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setFlipped((f) => !f)}
-          className="dash-btn id-card-flip-btn"
-          style={idBackStyles.flipBtn}
-          aria-label={flipped ? "Show front of ID card" : "Show back of ID card"}
-        >
-          <RotateCw size={12} />
-          {flipped ? "View Front" : "View Back"}
-        </button>
-
-        {!user.photoUrl && (
-          <p style={styles.photoNudge}>⚠️ No profile photo on file — tap the camera icon to add one.</p>
-        )}
-        {photoMsg && <p style={styles.message}>{photoMsg}</p>}
       </div>
+
+      <button
+        type="button"
+        onClick={() => setFlipped((f) => !f)}
+        className="dash-btn id-card-flip-btn"
+        style={idBackStyles.flipBtn}
+        aria-label={flipped ? "Show front of ID card" : "Show back of ID card"}
+      >
+        <RotateCw size={12} />
+        {flipped ? "View Front" : "View Back"}
+      </button>
+
+      {!user.photoUrl && (
+        <p style={idFrontStyles.photoNudge}>⚠️ No profile photo on file — tap the camera icon on the card to add one.</p>
+      )}
+      {photoMsg && <p style={{ ...styles.message, textAlign: "center" }}>{photoMsg}</p>}
 
       {/* ================= PASSWORD ================= */}
       <div style={styles.card}>
@@ -518,115 +543,13 @@ const styles = {
     color: "var(--text)",
   },
 
-  /* ===== ID CARD (maroon plaque behind the glass faces) ===== */
-  idCard: {
-    background: "linear-gradient(135deg, var(--primary), var(--primary-dark))",
-    padding: 20,
-    borderRadius: "var(--radius)",
-    marginBottom: 20,
-    boxShadow: "var(--shadow)",
-    border: "1px solid var(--border)",
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-
-  school: {
-    margin: 0,
-    fontWeight: 800,
-    letterSpacing: 1,
-    color: "#fff",
-  },
-
-  subtitle: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.75)",
-    fontWeight: 600,
-  },
-
-  badge: {
-    background: "rgba(255,255,255,0.92)",
-    color: "var(--primary-dark)",
-    padding: "5px 12px",
-    borderRadius: 20,
-    fontSize: 11,
-    fontWeight: 800,
-  },
-
-  body: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  info: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-
-  name: {
-    margin: 0,
-    fontSize: 20,
-    fontWeight: 800,
-    color: "#fff",
-  },
-
-  meta: {
-    margin: 0,
-    fontSize: 13,
-    color: "rgba(255,255,255,0.85)",
-    fontWeight: 500,
-  },
-
-  /* Frosted-glass pill — translucent white over the maroon ID
-     card, so the blur and glow actually have something to bend
-     light around, same as the glass cards in the reference clip. */
-  tutorBadge: {
-    marginTop: 8,
-    padding: "5px 12px",
-    borderRadius: 20,
-    background: "rgba(255,255,255,0.14)",
-    border: "1px solid rgba(255,255,255,0.35)",
-    color: "#FDE68A",
-    fontWeight: 800,
-    fontSize: 11,
-    width: "fit-content",
-  },
-
-  avatar: {
-    width: 70,
-    height: 70,
-    borderRadius: "50%",
-    background: "#fff",
-    color: "var(--primary)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 26,
-    fontWeight: 800,
-    boxShadow: "var(--shadow)",
-  },
-
-  avatarWrap: { position: "relative", width: 70, height: 70, flexShrink: 0 },
-  avatarImg: {
-    width: 70,
-    height: 70,
-    borderRadius: "50%",
-    objectFit: "cover",
-    boxShadow: "var(--shadow)",
-    border: "2px solid rgba(255,255,255,0.5)",
-  },
+  avatarWrap: { position: "relative", width: 64, height: 64, flexShrink: 0 },
   avatarEditBtn: {
     position: "absolute",
     bottom: -2,
     right: -2,
-    width: 26,
-    height: 26,
+    width: 24,
+    height: 24,
     borderRadius: "50%",
     background: "var(--success)",
     color: "#fff",
@@ -636,12 +559,6 @@ const styles = {
     justifyContent: "center",
     cursor: "pointer",
     padding: 0,
-  },
-  photoNudge: {
-    marginTop: 10,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.9)",
-    fontWeight: 600,
   },
 
   /* ===== PASSWORD CARD ===== */
@@ -694,31 +611,138 @@ const styles = {
   },
 };
 
-/* ===== ID CARD — back face + flip control ===== */
-const idBackStyles = {
-  header: {
+/* ===== ID CARD — front face (portrait badge layout) ===== */
+const idFrontStyles = {
+  topBar: {
+    marginTop: 10,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 1,
+  },
+  schoolName: {
+    fontSize: 13,
+    fontWeight: 800,
+    letterSpacing: 1.2,
+    color: "#fff",
+  },
+  subtitle: {
+    fontSize: 8.5,
+    fontWeight: 700,
+    letterSpacing: 1,
+    color: "rgba(255,255,255,0.72)",
+  },
+  photoBlock: {
+    display: "flex",
+    justifyContent: "center",
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    background: "#fff",
+    color: "var(--primary)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 24,
+    fontWeight: 800,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+  },
+  avatarImg: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    objectFit: "cover",
+    border: "2.5px solid rgba(255,255,255,0.85)",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+  },
+  name: {
+    margin: 0,
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#fff",
+    lineHeight: 1.2,
+    padding: "0 6px",
+  },
+  role: {
+    marginTop: 6,
+    alignSelf: "center",
+    padding: "3px 10px",
+    borderRadius: 20,
+    background: "rgba(255,255,255,0.16)",
+    border: "1px solid rgba(255,255,255,0.35)",
+    color: "#FDE68A",
+    fontWeight: 800,
+    fontSize: 9.5,
+    width: "fit-content",
+  },
+  detailsBox: {
+    marginTop: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    paddingTop: 10,
+    borderTop: "1px dashed rgba(255,255,255,0.3)",
+  },
+  detailRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: 10,
   },
-  headerTitle: {
-    fontSize: 12,
+  detailLabel: {
+    fontSize: 8.5,
+    fontWeight: 700,
+    letterSpacing: 0.6,
+    color: "rgba(255,255,255,0.65)",
+  },
+  detailValue: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#fff",
+    textAlign: "right",
+  },
+  footerTag: {
+    marginTop: 8,
+    alignSelf: "center",
+    background: "rgba(255,255,255,0.92)",
+    color: "var(--primary-dark)",
+    padding: "2px 12px",
+    borderRadius: 20,
+    fontSize: 9,
     fontWeight: 800,
     letterSpacing: 1,
-    color: "#fff",
   },
-  headerSub: {
-    fontSize: 9.5,
+  photoNudge: {
+    marginTop: 4,
+    marginBottom: 4,
+    fontSize: 12,
+    textAlign: "center",
+    color: "var(--warning)",
     fontWeight: 600,
-    letterSpacing: 0.5,
+  },
+};
+
+/* ===== ID CARD — back face + flip control ===== */
+const idBackStyles = {
+  headerSub: {
+    display: "block",
+    textAlign: "center",
+    marginTop: 10,
+    marginBottom: 12,
+    fontSize: 9.5,
+    fontWeight: 700,
+    letterSpacing: 1,
     color: "rgba(255,255,255,0.7)",
   },
   magStripe: {
-    height: 32,
+    height: 30,
     borderRadius: 4,
     background: "rgba(10,10,10,0.75)",
-    marginBottom: 12,
+    marginBottom: 14,
   },
   barcodeCard: {
     background: "rgba(255,255,255,0.9)",
