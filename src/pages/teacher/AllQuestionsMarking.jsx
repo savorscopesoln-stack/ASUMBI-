@@ -35,66 +35,107 @@ function initials(name) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GLOBAL STYLES — design tokens, fonts, keyframes, responsive
-   layout rules (media queries can't live in inline style objects)
+   GLOBAL STYLES — reuses the dashboard's shared design tokens
+   (--bg, --card, --text, --primary, etc., defined under the
+   "dash-tokens" <style> tag) so this page tracks the same
+   light/dark theme as the rest of the app instead of carrying
+   its own fixed dark palette. Only injects the token block if
+   it isn't already on the page (e.g. Dashboard hasn't mounted
+   yet in this session).
 ═══════════════════════════════════════════════════════════ */
 function useGlobalMarkingStyles() {
   useEffect(() => {
-    const linkId = "mkp-font-link";
-    if (!document.getElementById(linkId)) {
-      const link = document.createElement("link");
-      link.id = linkId;
-      link.rel = "stylesheet";
-      link.href =
-        "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap";
-      document.head.appendChild(link);
+    if (!document.getElementById("dash-tokens")) {
+      const tokens = document.createElement("style");
+      tokens.id = "dash-tokens";
+      tokens.textContent = `
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        :root {
+          --bg: #F8FAFC;
+          --card: #FFFFFF;
+          --card-elevated: #FFFFFF;
+          --border: #E2E5EA;
+          --text: #0B0F19;
+          --text-secondary: #384152;
+          --text-muted: #64748B;
+          --primary: #8B1E2D;
+          --primary-dark: #6F1725;
+          --primary-tint: #FBEAEC;
+          --success: #15803D;
+          --success-tint: #ECFDF3;
+          --warning: #B45309;
+          --warning-tint: #FFFBEB;
+          --destructive: #DC2626;
+          --destructive-tint: #FEF2F2;
+          --info: #1D4ED8;
+          --info-tint: #EFF6FF;
+          --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+          --shadow: 0 1px 3px rgba(16,24,40,0.06);
+          --radius: 14px;
+          --radius-sm: 10px;
+        }
+        [data-theme='dark'] {
+          --bg: #0F1115;
+          --card: #171A21;
+          --card-elevated: #1D2129;
+          --border: #323844;
+          --text: #FFFFFF;
+          --text-secondary: #C7CCD6;
+          --text-muted: #9198A6;
+          --primary: #E8A0A8;
+          --primary-dark: #F3C0C6;
+          --primary-tint: rgba(139,30,45,0.28);
+          --success: #4ADE80;
+          --success-tint: rgba(22,163,74,0.18);
+          --warning: #FBBF24;
+          --warning-tint: rgba(217,119,6,0.18);
+          --destructive: #FB7185;
+          --destructive-tint: rgba(220,38,38,0.18);
+          --info: #7DA6FF;
+          --info-tint: rgba(37,99,235,0.18);
+          --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+          --shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+        body { background: var(--bg); transition: background-color .2s ease; }
+      `;
+      document.head.appendChild(tokens);
     }
-    const styleId = "mkp-style-block-v2";
+
+    const styleId = "mkp-style-block-v3";
     if (!document.getElementById(styleId)) {
       const style = document.createElement("style");
       style.id = styleId;
       style.textContent = `
         :root {
-          --mk-ink: #0a0d12;
-          --mk-surface: #121821;
-          --mk-surface-2: #161d27;
-          --mk-surface-3: #1b2330;
-          --mk-border: #232c3a;
-          --mk-border-soft: #1a2230;
-          --mk-text: #eef1f6;
-          --mk-text-dim: #8b96a8;
-          --mk-text-faint: #56617a;
-          --mk-amber: #f2b544;
-          --mk-amber-soft: rgba(242,181,68,.16);
-          --mk-blue: #5b8def;
-          --mk-violet: #8b7bff;
-          --mk-green: #34d399;
-          --mk-red: #f87171;
+          /* one extra tier between card-elevated and border, derived
+             from the shared tokens so it still tracks light/dark */
+          --mkx-surface-3: color-mix(in srgb, var(--card-elevated), var(--border) 55%);
         }
 
         @keyframes mkp-spin { to { transform: rotate(360deg); } }
         @keyframes mkp-fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes mkp-toast-in { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes mkp-pop { 0% { background-color: rgba(242,181,68,.62); transform: scale(1.03); } 100% { background-color: rgba(242,181,68,.2); transform: scale(1); } }
+        @keyframes mkp-pop { 0% { background-color: color-mix(in srgb, var(--warning) 62%, transparent); transform: scale(1.03); } 100% { background-color: color-mix(in srgb, var(--warning) 20%, transparent); transform: scale(1); } }
         @keyframes mkp-shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
-        @keyframes mkp-pulse-ring { 0%,100% { box-shadow: 0 0 0 0 rgba(242,181,68,.4); } 50% { box-shadow: 0 0 0 6px rgba(242,181,68,0); } }
+        @keyframes mkp-pulse-ring { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 40%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--warning) 0%, transparent); } }
         @keyframes mkp-ring-in { from { stroke-dashoffset: 999; } }
         @keyframes mkp-stamp-in { from { opacity: 0; transform: scale(1.4) rotate(-14deg); } to { opacity: 1; transform: scale(1) rotate(-8deg); } }
 
         * { box-sizing: border-box; }
 
         .mkp-root { min-height: 100%; background:
-            radial-gradient(1100px 560px at 18% -8%, rgba(91,141,239,.09) 0%, transparent 55%),
-            radial-gradient(900px 500px at 85% 0%, rgba(242,181,68,.06) 0%, transparent 50%),
-            var(--mk-ink);
-          padding: 36px 32px 110px; color: var(--mk-text);
+            radial-gradient(1100px 560px at 18% -8%, color-mix(in srgb, var(--info) 9%, transparent) 0%, transparent 55%),
+            radial-gradient(900px 500px at 85% 0%, color-mix(in srgb, var(--warning) 6%, transparent) 0%, transparent 50%),
+            var(--bg);
+          padding: 36px 32px 110px; color: var(--text);
           font-family: 'Inter', system-ui, -apple-system, sans-serif;
           max-width: 880px; margin: 0 auto;
         }
         @media (max-width: 720px) { .mkp-root { padding: 20px 14px 100px; } }
 
         .mkp-card { animation: mkp-fade-up .32s cubic-bezier(.2,.8,.3,1) both; }
-        .mkp-heading-gradient { background: linear-gradient(120deg, #f3f6fb 15%, #a9c4ff 55%, #f2b544 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .mkp-heading-gradient { background: linear-gradient(120deg, var(--text) 15%, var(--info) 55%, var(--primary) 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
         .mkp-topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
         @media (max-width: 560px) { .mkp-topbar { flex-direction: column; align-items: stretch; } .mkp-topbar > button, .mkp-topbar-actions { width: 100%; } }
@@ -104,33 +145,33 @@ function useGlobalMarkingStyles() {
 
         .mkp-essay-readonly { user-select: text; caret-color: transparent; outline: none; }
         .mkp-essay-readonly:focus { outline: none; }
-        .hl-mark { background: rgba(242,181,68,.2); border-bottom: 2px solid var(--mk-amber); border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
-        .hl-mark:hover { background: rgba(242,181,68,.4); }
-        .hl-mark::after { content: "+" attr(data-mark); position: absolute; top: -9px; right: -6px; background: var(--mk-amber); color: #221806; font-size: 9px; font-weight: 800; border-radius: 5px; padding: 0 3px; line-height: 13px; font-family: 'JetBrains Mono', monospace; pointer-events: none; }
+        .hl-mark { background: color-mix(in srgb, var(--warning) 20%, transparent); border-bottom: 2px solid var(--warning); border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
+        .hl-mark:hover { background: color-mix(in srgb, var(--warning) 40%, transparent); }
+        .hl-mark::after { content: "+" attr(data-mark); position: absolute; top: -9px; right: -6px; background: var(--warning); color: #221806; font-size: 9px; font-weight: 800; border-radius: 5px; padding: 0 3px; line-height: 13px; font-family: 'Inter', sans-serif; pointer-events: none; }
 
         .mkp-btn { transition: transform .15s ease, box-shadow .2s ease, background .2s ease, opacity .2s ease, filter .2s ease; cursor: pointer; font-family: inherit; }
-        .mkp-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.07); box-shadow: 0 8px 20px rgba(91,141,239,.2); }
+        .mkp-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 20%, transparent); }
         .mkp-btn:active:not(:disabled) { transform: translateY(0); }
-        .mkp-btn:focus-visible { outline: 2px solid var(--mk-blue); outline-offset: 2px; }
+        .mkp-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
         .mkp-btn:disabled { cursor: not-allowed; }
 
         .mkp-dot { transition: all .2s ease; }
-        .mkp-dot.mkp-dot-flagged { box-shadow: 0 0 0 2px var(--mk-amber) inset; }
+        .mkp-dot.mkp-dot-flagged { box-shadow: 0 0 0 2px var(--warning) inset; }
         .mkp-dot.mkp-dot-current { animation: mkp-pulse-ring 1.7s ease infinite; }
-        .mkp-dot:focus-visible { outline: 2px solid var(--mk-blue); outline-offset: 2px; }
+        .mkp-dot:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
         .mkp-progress-track { position: relative; overflow: hidden; }
-        .mkp-progress-fill { position: relative; overflow: hidden; background: linear-gradient(90deg,var(--mk-blue),var(--mk-violet),var(--mk-amber)); background-size: 200% 100%; }
-        .mkp-progress-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent); background-size: 200px 100%; animation: mkp-shimmer 1.7s linear infinite; }
+        .mkp-progress-fill { position: relative; overflow: hidden; background: linear-gradient(90deg,var(--info),var(--primary),var(--warning)); background-size: 200% 100%; }
+        .mkp-progress-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 28%, transparent), transparent); background-size: 200px 100%; animation: mkp-shimmer 1.7s linear infinite; }
 
         .mkp-toast { animation: mkp-toast-in .28s cubic-bezier(.2,.9,.3,1.15); }
         .mkp-stepper-btn { transition: background .15s ease, opacity .15s ease; }
-        .mkp-stepper-btn:hover:not(:disabled) { background: var(--mk-surface-3); }
-        .mkp-flag-btn.active { background: rgba(242,181,68,.15) !important; border-color: var(--mk-amber) !important; color: var(--mk-amber) !important; }
+        .mkp-stepper-btn:hover:not(:disabled) { background: var(--mkx-surface-3); }
+        .mkp-flag-btn.active { background: color-mix(in srgb, var(--warning) 15%, transparent) !important; border-color: var(--warning) !important; color: var(--warning) !important; }
 
         .mkp-rail-wrap { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 14px; margin-bottom: 4px; }
         .mkp-rail-wrap::-webkit-scrollbar { height: 6px; }
-        .mkp-rail-wrap::-webkit-scrollbar-thumb { background: var(--mk-surface-3); border-radius: 8px; }
+        .mkp-rail-wrap::-webkit-scrollbar-thumb { background: var(--mkx-surface-3); border-radius: 8px; }
         .mkp-rail-chip { transition: transform .18s ease, filter .18s ease; cursor: pointer; }
         .mkp-rail-chip:hover { transform: translateY(-2px); filter: brightness(1.1); }
         .mkp-rail-chip.current { animation: mkp-pulse-ring 1.9s ease infinite; }
@@ -139,12 +180,12 @@ function useGlobalMarkingStyles() {
         .mkp-qcard-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
         .mkp-qcard-badges { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-        .mkp-navrow { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--mk-border); flex-wrap: wrap; gap: 12px; }
+        .mkp-navrow { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
         @media (max-width: 560px) { .mkp-navrow { flex-direction: column; align-items: stretch; } .mkp-navrow-side { display: flex; gap: 10px; justify-content: space-between; } .mkp-navrow-side > button { flex: 1; } .mkp-nav-counter { order: 3; text-align: center; } }
 
-        .mkp-rich-btn:hover { background: var(--mk-surface-3) !important; color: #eef2f8 !important; }
+        .mkp-rich-btn:hover { background: var(--mkx-surface-3) !important; color: var(--text) !important; }
 
-        .mkp-stamp { display: inline-flex; align-items: center; gap: 8px; border: 2.5px dashed var(--mk-green); color: var(--mk-green); border-radius: 12px; padding: 10px 22px; font-family: 'JetBrains Mono', monospace; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; font-size: 13px; transform: rotate(-8deg); animation: mkp-stamp-in .4s cubic-bezier(.2,.9,.3,1.2) both; }
+        .mkp-stamp { display: inline-flex; align-items: center; gap: 8px; border: 2.5px dashed var(--success); color: var(--success); border-radius: 12px; padding: 10px 22px; font-family: 'Inter', sans-serif; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; font-size: 13px; transform: rotate(-8deg); animation: mkp-stamp-in .4s cubic-bezier(.2,.9,.3,1.2) both; }
       `;
       document.head.appendChild(style);
     }
@@ -157,9 +198,9 @@ function useGlobalMarkingStyles() {
 function Toast({ toast, onDismiss }) {
   if (!toast) return null;
   const palette = {
-    success: { bg: "#0f2a1e", border: "#1f6f4a", text: "#5eead4" },
-    error: { bg: "#2a0f10", border: "#7f1d1d", text: "#fca5a5" },
-    info: { bg: "#101722", border: "#263242", text: "#cbd5e1" },
+    success: { bg: "var(--success-tint)", border: "var(--success)", text: "var(--success)" },
+    error: { bg: "var(--destructive-tint)", border: "var(--destructive)", text: "var(--destructive)" },
+    info: { bg: "var(--card-elevated)", border: "var(--border)", text: "var(--text)" },
   }[toast.type || "info"];
   return (
     <div
@@ -167,7 +208,7 @@ function Toast({ toast, onDismiss }) {
       style={{
         position: "fixed", bottom: 20, right: 20, left: 20, zIndex: 1000, margin: "0 auto", maxWidth: 380,
         background: palette.bg, border: `1px solid ${palette.border}`, color: palette.text,
-        padding: "12px 16px", borderRadius: 10, boxShadow: "0 12px 30px rgba(0,0,0,.45)",
+        padding: "12px 16px", borderRadius: 10, boxShadow: "var(--shadow)",
         display: "flex", alignItems: "center", gap: 14, fontSize: 13.5,
       }}
     >
@@ -175,12 +216,12 @@ function Toast({ toast, onDismiss }) {
       {toast.action && (
         <button
           onClick={() => { toast.action.onClick(); onDismiss(); }}
-          style={{ background: "none", border: "none", color: "var(--mk-amber)", fontWeight: 700, cursor: "pointer", fontSize: 13, padding: 0 }}
+          style={{ background: "none", border: "none", color: "var(--primary)", fontWeight: 700, cursor: "pointer", fontSize: 13, padding: 0 }}
         >
           {toast.action.label}
         </button>
       )}
-      <button onClick={onDismiss} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1 }}>
+      <button onClick={onDismiss} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1 }}>
         ×
       </button>
     </div>
@@ -197,7 +238,7 @@ function ScoreGauge({ value, max, size = 56 }) {
   const offset = c - (pct / 100) * c;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--mk-surface-3)" strokeWidth="6" fill="none" />
+      <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--mkx-surface-3)" strokeWidth="6" fill="none" />
       <circle
         cx={size / 2} cy={size / 2} r={r} stroke="url(#mkpGaugeGrad)" strokeWidth="6" fill="none"
         strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
@@ -206,11 +247,11 @@ function ScoreGauge({ value, max, size = 56 }) {
       />
       <defs>
         <linearGradient id="mkpGaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#5b8def" />
-          <stop offset="100%" stopColor="#f2b544" />
+          <stop offset="0%" stopColor="var(--info)" />
+          <stop offset="100%" stopColor="var(--warning)" />
         </linearGradient>
       </defs>
-      <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill="#eef1f6" fontSize={size * 0.24} fontWeight="700" fontFamily="'JetBrains Mono', monospace">
+      <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill="var(--text)" fontSize={size * 0.24} fontWeight="700" fontFamily="'Inter', sans-serif">
         {max > 0 ? `${Math.round(pct)}%` : "–"}
       </text>
     </svg>
@@ -242,21 +283,21 @@ function StudentRail({ stats, currentSubmissionId, onJump }) {
             style={s.railChip}
           >
             <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mkp-rail-ring">
-              <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--mk-surface-3)" strokeWidth="3.5" fill="none" />
+              <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--mkx-surface-3)" strokeWidth="3.5" fill="none" />
               <circle
                 className="mkp-ring-fill" cx={size / 2} cy={size / 2} r={r}
-                stroke={isComplete ? "var(--mk-green)" : "url(#mkpRailGrad)"} strokeWidth="3.5" fill="none"
+                stroke={isComplete ? "var(--success)" : "url(#mkpRailGrad)"} strokeWidth="3.5" fill="none"
                 strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
                 transform={`rotate(-90 ${size / 2} ${size / 2})`}
                 style={{ transition: "stroke-dashoffset .5s ease" }}
               />
               <defs>
                 <linearGradient id="mkpRailGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#5b8def" />
-                  <stop offset="100%" stopColor="#f2b544" />
+                  <stop offset="0%" stopColor="var(--info)" />
+                  <stop offset="100%" stopColor="var(--warning)" />
                 </linearGradient>
               </defs>
-              <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill={isCurrent ? "var(--mk-amber)" : "#cbd5e1"} fontSize={12} fontWeight="700" fontFamily="'JetBrains Mono', monospace">
+              <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill={isCurrent ? "var(--warning)" : "var(--text-secondary)"} fontSize={12} fontWeight="700" fontFamily="'Inter', sans-serif">
                 {initials(st.studentId != null ? `S${st.studentId}` : "?")}
               </text>
             </svg>
@@ -313,7 +354,7 @@ function RichEditor({ value, onChange, placeholder }) {
           className="mkp-rich-btn"
           onMouseDown={(e) => { e.preventDefault(); if (ref.current) ref.current.innerHTML = ""; onChange(""); }}
           title="Clear"
-          style={{ ...s.richBtn, color: "var(--mk-red)" }}
+          style={{ ...s.richBtn, color: "var(--destructive)" }}
         >
           Clear
         </button>
@@ -437,7 +478,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         {maxMarks != null && (
           <div style={s.markMeter}>
             <div style={s.markMeterBar}>
-              <div style={{ ...s.markMeterFill, width: `${pct}%`, background: pct >= 100 ? "var(--mk-green)" : "linear-gradient(90deg,var(--mk-blue),var(--mk-amber))" }} />
+              <div style={{ ...s.markMeterFill, width: `${pct}%`, background: pct >= 100 ? "var(--success)" : "linear-gradient(90deg,var(--info),var(--warning))" }} />
             </div>
             <span style={s.markMeterLabel}>{totalMarks} / {maxMarks}</span>
           </div>
@@ -453,7 +494,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         onMouseUp={handleMouseUp}
         onClick={handleContainerClick}
         style={s.essayText}
-        dangerouslySetInnerHTML={{ __html: html || '<em style="color:#5b6472">No answer was submitted for this question.</em>' }}
+        dangerouslySetInnerHTML={{ __html: html || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
       />
 
       {highlights.length > 0 && (
@@ -805,7 +846,7 @@ export default function Marking() {
       <div className="mkp-root">
         <div style={s.centered}>
           <div style={s.spinner} />
-          <p style={{ color: "var(--mk-text-dim)", marginTop: 20, fontSize: 14 }}>Gathering the submissions…</p>
+          <p style={{ color: "var(--text-secondary)", marginTop: 20, fontSize: 14 }}>Gathering the submissions…</p>
         </div>
       </div>
     );
@@ -841,8 +882,8 @@ export default function Marking() {
             <span style={s.statLabel}>Total score</span>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
               <ScoreGauge value={totalScore} max={maxPossible} size={40} />
-              <span style={{ ...s.statValue, color: "var(--mk-amber)" }}>
-                {totalScore}{maxPossible > 0 && <span style={{ color: "#64748b", fontSize: 14 }}> / {maxPossible}</span>}
+              <span style={{ ...s.statValue, color: "var(--warning)" }}>
+                {totalScore}{maxPossible > 0 && <span style={{ color: "var(--text-muted)", fontSize: 14 }}> / {maxPossible}</span>}
               </span>
             </div>
           </div>
@@ -890,8 +931,8 @@ export default function Marking() {
             <span style={s.accentText}>{remaining.length}</span> question{remaining.length !== 1 ? "s" : ""} left to mark
             {" · "}
             <span style={s.accentText}>{submissions.length}</span> submission{submissions.length !== 1 ? "s" : ""}
-            {flaggedAnswers.length > 0 && <span style={{ color: "var(--mk-amber)" }}> · {flaggedAnswers.length} flagged</span>}
-            {!saved && queue.length > 0 && <span style={{ color: "var(--mk-text-faint)" }}> · unsaved changes</span>}
+            {flaggedAnswers.length > 0 && <span style={{ color: "var(--warning)" }}> · {flaggedAnswers.length} flagged</span>}
+            {!saved && queue.length > 0 && <span style={{ color: "var(--text-muted)" }}> · unsaved changes</span>}
           </p>
         </div>
         <SaveBtn saving={saving} saved={saved} onClick={saveMarking} />
@@ -910,7 +951,7 @@ export default function Marking() {
           <span style={s.statLabel}>Score awarded</span>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
             <ScoreGauge value={totalScore} max={maxPossible} size={38} />
-            <span style={{ ...s.statValue, color: "var(--mk-amber)" }}>{totalScore}</span>
+            <span style={{ ...s.statValue, color: "var(--warning)" }}>{totalScore}</span>
           </div>
         </div>
       </div>
@@ -927,8 +968,8 @@ export default function Marking() {
               className={`mkp-dot${i === currentIdx ? " mkp-dot-current" : ""}${flags[a.id] ? " mkp-dot-flagged" : ""}`}
               style={{
                 ...s.dot,
-                background: i === currentIdx ? "var(--mk-blue)" : scores[a.id] != null ? "var(--mk-green)" : "var(--mk-surface-3)",
-                border: `2px solid ${i === currentIdx ? "#49505c" : "transparent"}`,
+                background: i === currentIdx ? "var(--info)" : scores[a.id] != null ? "var(--success)" : "var(--mkx-surface-3)",
+                border: `2px solid ${i === currentIdx ? "var(--border)" : "transparent"}`,
                 transform: i === currentIdx ? "scale(1.25)" : "scale(1)",
               }}
             />
@@ -1027,9 +1068,9 @@ export default function Marking() {
 
       {queue.length > 0 && (
         <div style={s.footer}>
-          <span style={{ color: "#94a3b8", fontSize: 14 }}>
-            Score so far: <strong style={{ color: "#fff" }}>{totalScore}</strong>
-            {maxPossible > 0 && <span style={{ color: "#64748b" }}> / {maxPossible}</span>}
+          <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+            Score so far: <strong style={{ color: "var(--text)" }}>{totalScore}</strong>
+            {maxPossible > 0 && <span style={{ color: "var(--text-muted)" }}> / {maxPossible}</span>}
           </span>
           <SaveBtn saving={saving} saved={saved} onClick={saveMarking} small />
         </div>
@@ -1049,7 +1090,7 @@ function SaveBtn({ saving, saved, onClick, small }) {
       className="mkp-btn"
       style={{
         ...s.primaryBtn,
-        background: saved ? "#1f6f4a" : "linear-gradient(135deg,#5b8def,#8b7bff)",
+        background: saved ? "var(--success)" : "linear-gradient(135deg,var(--info),var(--primary))",
         opacity: saving ? 0.6 : 1,
         fontSize: small ? 13 : 14,
         padding: small ? "8px 16px" : "10px 22px",
@@ -1064,7 +1105,7 @@ function StatCard({ label, value, accent }) {
   return (
     <div style={s.statCard}>
       <span style={s.statLabel}>{label}</span>
-      <span style={{ ...s.statValue, color: accent ? "#a78bfa" : "#f1f5f9" }}>{value}</span>
+      <span style={{ ...s.statValue, color: accent ? "var(--primary)" : "var(--text)" }}>{value}</span>
     </div>
   );
 }
@@ -1075,94 +1116,96 @@ function FieldLabel({ children }) {
 
 /* ═══════════════════════════════════════════════════════════
    STYLES (dynamic / state-dependent bits only — layout & responsive
-   rules live in the injected stylesheet above)
+   rules live in the injected stylesheet above). All colors now
+   reference the shared dashboard tokens so they follow the app's
+   light/dark theme instead of being fixed values.
 ═══════════════════════════════════════════════════════════ */
 const s = {
   centered: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh" },
-  spinner: { width: 36, height: 36, border: "3px solid var(--mk-surface-3)", borderTop: "3px solid var(--mk-blue)", borderRadius: "50%", animation: "mkp-spin 0.8s linear infinite" },
+  spinner: { width: 36, height: 36, border: "3px solid var(--mkx-surface-3)", borderTop: "3px solid var(--info)", borderRadius: "50%", animation: "mkp-spin 0.8s linear infinite" },
 
-  heading: { margin: 0, fontSize: "clamp(22px, 4vw, 28px)", fontWeight: 700, fontFamily: "'Fraunces', serif", letterSpacing: "-0.01em" },
-  subheading: { margin: "6px 0 0", fontSize: 14, color: "var(--mk-text-dim)" },
-  accentText: { color: "#a9c4ff", fontWeight: 700 },
+  heading: { margin: 0, fontSize: "clamp(22px, 4vw, 28px)", fontWeight: 800, fontFamily: "'Inter', sans-serif", letterSpacing: "-0.01em" },
+  subheading: { margin: "6px 0 0", fontSize: 14, color: "var(--text-secondary)" },
+  accentText: { color: "var(--info)", fontWeight: 700 },
 
-  progressTrack: { height: 6, borderRadius: 4, background: "var(--mk-surface-2)", marginBottom: 18, border: "1px solid var(--mk-border-soft)" },
+  progressTrack: { height: 6, borderRadius: 4, background: "var(--card-elevated)", marginBottom: 18, border: "1px solid var(--border)" },
   progressFill: { height: "100%", borderRadius: 4, transition: "width .4s cubic-bezier(.4,0,.2,1)" },
 
-  statCard: { background: "linear-gradient(160deg,var(--mk-surface) 0%,var(--mk-surface-2) 100%)", border: "1px solid var(--mk-border-soft)", borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
-  statLabel: { fontSize: 11, color: "var(--mk-text-faint)", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600 },
-  statValue: { fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace" },
+  statCard: { background: "linear-gradient(160deg,var(--card) 0%,var(--card-elevated) 100%)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
+  statLabel: { fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600 },
+  statValue: { fontSize: 22, fontWeight: 800, fontFamily: "'Inter', sans-serif" },
 
   railChip: { background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 },
-  railLabel: { fontSize: 10, color: "#8b96a8", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 },
+  railLabel: { fontSize: 10, color: "var(--text-muted)", fontFamily: "'Inter', sans-serif", fontWeight: 600 },
 
   dotRow: { display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 20 },
   dot: { width: 12, height: 12, borderRadius: "50%", cursor: "pointer", padding: 0 },
 
-  qCard: { background: "linear-gradient(160deg,var(--mk-surface-2) 0%,var(--mk-surface) 100%)", border: "1px solid var(--mk-border-soft)", borderRadius: 14, padding: "24px 26px", boxShadow: "0 20px 50px rgba(0,0,0,.35)" },
+  qCard: { background: "linear-gradient(160deg,var(--card-elevated) 0%,var(--card) 100%)", border: "1px solid var(--border)", borderRadius: 14, padding: "24px 26px", boxShadow: "var(--shadow)" },
 
-  badge: { background: "var(--mk-surface-2)", color: "#7fb0ff", border: "1px solid var(--mk-border)", borderRadius: 6, padding: "4px 12px", fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" },
-  essayPill: { background: "#241a3d", color: "#c4b5fd", border: "1px solid #6d28d944", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" },
-  studentPill: { background: "#0c1a2e", color: "#7dd3fc", border: "1px solid #0369a144", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 },
-  maxMarksBadge: { fontSize: 12, color: "var(--mk-text-dim)", background: "var(--mk-surface-2)", border: "1px solid var(--mk-border-soft)", borderRadius: 6, padding: "3px 9px" },
-  awardedBadge: { background: "#1a1a2e", border: "1px solid #7c3aed44", color: "#a78bfa", padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 },
-  remainingBadge: { background: "var(--mk-surface-2)", border: "1px solid var(--mk-border)", color: "#94a3b8", padding: "3px 10px", borderRadius: 6, fontSize: 12 },
-  flagToggle: { background: "var(--mk-surface-2)", border: "1px solid var(--mk-border)", color: "#8b98ab", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600 },
+  badge: { background: "var(--card-elevated)", color: "var(--info)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 12px", fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif" },
+  essayPill: { background: "var(--primary-tint)", color: "var(--primary)", border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" },
+  studentPill: { background: "var(--info-tint)", color: "var(--info)", border: "1px solid color-mix(in srgb, var(--info) 30%, transparent)", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 },
+  maxMarksBadge: { fontSize: 12, color: "var(--text-secondary)", background: "var(--card-elevated)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 9px" },
+  awardedBadge: { background: "var(--primary-tint)", border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)", color: "var(--primary)", padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 },
+  remainingBadge: { background: "var(--card-elevated)", border: "1px solid var(--border)", color: "var(--text-secondary)", padding: "3px 10px", borderRadius: 6, fontSize: 12 },
+  flagToggle: { background: "var(--card-elevated)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600 },
 
-  questionBox: { background: "#050510", border: "1px solid #1e293b", borderLeft: "3px solid var(--mk-blue)", padding: "14px 16px", borderRadius: 8, fontSize: 15, lineHeight: 1.65, color: "#cbd5e1" },
+  questionBox: { background: "var(--bg)", border: "1px solid var(--border)", borderLeft: "3px solid var(--info)", padding: "14px 16px", borderRadius: 8, fontSize: 15, lineHeight: 1.65, color: "var(--text)" },
 
-  guideBox: { background: "rgba(139,123,255,0.07)", border: "1px solid rgba(139,123,255,0.25)", borderRadius: 10, padding: "14px 16px", marginBottom: 4 },
-  guideEyebrow: { fontSize: 11, fontWeight: 800, color: "#c4b5fd", textTransform: "uppercase", textAlign: "center", letterSpacing: "0.08em", marginBottom: 8 },
-  guideBody: { fontSize: 14, color: "#e2e8f0", lineHeight: 1.7, whiteSpace: "pre-wrap" },
+  guideBox: { background: "color-mix(in srgb, var(--primary) 7%, transparent)", border: "1px solid color-mix(in srgb, var(--primary) 25%, transparent)", borderRadius: 10, padding: "14px 16px", marginBottom: 4 },
+  guideEyebrow: { fontSize: 11, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", textAlign: "center", letterSpacing: "0.08em", marginBottom: 8 },
+  guideBody: { fontSize: 14, color: "var(--text)", lineHeight: 1.7, whiteSpace: "pre-wrap" },
 
   essayOuter: { marginTop: 4 },
   essayHeaderRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" },
-  essayHint: { fontSize: 12, color: "#8b96a8", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  essayHint: { fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
   hintIcon: { fontSize: 13 },
   markMeter: { display: "flex", alignItems: "center", gap: 8 },
-  markMeterBar: { width: 80, height: 6, background: "var(--mk-surface-3)", borderRadius: 99, overflow: "hidden" },
+  markMeterBar: { width: 80, height: 6, background: "var(--mkx-surface-3)", borderRadius: 99, overflow: "hidden" },
   markMeterFill: { height: "100%", borderRadius: 99, transition: "width 0.3s ease" },
-  markMeterLabel: { fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" },
+  markMeterLabel: { fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", fontFamily: "'Inter', sans-serif" },
 
-  essayText: { background: "#06060f", border: "1px solid #1e293b", borderLeft: "3px solid var(--mk-violet)", padding: "16px 18px", borderRadius: 8, fontSize: 15, lineHeight: 1.9, color: "#e2e8f0", cursor: "text", minHeight: 140 },
+  essayText: { background: "var(--bg)", border: "1px solid var(--border)", borderLeft: "3px solid var(--primary)", padding: "16px 18px", borderRadius: 8, fontSize: 15, lineHeight: 1.9, color: "var(--text)", cursor: "text", minHeight: 140 },
 
   hlList: { marginTop: 12, display: "flex", flexDirection: "column", gap: 6 },
-  hlListTitle: { fontSize: 11, color: "var(--mk-text-faint)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" },
-  hlItem: { background: "var(--mk-surface-2)", border: "1px solid #7c5cff33", borderRadius: 8, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, flexWrap: "wrap" },
-  hlItemDot: { width: 7, height: 7, borderRadius: "50%", background: "var(--mk-amber)", flexShrink: 0 },
-  hlItemText: { flex: 1, color: "#94a3b8", fontStyle: "italic", minWidth: 120 },
-  stepper: { display: "flex", alignItems: "center", gap: 6, background: "var(--mk-surface-3)", border: "1px solid var(--mk-border)", borderRadius: 6, padding: "2px 4px" },
-  stepperBtn: { background: "none", border: "none", color: "#e2e8f0", width: 20, height: 20, borderRadius: 4, cursor: "pointer", fontSize: 14, lineHeight: 1 },
-  stepperVal: { color: "var(--mk-amber)", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, minWidth: 24, textAlign: "center" },
-  hlItemRemove: { background: "none", border: "1px solid #7f1d1d55", color: "#f87171", borderRadius: 5, padding: "2px 8px", cursor: "pointer", fontSize: 11 },
+  hlListTitle: { fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" },
+  hlItem: { background: "var(--card-elevated)", border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)", borderRadius: 8, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, flexWrap: "wrap" },
+  hlItemDot: { width: 7, height: 7, borderRadius: "50%", background: "var(--warning)", flexShrink: 0 },
+  hlItemText: { flex: 1, color: "var(--text-secondary)", fontStyle: "italic", minWidth: 120 },
+  stepper: { display: "flex", alignItems: "center", gap: 6, background: "var(--mkx-surface-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 4px" },
+  stepperBtn: { background: "none", border: "none", color: "var(--text)", width: 20, height: 20, borderRadius: 4, cursor: "pointer", fontSize: 14, lineHeight: 1 },
+  stepperVal: { color: "var(--warning)", fontWeight: 700, fontFamily: "'Inter', sans-serif", fontSize: 12, minWidth: 24, textAlign: "center" },
+  hlItemRemove: { background: "none", border: "1px solid color-mix(in srgb, var(--destructive) 35%, transparent)", color: "var(--destructive)", borderRadius: 5, padding: "2px 8px", cursor: "pointer", fontSize: 11 },
 
-  richWrap: { border: "1px solid #1e293b", borderRadius: 8, overflow: "hidden", background: "#06060f" },
-  richToolbar: { display: "flex", alignItems: "center", gap: 2, padding: "6px 10px", background: "#0d0d1a", borderBottom: "1px solid #1e293b", flexWrap: "wrap" },
-  richBtn: { background: "none", border: "1px solid transparent", color: "#94a3b8", cursor: "pointer", fontSize: 13, padding: "4px 10px", borderRadius: 5, fontFamily: "inherit" },
-  richDivider: { width: 1, height: 18, background: "#1e293b", margin: "0 6px" },
-  richArea: { minHeight: 90, padding: "14px 16px", color: "#e2e8f0", fontSize: 14, lineHeight: 1.8, outline: "none", fontFamily: "inherit" },
+  richWrap: { border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "var(--bg)" },
+  richToolbar: { display: "flex", alignItems: "center", gap: 2, padding: "6px 10px", background: "var(--card-elevated)", borderBottom: "1px solid var(--border)", flexWrap: "wrap" },
+  richBtn: { background: "none", border: "1px solid transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, padding: "4px 10px", borderRadius: 5, fontFamily: "inherit" },
+  richDivider: { width: 1, height: 18, background: "var(--border)", margin: "0 6px" },
+  richArea: { minHeight: 90, padding: "14px 16px", color: "var(--text)", fontSize: 14, lineHeight: 1.8, outline: "none", fontFamily: "inherit" },
 
-  input: { width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#06060f", color: "#f1f5f9", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "'JetBrains Mono', monospace" },
+  input: { width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "'Inter', sans-serif" },
 
-  fieldLabel: { fontSize: 11, color: "var(--mk-text-faint)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: "18px 0 6px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  editorSubtitle: { fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "#3a4456", fontSize: 11 },
+  fieldLabel: { fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: "18px 0 6px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  editorSubtitle: { fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontSize: 11 },
 
-  navCounter: { fontSize: 13, color: "#3a4456" },
-  navBtn: { background: "var(--mk-surface-2)", color: "#64748b", border: "1px solid #1e293b", padding: "9px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600 },
-  markDoneBtn: { background: "linear-gradient(135deg,#8b7bff,#5b8def)", color: "#fff", border: "none", padding: "10px 24px", borderRadius: 8, fontSize: 14, fontWeight: 700, letterSpacing: "0.02em" },
+  navCounter: { fontSize: 13, color: "var(--text-muted)" },
+  navBtn: { background: "var(--card-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)", padding: "9px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600 },
+  markDoneBtn: { background: "linear-gradient(135deg,var(--primary),var(--info))", color: "#fff", border: "none", padding: "10px 24px", borderRadius: 8, fontSize: 14, fontWeight: 700, letterSpacing: "0.02em" },
 
-  primaryBtn: { color: "#000000", border: "none", borderRadius: 8, fontWeight: 700, whiteSpace: "nowrap" },
+  primaryBtn: { color: "#ffffff", border: "none", borderRadius: 8, fontWeight: 700, whiteSpace: "nowrap" },
 
-  footer: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, padding: "14px 20px", background: "#0d0d1a", borderRadius: 10, border: "1px solid #1e293b", flexWrap: "wrap", gap: 10 },
-  emptyCard: { background: "#0d0d1a", padding: "40px 24px", borderRadius: 12, textAlign: "center", color: "#3a4456", border: "1px solid #1e293b" },
-  errorBanner: { background: "#0d0106", border: "1px solid #7f1d1d55", padding: "18px 22px", borderRadius: 10, display: "flex", gap: 12, alignItems: "center", color: "#fca5a5" },
+  footer: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, padding: "14px 20px", background: "var(--card-elevated)", borderRadius: 10, border: "1px solid var(--border)", flexWrap: "wrap", gap: 10 },
+  emptyCard: { background: "var(--card-elevated)", padding: "40px 24px", borderRadius: 12, textAlign: "center", color: "var(--text-muted)", border: "1px solid var(--border)" },
+  errorBanner: { background: "var(--destructive-tint)", border: "1px solid color-mix(in srgb, var(--destructive) 40%, transparent)", padding: "18px 22px", borderRadius: 10, display: "flex", gap: 12, alignItems: "center", color: "var(--destructive)" },
 
-  doneCard: { textAlign: "center", padding: "64px 24px", background: "#0d0d1a", borderRadius: 14, border: "1px solid #1e293b", marginTop: 24 },
-  doneTitle: { fontSize: 22, fontWeight: 700, color: "#f8fafc", margin: "22px 0 8px", fontFamily: "'Fraunces', serif" },
-  doneSub: { fontSize: 15, color: "var(--mk-text-faint)", margin: 0 },
+  doneCard: { textAlign: "center", padding: "64px 24px", background: "var(--card-elevated)", borderRadius: 14, border: "1px solid var(--border)", marginTop: 24 },
+  doneTitle: { fontSize: 22, fontWeight: 700, color: "var(--text)", margin: "22px 0 8px", fontFamily: "'Inter', sans-serif" },
+  doneSub: { fontSize: 15, color: "var(--text-muted)", margin: 0 },
 
-  flagCard: { background: "#161009", border: "1px solid #f5b54444", borderRadius: 12, padding: "16px 20px", marginBottom: 16 },
-  flagCardTitle: { margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: "var(--mk-amber)" },
-  flagRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid #241a0f", flexWrap: "wrap" },
-  flagRowText: { fontSize: 13, color: "#cbd5e1", flex: 1, minWidth: 160 },
-  reopenBtn: { background: "var(--mk-surface-2)", border: "1px solid var(--mk-border)", color: "#7fb0ff", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontWeight: 600 },
+  flagCard: { background: "var(--warning-tint)", border: "1px solid color-mix(in srgb, var(--warning) 40%, transparent)", borderRadius: 12, padding: "16px 20px", marginBottom: 16 },
+  flagCardTitle: { margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: "var(--warning)" },
+  flagRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid var(--border)", flexWrap: "wrap" },
+  flagRowText: { fontSize: 13, color: "var(--text)", flex: 1, minWidth: 160 },
+  reopenBtn: { background: "var(--card-elevated)", border: "1px solid var(--border)", color: "var(--info)", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontWeight: 600 },
 };
