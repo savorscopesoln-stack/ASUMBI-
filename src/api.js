@@ -24,6 +24,12 @@ export const resolvePhotoUrl = (photoUrl) => {
   return `${FILE_BASE_URL}${photoUrl}`;
 };
 
+// Same resolution logic as resolvePhotoUrl above, just named for what it's
+// actually used for elsewhere (cover page PDFs, question diagram images) —
+// kept as a separate export so call sites read clearly, not because the
+// logic differs.
+export const resolveFileUrl = resolvePhotoUrl;
+
 // ================================
 // AXIOS INSTANCE
 // ================================

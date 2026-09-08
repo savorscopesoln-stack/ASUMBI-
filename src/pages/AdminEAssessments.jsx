@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import API from "../api";
+import API, { resolveFileUrl } from "../api";
 import { useTheme } from "../context/ThemeContext";
 import {
   Search, X, RefreshCw, Download, Plus, UserPlus, ChevronDown, ArrowLeft, Pencil, Trash2,
@@ -407,8 +407,40 @@ export default function AdminEAssessments() {
       exam_password: a.exam_password || "",
       questions_deadline: a.questions_deadline ? toDatetimeLocal(a.questions_deadline) : "",
       question_setter_teacher_ids: Array.isArray(a.question_setter_teacher_ids) ? a.question_setter_teacher_ids : [],
+      cover_page_url: a.cover_page_url || "",
     });
     setEditOpen(true);
+  };
+
+  /* ── Cover page (per-exam PDF) — uploaded/replaced/removed
+       independently of the rest of the edit form, since it's a file. ── */
+  const [coverPageUploading, setCoverPageUploading] = useState(false);
+  const uploadCoverPage = async (assessmentId, file) => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("cover_page", file);
+    setCoverPageUploading(true);
+    try {
+      const res = await API.post(`/e-assessments/${assessmentId}/cover-page`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setEditForm((prev) => ({ ...prev, cover_page_url: res.data.cover_page_url }));
+      showToast("Cover page uploaded");
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Cover page upload failed", "error");
+    } finally {
+      setCoverPageUploading(false);
+    }
+  };
+  const removeCoverPage = async (assessmentId) => {
+    if (!window.confirm("Remove this exam's cover page?")) return;
+    try {
+      await API.delete(`/e-assessments/${assessmentId}/cover-page`);
+      setEditForm((prev) => ({ ...prev, cover_page_url: "" }));
+      showToast("Cover page removed");
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to remove cover page", "error");
+    }
   };
 
   const saveEditAssessment = async () => {
@@ -1346,6 +1378,40 @@ export default function AdminEAssessments() {
           <p style={sx.formHint}>
             Pick the teacher(s) who should be able to add questions to this assessment — this also
             makes it appear on their E-Assessments page.
+          </p>
+
+          <FieldLabel>Cover Page (PDF, optional)</FieldLabel>
+          {editForm.cover_page_url ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <a
+                href={resolveFileUrl(editForm.cover_page_url)}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: C.accent || "#6366f1", fontWeight: 700, fontSize: 13, textDecoration: "underline" }}
+              >
+                📄 View current cover page
+              </a>
+              <button
+                type="button"
+                onClick={() => removeCoverPage(editForm.id)}
+                style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: "transparent", border: "1px solid #ef4444", color: "#ef4444", cursor: "pointer" }}
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <p style={sx.formHint}>No cover page uploaded yet for this exam.</p>
+          )}
+          <input
+            type="file"
+            accept="application/pdf"
+            disabled={coverPageUploading}
+            onChange={(e) => uploadCoverPage(editForm.id, e.target.files?.[0])}
+            style={{ marginBottom: 6 }}
+          />
+          <p style={sx.formHint}>
+            Each exam can have its own unique cover page — students see it before they start this
+            specific assessment.
           </p>
 
           <SaveButton onClick={saveEditAssessment} loading={saving} label="Save Changes" />
