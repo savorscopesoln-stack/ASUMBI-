@@ -61,6 +61,7 @@ import TakeAssessmentPicker from "./pages/Student/TakeAssessmentPicker";
 
 /* ================= NEW ================= */
 import StudentEAssessments from "./pages/Student/StudentEAssessments";
+import StudentMarkedPaper from "./pages/Student/StudentMarkedPaper";
 
 /* =========================================================
    TEACHER
@@ -862,6 +863,16 @@ export default function App() {
         <Route
           path="e-assessments/:id"
           element={<TakeAssessmentRedirect />}
+        />
+
+        {/* MARKED PAPER — a student's own graded paper, only ever
+            populated once the submission's marks are released (see
+            getStudentResult / StudentMarkedPaper.jsx). Requires a full
+            portal session (this whole /student tree is wrapped in
+            ProtectedRoute above), unlike the exam-taking flow. */}
+        <Route
+          path="e-assessments/:id/result"
+          element={<StudentMarkedPaper />}
         />
       </Route>
 

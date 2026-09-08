@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
-import { MonitorCheck, Clock, UserRound, Loader2, Inbox, AlertTriangle, FileText } from "lucide-react";
+import { MonitorCheck, Clock, UserRound, Loader2, Inbox, AlertTriangle, FileText, ClipboardCheck } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app; a no-op if already mounted by the layout or
@@ -166,7 +166,7 @@ export default function StudentEAssessments() {
                 <span style={D.badge}>{a.status}</span>
               </div>
 
-              {a.cover_page_url && (
+              {a.cover_page_url && !a.my_submission_id && (
                 <div
                   className="cover-preview"
                   style={{
@@ -214,13 +214,43 @@ export default function StudentEAssessments() {
                 </div>
               </div>
 
-              <button
-                className="assess-take-btn"
-                style={D.takeBtn}
-                onClick={() => navigate(`/take-assessment/${a.id}`)}
-              >
-                Take Assessment
-              </button>
+              {a.my_submission_status === "released" ? (
+                <>
+                  <div style={D.resultBox}>
+                    <div>
+                      <div style={D.resultLabel}>Your Score</div>
+                      <div style={D.resultValue}>
+                        {a.my_score ?? 0} / {a.total_marks ?? "—"}
+                      </div>
+                    </div>
+                    {a.total_marks ? (
+                      <div style={D.resultPct}>
+                        {Math.round((Number(a.my_score || 0) / Number(a.total_marks)) * 100)}%
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    className="assess-take-btn"
+                    style={D.takeBtn}
+                    onClick={() => navigate(`/student/e-assessments/${a.id}/result`)}
+                  >
+                    View Marked Paper
+                  </button>
+                </>
+              ) : a.my_submission_id ? (
+                <div style={D.pendingBox}>
+                  <ClipboardCheck size={14} />
+                  Submitted — awaiting results
+                </div>
+              ) : (
+                <button
+                  className="assess-take-btn"
+                  style={D.takeBtn}
+                  onClick={() => navigate(`/take-assessment/${a.id}`)}
+                >
+                  Take Assessment
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -396,5 +426,32 @@ const D = {
     fontWeight: 700,
     cursor: "pointer",
     fontFamily: "inherit",
+  },
+  resultBox: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    background: "var(--success-tint)",
+    border: "1px solid var(--success)",
+    borderRadius: "var(--radius-sm)",
+    padding: "10px 14px",
+    marginBottom: 10,
+  },
+  resultLabel: { fontSize: 10.5, fontWeight: 700, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.03em" },
+  resultValue: { fontSize: 15, fontWeight: 800, color: "var(--text)", marginTop: 2 },
+  resultPct: { fontSize: 18, fontWeight: 800, color: "var(--success)" },
+  pendingBox: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    width: "100%",
+    padding: 12,
+    borderRadius: "var(--radius-sm)",
+    background: "var(--bg)",
+    border: "1px dashed var(--border)",
+    color: "var(--text-secondary)",
+    fontSize: 13,
+    fontWeight: 700,
   },
 };
