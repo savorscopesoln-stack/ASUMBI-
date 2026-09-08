@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import API, { resolvePhotoUrl } from "../../api";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, Loader2, RotateCw } from "lucide-react";
 
 /* ─── design-token stylesheet ───
    Copied verbatim from Dashboard.jsx (same id guard — if the user
@@ -147,9 +147,125 @@ const injectBadgeStyles = () => {
   document.head.appendChild(el);
 };
 
+/* ─── ID-card stylesheet (separate id, same guard pattern) ───
+   Turns the maroon ID plaque into a flippable staff ID: the
+   plaque itself stays the solid maroon gradient "card body", and
+   a frosted glass panel (the actual front/back "laminate") sits
+   on top of it, reusing the same blur/glow/lift/pulse language as
+   .glass-badge above. The flip uses a real 3D transform so both
+   faces exist at once with backface-visibility hidden — no
+   swapping content in and out, just a rotateY like a real badge
+   spinning on a lanyard clip.
+   Global prefers-reduced-motion rule above already zeroes out all
+   transition/animation durations site-wide, so the flip, glow and
+   pulse all automatically collapse to an instant, non-animated
+   state for users who've asked for less motion — nothing extra
+   needed here. */
+const injectIdCardStyles = () => {
+  if (document.getElementById("id-card-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "id-card-tokens";
+  el.textContent = `
+    .id-card-shell {
+      position: relative;
+      perspective: 1400px;
+    }
+
+    .id-card-flip {
+      position: relative;
+      width: 100%;
+      height: 232px;
+      transform-style: preserve-3d;
+      transition: transform 0.7s cubic-bezier(.4,.2,.2,1);
+    }
+    .id-card-flip.is-flipped {
+      transform: rotateY(180deg);
+    }
+
+    .id-card-face {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.35);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.25);
+      transition: transform .3s cubic-bezier(.2,.8,.2,1), background-color .3s ease, border-color .3s ease;
+      z-index: 1;
+    }
+    .id-card-face.id-card-back {
+      transform: rotateY(180deg);
+    }
+
+    /* glow bloom, card-shaped rather than circular */
+    .id-card-face::before {
+      content: "";
+      position: absolute;
+      inset: -16px;
+      border-radius: calc(var(--radius-sm) + 16px);
+      background: radial-gradient(ellipse at center, rgba(251,191,36,0.5), transparent 70%);
+      opacity: 0;
+      transform: scale(.85);
+      transition: opacity .35s ease, transform .35s ease;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* hover lift + glow — same feel as .glass-badge, applied to
+       whichever face is currently facing the viewer */
+    .id-card-shell:hover .id-card-face {
+      background: rgba(255,255,255,0.20);
+      border-color: rgba(255,255,255,0.5);
+    }
+    .id-card-shell:hover .id-card-flip:not(.is-flipped) .id-card-face.id-card-front {
+      transform: translateY(-2px) scale(1.07);
+    }
+    .id-card-shell:hover .id-card-flip.is-flipped .id-card-face.id-card-back {
+      transform: rotateY(180deg) translateY(-2px) scale(1.07);
+    }
+    .id-card-shell:hover .id-card-face::before {
+      opacity: 1;
+      transform: scale(1.15);
+    }
+
+    /* pulsing ring ripple, only on the face currently on top */
+    .id-card-shell:hover .id-card-flip:not(.is-flipped) .id-card-face.id-card-front {
+      animation: idCardPulse 1.6s ease-out infinite;
+    }
+    .id-card-shell:hover .id-card-flip.is-flipped .id-card-face.id-card-back {
+      animation: idCardPulse 1.6s ease-out infinite;
+    }
+    @keyframes idCardPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(251,191,36,0.45), inset 0 1px 0 rgba(255,255,255,0.25); }
+      70%  { box-shadow: 0 0 0 14px rgba(251,191,36,0), inset 0 1px 0 rgba(255,255,255,0.25); }
+      100% { box-shadow: 0 0 0 0 rgba(251,191,36,0), inset 0 1px 0 rgba(255,255,255,0.25); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .id-card-shell:hover .id-card-face { animation: none; }
+    }
+
+    .id-card-flip-btn {
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    .id-card-flip-btn:hover {
+      background: rgba(255,255,255,0.28) !important;
+    }
+  `;
+  document.head.appendChild(el);
+};
+
 export default function TeacherProfile() {
   injectStyles();
   injectBadgeStyles();
+  injectIdCardStyles();
 
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const [user, setUser] = useState(storedUser);
@@ -163,6 +279,10 @@ export default function TeacherProfile() {
   const [photoMsg, setPhotoMsg] = useState("");
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef(null);
+
+  // ID card flip state — front shows the usual staff details,
+  // back shows the "laminated" reverse of the badge.
+  const [flipped, setFlipped] = useState(false);
 
   // Refresh from the server on mount so photoUrl reflects the latest
   // upload (localStorage's copy is only as fresh as the last login).
@@ -229,63 +349,107 @@ export default function TeacherProfile() {
     <div style={styles.page}>
       <h2 style={styles.title}>👤 Teacher Profile</h2>
 
-      {/* ================= ID CARD ================= */}
-      <div style={styles.idCard}>
-        <div style={styles.header}>
-          <div>
-            <h3 style={styles.school}>ASUMBI TTC</h3>
-            <span style={styles.subtitle}>STAFF IDENTIFICATION</span>
+      {/* ================= ID CARD (flippable) ================= */}
+      <div style={styles.idCard} className="id-card-shell">
+        <div className={`id-card-flip${flipped ? " is-flipped" : ""}`}>
+          {/* ---- FRONT FACE ---- */}
+          <div className="id-card-face id-card-front">
+            <div style={styles.header}>
+              <div>
+                <h3 style={styles.school}>ASUMBI TTC</h3>
+                <span style={styles.subtitle}>STAFF IDENTIFICATION</span>
+              </div>
+
+              <span style={styles.badge}>STAFF ID</span>
+            </div>
+
+            <div style={styles.body}>
+              {/* LEFT SIDE */}
+              <div style={styles.info}>
+                <h2 style={styles.name}>{user.name || "Teacher Name"}</h2>
+
+                <p style={styles.meta}>
+                  <b>ID:</b> {user.username || "N/A"}
+                </p>
+
+                <p style={styles.meta}>
+                  <b>Subject:</b> {user.subject || "N/A"}
+                </p>
+
+                <span style={styles.tutorBadge} className="glass-badge">
+                  {user.isClassTeacher
+                    ? "🎓 Class Teacher"
+                    : "📘 Subject Teacher"}
+                </span>
+              </div>
+
+              {/* RIGHT SIDE */}
+              <div style={styles.avatarWrap}>
+                {user.photoUrl ? (
+                  <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={styles.avatarImg} />
+                ) : (
+                  <div style={styles.avatar}>{user.name?.charAt(0) || "T"}</div>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={uploadingPhoto}
+                  style={styles.avatarEditBtn}
+                  className="dash-btn"
+                  aria-label="Change profile photo"
+                >
+                  {uploadingPhoto ? <Loader2 size={12} className="dash-spin" /> : <Camera size={12} />}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoSelect}
+                  style={{ display: "none" }}
+                />
+              </div>
+            </div>
           </div>
 
-          <span style={styles.badge}>STAFF ID</span>
+          {/* ---- BACK FACE ---- */}
+          <div className="id-card-face id-card-back">
+            <div style={idBackStyles.header}>
+              <span style={idBackStyles.headerTitle}>ASUMBI TTC</span>
+              <span style={idBackStyles.headerSub}>STAFF ID — REVERSE</span>
+            </div>
+
+            <div style={idBackStyles.magStripe} />
+
+            <div style={idBackStyles.barcodeCard}>
+              <div style={idBackStyles.barcode} />
+              <span style={idBackStyles.barcodeNum}>{(user.username || "N/A").toUpperCase()}</span>
+            </div>
+
+            <div style={idBackStyles.signatureRow}>
+              <div style={idBackStyles.signatureLine} />
+              <span style={idBackStyles.signatureLabel}>Authorized Signature</span>
+            </div>
+
+            <p style={idBackStyles.fineprint}>
+              This card is property of ASUMBI TTC. If found, please return to the
+              school administration office.
+            </p>
+          </div>
         </div>
 
-        <div style={styles.body}>
-          {/* LEFT SIDE */}
-          <div style={styles.info}>
-            <h2 style={styles.name}>{user.name || "Teacher Name"}</h2>
-
-            <p style={styles.meta}>
-              <b>ID:</b> {user.username || "N/A"}
-            </p>
-
-            <p style={styles.meta}>
-              <b>Subject:</b> {user.subject || "N/A"}
-            </p>
-
-            <span style={styles.tutorBadge} className="glass-badge">
-              {user.isClassTeacher
-                ? "🎓 Class Teacher"
-                : "📘 Subject Teacher"}
-            </span>
-          </div>
-
-          {/* RIGHT SIDE */}
-          <div style={styles.avatarWrap}>
-            {user.photoUrl ? (
-              <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={styles.avatarImg} />
-            ) : (
-              <div style={styles.avatar}>{user.name?.charAt(0) || "T"}</div>
-            )}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingPhoto}
-              style={styles.avatarEditBtn}
-              className="dash-btn"
-              aria-label="Change profile photo"
-            >
-              {uploadingPhoto ? <Loader2 size={12} className="dash-spin" /> : <Camera size={12} />}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handlePhotoSelect}
-              style={{ display: "none" }}
-            />
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setFlipped((f) => !f)}
+          className="dash-btn id-card-flip-btn"
+          style={idBackStyles.flipBtn}
+          aria-label={flipped ? "Show front of ID card" : "Show back of ID card"}
+        >
+          <RotateCw size={12} />
+          {flipped ? "View Front" : "View Back"}
+        </button>
 
         {!user.photoUrl && (
           <p style={styles.photoNudge}>⚠️ No profile photo on file — tap the camera icon to add one.</p>
@@ -354,7 +518,7 @@ const styles = {
     color: "var(--text)",
   },
 
-  /* ===== ID CARD ===== */
+  /* ===== ID CARD (maroon plaque behind the glass faces) ===== */
   idCard: {
     background: "linear-gradient(135deg, var(--primary), var(--primary-dark))",
     padding: 20,
@@ -474,7 +638,7 @@ const styles = {
     padding: 0,
   },
   photoNudge: {
-    marginTop: 8,
+    marginTop: 10,
     fontSize: 12,
     color: "rgba(255,255,255,0.9)",
     fontWeight: 600,
@@ -527,5 +691,93 @@ const styles = {
     fontSize: 13,
     color: "var(--text-secondary)",
     fontWeight: 600,
+  },
+};
+
+/* ===== ID CARD — back face + flip control ===== */
+const idBackStyles = {
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 10,
+  },
+  headerTitle: {
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 1,
+    color: "#fff",
+  },
+  headerSub: {
+    fontSize: 9.5,
+    fontWeight: 600,
+    letterSpacing: 0.5,
+    color: "rgba(255,255,255,0.7)",
+  },
+  magStripe: {
+    height: 32,
+    borderRadius: 4,
+    background: "rgba(10,10,10,0.75)",
+    marginBottom: 12,
+  },
+  barcodeCard: {
+    background: "rgba(255,255,255,0.9)",
+    borderRadius: 6,
+    padding: "8px 10px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 5,
+  },
+  barcode: {
+    width: "100%",
+    height: 34,
+    backgroundImage:
+      "repeating-linear-gradient(90deg, #111 0px, #111 2px, transparent 2px, transparent 3px, #111 3px, #111 6px, transparent 6px, transparent 8px, #111 8px, #111 9px, transparent 9px, transparent 13px)",
+  },
+  barcodeNum: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 2,
+    color: "#111",
+  },
+  signatureRow: {
+    marginTop: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  signatureLine: {
+    height: 18,
+    borderBottom: "1px solid rgba(255,255,255,0.6)",
+  },
+  signatureLabel: {
+    fontSize: 9.5,
+    fontWeight: 600,
+    letterSpacing: 0.5,
+    color: "rgba(255,255,255,0.75)",
+  },
+  fineprint: {
+    marginTop: "auto",
+    fontSize: 9.5,
+    lineHeight: 1.4,
+    fontWeight: 500,
+    color: "rgba(255,255,255,0.75)",
+  },
+  flipBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    justifyContent: "center",
+    width: "fit-content",
+    margin: "12px auto 0",
+    padding: "6px 14px",
+    borderRadius: 20,
+    background: "rgba(255,255,255,0.18)",
+    border: "1px solid rgba(255,255,255,0.4)",
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
   },
 };
