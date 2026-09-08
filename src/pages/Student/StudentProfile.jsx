@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import API, { resolvePhotoUrl } from "../../api";
-import { UserRound, KeyRound, Loader2, CheckCircle2, AlertTriangle, Camera } from "lucide-react";
+import {
+  UserRound,
+  KeyRound,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  Camera,
+  RotateCw,
+  GraduationCap,
+  ShieldCheck,
+} from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app; a no-op if already mounted by the layout or
@@ -78,12 +88,240 @@ const injectStyles = () => {
     @media (max-width: 640px) {
       .profile-two-col { grid-template-columns: 1fr !important; }
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── glass-badge stylesheet (separate id, same pattern used
+   elsewhere in the app) — frosted translucent pill with a warm
+   glow bloom on hover, a lift/scale "pop", and a pulsing ring. ─── */
+const injectBadgeStyles = () => {
+  if (document.getElementById("glass-badge-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "glass-badge-tokens";
+  el.textContent = `
+    .glass-badge {
+      position: relative;
+      z-index: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: transform .3s cubic-bezier(.2,.8,.2,1), background-color .3s ease, border-color .3s ease;
+      cursor: default;
+    }
+    .glass-badge::before {
+      content: "";
+      position: absolute;
+      inset: -10px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(251,191,36,0.55), transparent 70%);
+      opacity: 0;
+      transform: scale(.7);
+      transition: opacity .35s ease, transform .35s ease;
+      z-index: -1;
+      pointer-events: none;
+    }
+    .glass-badge:hover {
+      transform: translateY(-2px) scale(1.07);
+      background: rgba(255,255,255,0.22) !important;
+      border-color: rgba(255,255,255,0.55) !important;
+      animation: badgePulse 1.4s ease-out infinite;
+    }
+    .glass-badge:hover::before {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+    @keyframes badgePulse {
+      0%   { box-shadow: 0 0 0 0 rgba(251,191,36,0.45); }
+      70%  { box-shadow: 0 0 0 12px rgba(251,191,36,0); }
+      100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .glass-badge:hover { animation: none; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── ID-card stylesheet (separate id, same guard pattern) ───
+   A flippable staff/student ID: each face IS the physical card —
+   printed maroon base + frosted glass lamination + a faint
+   guilloche security texture — sized to real CR80 portrait badge
+   proportions and centered, not stretched across the page. Front
+   and back are true 3D faces (backface-visibility hidden) so the
+   flip is a real rotateY, not a content swap. A holographic seal
+   and a glossy light sweep on hover round out the "real card"
+   feel. The global prefers-reduced-motion rule above already
+   zeroes out all transition/animation durations site-wide, so the
+   flip, glow, shimmer and sweep all collapse to instant/static
+   automatically for users who've asked for less motion. */
+const injectIdCardStyles = () => {
+  if (document.getElementById("id-card-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "id-card-tokens";
+  el.textContent = `
+    .id-card-shell {
+      width: min(272px, 84vw);
+      margin: 0 auto 14px;
+      position: relative;
+      perspective: 1600px;
+    }
+
+    .id-card-flip {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 0.6285;
+      transform-style: preserve-3d;
+      transition: transform 0.7s cubic-bezier(.4,.2,.2,1);
+      cursor: pointer;
+    }
+    .id-card-flip.is-flipped {
+      transform: rotateY(180deg);
+    }
+
+    .id-card-face {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 16px;
+      padding: 14px 12px 12px;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      background:
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 7px),
+        linear-gradient(rgba(255,255,255,0.16), rgba(255,255,255,0.16)),
+        linear-gradient(150deg, var(--primary), var(--primary-dark));
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.4);
+      box-shadow: 0 2px 4px rgba(16,24,40,0.15), 0 14px 28px rgba(16,24,40,0.28), inset 0 1px 0 rgba(255,255,255,0.3);
+      transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease;
+      z-index: 1;
+    }
+    .id-card-face.id-card-back {
+      transform: rotateY(180deg);
+    }
+
+    .id-card-face::after {
+      content: "";
+      position: absolute;
+      top: 9px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 34px;
+      height: 7px;
+      border-radius: 5px;
+      background: rgba(0,0,0,0.32);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+      z-index: 3;
+    }
+
+    .id-card-face::before {
+      content: "";
+      position: absolute;
+      inset: -14px;
+      border-radius: 26px;
+      background: radial-gradient(ellipse at center, rgba(251,191,36,0.5), transparent 72%);
+      opacity: 0;
+      transform: scale(.9);
+      transition: opacity .35s ease, transform .35s ease;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    .id-card-shine {
+      position: absolute;
+      inset: -55% -70%;
+      background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.4) 50%, transparent 58%);
+      transform: translateX(-130%) rotate(8deg);
+      transition: transform 0.9s ease;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .id-card-shell:hover .id-card-flip:not(.is-flipped) .id-card-front .id-card-shine,
+    .id-card-shell:hover .id-card-flip.is-flipped .id-card-back .id-card-shine {
+      transform: translateX(65%) rotate(8deg);
+    }
+
+    .id-card-hologram {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: conic-gradient(from 90deg, #ff9a9e, #fbc2eb, #a1c4fd, #fad0c4, #c2e9fb, #ff9a9e);
+      opacity: 0.62;
+      mix-blend-mode: screen;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 0 3px rgba(255,255,255,0.85), 0 0 4px rgba(255,255,255,0.35);
+      z-index: 4;
+      animation: hologramShimmer 7s linear infinite;
+    }
+    .id-card-hologram svg {
+      color: rgba(255,255,255,0.9);
+    }
+    @keyframes hologramShimmer {
+      to { filter: hue-rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .id-card-hologram { animation: none; }
+    }
+
+    .id-card-shell:hover .id-card-face {
+      background:
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 7px),
+        linear-gradient(rgba(255,255,255,0.22), rgba(255,255,255,0.22)),
+        linear-gradient(150deg, var(--primary), var(--primary-dark));
+      border-color: rgba(255,255,255,0.5);
+    }
+    .id-card-shell:hover .id-card-flip:not(.is-flipped) .id-card-face.id-card-front {
+      transform: translateY(-4px) scale(1.035);
+    }
+    .id-card-shell:hover .id-card-flip.is-flipped .id-card-face.id-card-back {
+      transform: rotateY(180deg) translateY(-4px) scale(1.035);
+    }
+    .id-card-shell:hover .id-card-face::before {
+      opacity: 1;
+      transform: scale(1.08);
+    }
+    .id-card-shell:hover .id-card-flip:not(.is-flipped) .id-card-face.id-card-front {
+      animation: idCardPulse 1.6s ease-out infinite;
+    }
+    .id-card-shell:hover .id-card-flip.is-flipped .id-card-face.id-card-back {
+      animation: idCardPulse 1.6s ease-out infinite;
+    }
+    @keyframes idCardPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(251,191,36,0.45), 0 14px 28px rgba(16,24,40,0.28); }
+      70%  { box-shadow: 0 0 0 14px rgba(251,191,36,0), 0 14px 28px rgba(16,24,40,0.28); }
+      100% { box-shadow: 0 0 0 0 rgba(251,191,36,0), 0 14px 28px rgba(16,24,40,0.28); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .id-card-shell:hover .id-card-face { animation: none; }
+    }
+
+    .id-card-flip-btn {
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    .id-card-flip-btn:hover {
+      filter: brightness(0.97);
+    }
   `;
   document.head.appendChild(el);
 };
 
 export default function StudentProfile() {
   injectStyles();
+  injectBadgeStyles();
+  injectIdCardStyles();
 
   const [user, setUser] = useState({});
   const [loading, setLoading] = useState(true);
@@ -113,6 +351,15 @@ export default function StudentProfile() {
   const [photoTone, setPhotoTone] = useState("success");
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef(null);
+
+  // ID card flip state — front shows the student's photo ID,
+  // back shows the "laminated" reverse of the badge.
+  const [flipped, setFlipped] = useState(false);
+
+  // Issue/expiry years shown on the back of the card — a real
+  // student ID carries a validity window rather than none at all.
+  const issueYear = new Date().getFullYear();
+  const expiryYear = issueYear + 1;
 
   /* ================= LOAD PROFILE ================= */
   const loadProfile = async () => {
@@ -264,6 +511,121 @@ export default function StudentProfile() {
         </div>
       </header>
 
+      {/* ================= STUDENT ID CARD (flippable) ================= */}
+      {!loading && (
+        <div style={{ marginBottom: 26 }}>
+          <div className="id-card-shell">
+            <div
+              className={`id-card-flip${flipped ? " is-flipped" : ""}`}
+              onClick={() => setFlipped((f) => !f)}
+              role="button"
+              tabIndex={0}
+              aria-label={flipped ? "Showing back of ID card, tap to flip" : "Showing front of ID card, tap to flip"}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setFlipped((f) => !f);
+              }}
+            >
+              {/* ---- FRONT FACE ---- */}
+              <div className="id-card-face id-card-front">
+                <div className="id-card-shine" />
+                <div style={idFrontStyles.contentWrap}>
+                  <div style={idFrontStyles.topBar}>
+                    <div style={idFrontStyles.crest}>
+                      <GraduationCap size={15} />
+                    </div>
+                    <span style={idFrontStyles.schoolName}>ASUMBI TTC</span>
+                    <span style={idFrontStyles.subtitle}>STUDENT IDENTIFICATION</span>
+                  </div>
+
+                  <div style={idFrontStyles.photoBlock}>
+                    <div style={idFrontStyles.avatarWrap}>
+                      {user.photoUrl ? (
+                        <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={idFrontStyles.avatarImg} />
+                      ) : (
+                        <div style={idFrontStyles.avatar}>{user.name?.charAt(0) || "S"}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <h2 style={idFrontStyles.name}>{user.name || "Student Name"}</h2>
+                  <span style={idFrontStyles.role} className="glass-badge">
+                    🎓 {studentClass || "Unassigned Class"}
+                  </span>
+
+                  <div style={idFrontStyles.detailsBox}>
+                    <div style={idFrontStyles.detailRow}>
+                      <span style={idFrontStyles.detailLabel}>ADM NO.</span>
+                      <span style={idFrontStyles.detailValue}>{user.admissionNo || "N/A"}</span>
+                    </div>
+                    <div style={idFrontStyles.detailRow}>
+                      <span style={idFrontStyles.detailLabel}>CLASS</span>
+                      <span style={idFrontStyles.detailValue}>{studentClass || "N/A"}</span>
+                    </div>
+                  </div>
+
+                  <span style={idFrontStyles.footerTag}>STUDENT ID</span>
+                </div>
+                <div className="id-card-hologram">
+                  <ShieldCheck size={14} />
+                </div>
+              </div>
+
+              {/* ---- BACK FACE ---- */}
+              <div className="id-card-face id-card-back">
+                <div className="id-card-shine" />
+                <div style={idFrontStyles.contentWrap}>
+                  <span style={idBackStyles.headerSub}>STUDENT ID — REVERSE</span>
+
+                  <div style={idBackStyles.magStripe} />
+
+                  <div style={idBackStyles.barcodeCard}>
+                    <div style={idBackStyles.barcode} />
+                    <span style={idBackStyles.barcodeNum}>{(user.admissionNo || "N/A").toUpperCase()}</span>
+                  </div>
+
+                  <div style={idBackStyles.metaRow}>
+                    <div style={idBackStyles.metaDates}>
+                      <div style={idBackStyles.metaLine}>
+                        <span style={idBackStyles.detailLabel}>ISSUED</span>
+                        <span style={idBackStyles.detailValue}>{issueYear}</span>
+                      </div>
+                      <div style={idBackStyles.metaLine}>
+                        <span style={idBackStyles.detailLabel}>VALID THRU</span>
+                        <span style={idBackStyles.detailValue}>{expiryYear}</span>
+                      </div>
+                    </div>
+                    <div style={idBackStyles.qrBox} />
+                  </div>
+
+                  <div style={idBackStyles.signatureRow}>
+                    <div style={idBackStyles.signatureLine} />
+                    <span style={idBackStyles.signatureLabel}>Authorized Signature</span>
+                  </div>
+
+                  <p style={idBackStyles.fineprint}>
+                    Property of ASUMBI TTC. If found, please return to the school
+                    administration office.
+                  </p>
+                </div>
+                <div className="id-card-hologram">
+                  <ShieldCheck size={14} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setFlipped((f) => !f)}
+            style={idBackStyles.flipBtn}
+            aria-label={flipped ? "Show front of ID card" : "Show back of ID card"}
+          >
+            <RotateCw size={12} />
+            {flipped ? "View Front" : "View Back"}
+          </button>
+        </div>
+      )}
+
       <div className="profile-two-col" style={D.twoCol}>
         {/* Profile info */}
         <section style={D.panel} aria-label="Profile information">
@@ -307,7 +669,7 @@ export default function StudentProfile() {
                 <div>
                   <p style={D.photoTitle}>Profile Photo</p>
                   <p style={D.photoHint}>
-                    {user.photoUrl ? "Tap the camera icon to replace it." : "No photo on file yet — required for your student ID."}
+                    {user.photoUrl ? "Tap the camera icon to replace it — this also updates your ID card above." : "No photo on file yet — required for your student ID."}
                   </p>
                   {photoMsg && (
                     <div style={{ ...D.msg, marginTop: 4, color: photoTone === "success" ? "var(--success)" : "var(--destructive)" }}>
@@ -640,5 +1002,255 @@ const D = {
     marginTop: 12,
     fontSize: 12.5,
     fontWeight: 600,
+  },
+};
+
+/* ===== ID CARD — front face (portrait badge layout) ===== */
+const idFrontStyles = {
+  contentWrap: {
+    position: "relative",
+    zIndex: 3,
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+  },
+  topBar: {
+    marginTop: 6,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 2,
+  },
+  crest: {
+    width: 28,
+    height: 28,
+    borderRadius: "50%",
+    background: "rgba(255,255,255,0.9)",
+    color: "var(--primary-dark)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "2px solid rgba(255,255,255,0.6)",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+    marginBottom: 3,
+  },
+  schoolName: {
+    fontSize: 13,
+    fontWeight: 800,
+    letterSpacing: 1.2,
+    color: "#fff",
+  },
+  subtitle: {
+    fontSize: 8.5,
+    fontWeight: 700,
+    letterSpacing: 1,
+    color: "rgba(255,255,255,0.72)",
+  },
+  photoBlock: {
+    display: "flex",
+    justifyContent: "center",
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  avatarWrap: { position: "relative", width: 64, height: 64, flexShrink: 0 },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    background: "#fff",
+    color: "var(--primary)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 24,
+    fontWeight: 800,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+  },
+  avatarImg: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    objectFit: "cover",
+    border: "2.5px solid rgba(255,255,255,0.85)",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+  },
+  name: {
+    margin: 0,
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#fff",
+    lineHeight: 1.2,
+    padding: "0 6px",
+  },
+  role: {
+    marginTop: 6,
+    alignSelf: "center",
+    padding: "3px 10px",
+    borderRadius: 20,
+    background: "rgba(255,255,255,0.16)",
+    border: "1px solid rgba(255,255,255,0.35)",
+    color: "#FDE68A",
+    fontWeight: 800,
+    fontSize: 9.5,
+    width: "fit-content",
+    maxWidth: "90%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  detailsBox: {
+    marginTop: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    paddingTop: 10,
+    borderTop: "1px dashed rgba(255,255,255,0.3)",
+  },
+  detailRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+  },
+  detailLabel: {
+    fontSize: 8.5,
+    fontWeight: 700,
+    letterSpacing: 0.6,
+    color: "rgba(255,255,255,0.65)",
+  },
+  detailValue: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#fff",
+    textAlign: "right",
+  },
+  footerTag: {
+    marginTop: 8,
+    alignSelf: "center",
+    background: "rgba(255,255,255,0.92)",
+    color: "var(--primary-dark)",
+    padding: "2px 12px",
+    borderRadius: 20,
+    fontSize: 9,
+    fontWeight: 800,
+    letterSpacing: 1,
+  },
+};
+
+/* ===== ID CARD — back face + flip control ===== */
+const idBackStyles = {
+  headerSub: {
+    display: "block",
+    textAlign: "center",
+    marginTop: 10,
+    marginBottom: 12,
+    fontSize: 9.5,
+    fontWeight: 700,
+    letterSpacing: 1,
+    color: "rgba(255,255,255,0.7)",
+  },
+  magStripe: {
+    height: 30,
+    borderRadius: 4,
+    background: "rgba(10,10,10,0.75)",
+    marginBottom: 14,
+  },
+  barcodeCard: {
+    background: "rgba(255,255,255,0.9)",
+    borderRadius: 6,
+    padding: "8px 10px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 5,
+  },
+  barcode: {
+    width: "100%",
+    height: 34,
+    backgroundImage:
+      "repeating-linear-gradient(90deg, #111 0px, #111 2px, transparent 2px, transparent 3px, #111 3px, #111 6px, transparent 6px, transparent 8px, #111 8px, #111 9px, transparent 9px, transparent 13px)",
+  },
+  barcodeNum: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 2,
+    color: "#111",
+  },
+  metaRow: {
+    marginTop: 12,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  metaDates: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+  },
+  metaLine: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+  },
+  detailLabel: {
+    fontSize: 8,
+    fontWeight: 700,
+    letterSpacing: 0.6,
+    color: "rgba(255,255,255,0.6)",
+  },
+  detailValue: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#fff",
+  },
+  qrBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 5,
+    border: "2px solid rgba(255,255,255,0.85)",
+    backgroundColor: "#fff",
+    backgroundImage:
+      "repeating-conic-gradient(#111 0% 25%, #fff 0% 50%)",
+    backgroundSize: "8px 8px",
+  },
+  signatureRow: {
+    marginTop: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  signatureLine: {
+    height: 18,
+    borderBottom: "1px solid rgba(255,255,255,0.6)",
+  },
+  signatureLabel: {
+    fontSize: 9.5,
+    fontWeight: 600,
+    letterSpacing: 0.5,
+    color: "rgba(255,255,255,0.75)",
+  },
+  fineprint: {
+    marginTop: "auto",
+    fontSize: 9.5,
+    lineHeight: 1.4,
+    fontWeight: 500,
+    color: "rgba(255,255,255,0.75)",
+  },
+  flipBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    justifyContent: "center",
+    width: "fit-content",
+    margin: "0 auto",
+    padding: "6px 14px",
+    borderRadius: 20,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "var(--shadow-sm)",
   },
 };
