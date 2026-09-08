@@ -574,6 +574,14 @@ export default function StudentProfile() {
                           <span style={idFrontStyles.detailLabel}>CLASS</span>
                           <span style={idFrontStyles.detailValue}>{studentClass || "N/A"}</span>
                         </div>
+                        <div style={idFrontStyles.detailRow}>
+                          <span style={idFrontStyles.detailLabel}>GENDER</span>
+                          <span style={idFrontStyles.detailValue}>{gender || "N/A"}</span>
+                        </div>
+                        <div style={idFrontStyles.detailRow}>
+                          <span style={idFrontStyles.detailLabel}>ROLE</span>
+                          <span style={idFrontStyles.detailValue}>{user.role || "N/A"}</span>
+                        </div>
                       </div>
 
                       <span style={idFrontStyles.footerTag}>STUDENT ID</span>
@@ -590,6 +598,21 @@ export default function StudentProfile() {
                       <span style={idBackStyles.headerSub}>STUDENT ID — REVERSE</span>
 
                       <div style={idBackStyles.magStripe} />
+
+                      <div style={idBackStyles.infoStack}>
+                        <div style={idBackStyles.metaLine}>
+                          <span style={idBackStyles.detailLabel}>EMAIL</span>
+                          <span style={idBackStyles.detailValueSmall}>{email || "N/A"}</span>
+                        </div>
+                        <div style={idBackStyles.metaLine}>
+                          <span style={idBackStyles.detailLabel}>PHONE</span>
+                          <span style={idBackStyles.detailValueSmall}>{phone || "N/A"}</span>
+                        </div>
+                        <div style={idBackStyles.metaLine}>
+                          <span style={idBackStyles.detailLabel}>ASSESSMENT NO.</span>
+                          <span style={idBackStyles.detailValueSmall}>{assessmentNumber || "N/A"}</span>
+                        </div>
+                      </div>
 
                       <div style={idBackStyles.barcodeCard}>
                         <div style={idBackStyles.barcode} />
@@ -1175,23 +1198,41 @@ const idBackStyles = {
     color: "rgba(255,255,255,0.7)",
   },
   magStripe: {
-    height: 30,
+    height: 20,
     borderRadius: 4,
     background: "rgba(10,10,10,0.75)",
-    marginBottom: 14,
+    marginBottom: 10,
+  },
+  infoStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottom: "1px dashed rgba(255,255,255,0.3)",
+  },
+  detailValueSmall: {
+    fontSize: 9.5,
+    fontWeight: 700,
+    color: "#fff",
+    textAlign: "right",
+    maxWidth: "62%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   barcodeCard: {
     background: "rgba(255,255,255,0.9)",
     borderRadius: 6,
-    padding: "8px 10px",
+    padding: "6px 10px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
   },
   barcode: {
     width: "100%",
-    height: 34,
+    height: 24,
     backgroundImage:
       "repeating-linear-gradient(90deg, #111 0px, #111 2px, transparent 2px, transparent 3px, #111 3px, #111 6px, transparent 6px, transparent 8px, #111 8px, #111 9px, transparent 9px, transparent 13px)",
   },
@@ -1214,8 +1255,10 @@ const idBackStyles = {
   },
   metaLine: {
     display: "flex",
-    flexDirection: "column",
-    gap: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    gap: 8,
   },
   detailLabel: {
     fontSize: 8,
