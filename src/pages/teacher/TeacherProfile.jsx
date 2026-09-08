@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import API, { resolvePhotoUrl } from "../../api";
-import { Camera, Loader2, RotateCw } from "lucide-react";
+import { Camera, Loader2, RotateCw, GraduationCap, ShieldCheck } from "lucide-react";
 
 /* ─── design-token stylesheet ───
    Copied verbatim from Dashboard.jsx (same id guard — if the user
@@ -191,8 +191,10 @@ const injectIdCardStyles = () => {
     }
 
     /* Each face IS the physical card: printed maroon base +
-       frosted glass lamination on top, full card size, real
-       rounded-corner card radius and a floating drop shadow. */
+       frosted glass lamination on top, a fine diagonal guilloche
+       line pattern for that "security document" texture, full
+       card size, real rounded-corner card radius and a floating
+       drop shadow. */
     .id-card-face {
       position: absolute;
       inset: 0;
@@ -204,6 +206,7 @@ const injectIdCardStyles = () => {
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
       background:
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 7px),
         linear-gradient(rgba(255,255,255,0.16), rgba(255,255,255,0.16)),
         linear-gradient(150deg, var(--primary), var(--primary-dark));
       backdrop-filter: blur(10px);
@@ -215,6 +218,53 @@ const injectIdCardStyles = () => {
     }
     .id-card-face.id-card-back {
       transform: rotateY(180deg);
+    }
+
+    /* glossy diagonal light sweep — sits above the printed base
+       but below the text/photo content, sweeps across on hover
+       like light catching laminated plastic */
+    .id-card-shine {
+      position: absolute;
+      inset: -55% -70%;
+      background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.4) 50%, transparent 58%);
+      transform: translateX(-130%) rotate(8deg);
+      transition: transform 0.9s ease;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .id-card-shell:hover .id-card-flip:not(.is-flipped) .id-card-front .id-card-shine,
+    .id-card-shell:hover .id-card-flip.is-flipped .id-card-back .id-card-shine {
+      transform: translateX(65%) rotate(8deg);
+    }
+
+    /* holographic security seal — small foil sticker, subtle
+       color-cycling shimmer, same detail real staff/access cards
+       carry to look tamper-evident */
+    .id-card-hologram {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: conic-gradient(from 90deg, #ff9a9e, #fbc2eb, #a1c4fd, #fad0c4, #c2e9fb, #ff9a9e);
+      opacity: 0.62;
+      mix-blend-mode: screen;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 0 3px rgba(255,255,255,0.85), 0 0 4px rgba(255,255,255,0.35);
+      z-index: 4;
+      animation: hologramShimmer 7s linear infinite;
+    }
+    .id-card-hologram svg {
+      color: rgba(255,255,255,0.9);
+    }
+    @keyframes hologramShimmer {
+      to { filter: hue-rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .id-card-hologram { animation: none; }
     }
 
     /* lanyard hole-punch slot at the top edge — the detail that
@@ -309,6 +359,12 @@ export default function TeacherProfile() {
   // back shows the "laminated" reverse of the badge.
   const [flipped, setFlipped] = useState(false);
 
+  // Issue/expiry years shown on the back of the card — real staff
+  // cards carry a validity window, so we derive one instead of
+  // leaving it blank.
+  const issueYear = new Date().getFullYear();
+  const expiryYear = issueYear + 3;
+
   // Refresh from the server on mount so photoUrl reflects the latest
   // upload (localStorage's copy is only as fresh as the last login).
   useEffect(() => {
@@ -388,80 +444,109 @@ export default function TeacherProfile() {
         >
           {/* ---- FRONT FACE ---- */}
           <div className="id-card-face id-card-front">
-            <div style={idFrontStyles.topBar}>
-              <span style={idFrontStyles.schoolName}>ASUMBI TTC</span>
-              <span style={idFrontStyles.subtitle}>STAFF IDENTIFICATION</span>
-            </div>
-
-            <div style={idFrontStyles.photoBlock}>
-              <div style={styles.avatarWrap}>
-                {user.photoUrl ? (
-                  <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={idFrontStyles.avatarImg} />
-                ) : (
-                  <div style={idFrontStyles.avatar}>{user.name?.charAt(0) || "T"}</div>
-                )}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                  disabled={uploadingPhoto}
-                  style={styles.avatarEditBtn}
-                  className="dash-btn"
-                  aria-label="Change profile photo"
-                >
-                  {uploadingPhoto ? <Loader2 size={12} className="dash-spin" /> : <Camera size={12} />}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handlePhotoSelect}
-                  style={{ display: "none" }}
-                />
+            <div className="id-card-shine" />
+            <div style={idFrontStyles.contentWrap}>
+              <div style={idFrontStyles.topBar}>
+                <div style={idFrontStyles.crest}>
+                  <GraduationCap size={15} />
+                </div>
+                <span style={idFrontStyles.schoolName}>ASUMBI TTC</span>
+                <span style={idFrontStyles.subtitle}>STAFF IDENTIFICATION</span>
               </div>
-            </div>
 
-            <h2 style={idFrontStyles.name}>{user.name || "Teacher Name"}</h2>
-            <span style={idFrontStyles.role} className="glass-badge">
-              {user.isClassTeacher ? "🎓 Class Teacher" : "📘 Subject Teacher"}
-            </span>
-
-            <div style={idFrontStyles.detailsBox}>
-              <div style={idFrontStyles.detailRow}>
-                <span style={idFrontStyles.detailLabel}>ID NO.</span>
-                <span style={idFrontStyles.detailValue}>{user.username || "N/A"}</span>
+              <div style={idFrontStyles.photoBlock}>
+                <div style={styles.avatarWrap}>
+                  {user.photoUrl ? (
+                    <img src={resolvePhotoUrl(user.photoUrl)} alt="Profile" style={idFrontStyles.avatarImg} />
+                  ) : (
+                    <div style={idFrontStyles.avatar}>{user.name?.charAt(0) || "T"}</div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    disabled={uploadingPhoto}
+                    style={styles.avatarEditBtn}
+                    className="dash-btn"
+                    aria-label="Change profile photo"
+                  >
+                    {uploadingPhoto ? <Loader2 size={12} className="dash-spin" /> : <Camera size={12} />}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handlePhotoSelect}
+                    style={{ display: "none" }}
+                  />
+                </div>
               </div>
-              <div style={idFrontStyles.detailRow}>
-                <span style={idFrontStyles.detailLabel}>SUBJECT</span>
-                <span style={idFrontStyles.detailValue}>{user.subject || "N/A"}</span>
-              </div>
-            </div>
 
-            <span style={idFrontStyles.footerTag}>STAFF ID</span>
+              <h2 style={idFrontStyles.name}>{user.name || "Teacher Name"}</h2>
+              <span style={idFrontStyles.role} className="glass-badge">
+                {user.isClassTeacher ? "🎓 Class Teacher" : "📘 Subject Teacher"}
+              </span>
+
+              <div style={idFrontStyles.detailsBox}>
+                <div style={idFrontStyles.detailRow}>
+                  <span style={idFrontStyles.detailLabel}>ID NO.</span>
+                  <span style={idFrontStyles.detailValue}>{user.username || "N/A"}</span>
+                </div>
+                <div style={idFrontStyles.detailRow}>
+                  <span style={idFrontStyles.detailLabel}>SUBJECT</span>
+                  <span style={idFrontStyles.detailValue}>{user.subject || "N/A"}</span>
+                </div>
+              </div>
+
+              <span style={idFrontStyles.footerTag}>STAFF ID</span>
+            </div>
+            <div className="id-card-hologram">
+              <ShieldCheck size={14} />
+            </div>
           </div>
 
           {/* ---- BACK FACE ---- */}
           <div className="id-card-face id-card-back">
-            <span style={idBackStyles.headerSub}>STAFF ID — REVERSE</span>
+            <div className="id-card-shine" />
+            <div style={idFrontStyles.contentWrap}>
+              <span style={idBackStyles.headerSub}>STAFF ID — REVERSE</span>
 
-            <div style={idBackStyles.magStripe} />
+              <div style={idBackStyles.magStripe} />
 
-            <div style={idBackStyles.barcodeCard}>
-              <div style={idBackStyles.barcode} />
-              <span style={idBackStyles.barcodeNum}>{(user.username || "N/A").toUpperCase()}</span>
+              <div style={idBackStyles.barcodeCard}>
+                <div style={idBackStyles.barcode} />
+                <span style={idBackStyles.barcodeNum}>{(user.username || "N/A").toUpperCase()}</span>
+              </div>
+
+              <div style={idBackStyles.metaRow}>
+                <div style={idBackStyles.metaDates}>
+                  <div style={idBackStyles.metaLine}>
+                    <span style={idBackStyles.detailLabel}>ISSUED</span>
+                    <span style={idBackStyles.detailValue}>{issueYear}</span>
+                  </div>
+                  <div style={idBackStyles.metaLine}>
+                    <span style={idBackStyles.detailLabel}>VALID THRU</span>
+                    <span style={idBackStyles.detailValue}>{expiryYear}</span>
+                  </div>
+                </div>
+                <div style={idBackStyles.qrBox} />
+              </div>
+
+              <div style={idBackStyles.signatureRow}>
+                <div style={idBackStyles.signatureLine} />
+                <span style={idBackStyles.signatureLabel}>Authorized Signature</span>
+              </div>
+
+              <p style={idBackStyles.fineprint}>
+                Property of ASUMBI TTC. If found, please return to the school
+                administration office.
+              </p>
             </div>
-
-            <div style={idBackStyles.signatureRow}>
-              <div style={idBackStyles.signatureLine} />
-              <span style={idBackStyles.signatureLabel}>Authorized Signature</span>
+            <div className="id-card-hologram">
+              <ShieldCheck size={14} />
             </div>
-
-            <p style={idBackStyles.fineprint}>
-              Property of ASUMBI TTC. If found, please return to the school
-              administration office.
-            </p>
           </div>
         </div>
       </div>
@@ -613,12 +698,32 @@ const styles = {
 
 /* ===== ID CARD — front face (portrait badge layout) ===== */
 const idFrontStyles = {
+  contentWrap: {
+    position: "relative",
+    zIndex: 3,
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+  },
   topBar: {
-    marginTop: 10,
+    marginTop: 6,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: 1,
+    gap: 2,
+  },
+  crest: {
+    width: 28,
+    height: 28,
+    borderRadius: "50%",
+    background: "rgba(255,255,255,0.9)",
+    color: "var(--primary-dark)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "2px solid rgba(255,255,255,0.6)",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+    marginBottom: 3,
   },
   schoolName: {
     fontSize: 13,
@@ -765,6 +870,43 @@ const idBackStyles = {
     letterSpacing: 2,
     color: "#111",
   },
+  metaRow: {
+    marginTop: 12,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  metaDates: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+  },
+  metaLine: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+  },
+  detailLabel: {
+    fontSize: 8,
+    fontWeight: 700,
+    letterSpacing: 0.6,
+    color: "rgba(255,255,255,0.6)",
+  },
+  detailValue: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#fff",
+  },
+  qrBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 5,
+    border: "2px solid rgba(255,255,255,0.85)",
+    backgroundColor: "#fff",
+    backgroundImage:
+      "repeating-conic-gradient(#111 0% 25%, #fff 0% 50%)",
+    backgroundSize: "8px 8px",
+  },
   signatureRow: {
     marginTop: 10,
     display: "flex",
@@ -794,7 +936,7 @@ const idBackStyles = {
     gap: 6,
     justifyContent: "center",
     width: "fit-content",
-    margin: "12px auto 0",
+    margin: "0 auto 14px",
     padding: "6px 14px",
     borderRadius: 20,
     background: "rgba(255,255,255,0.18)",
