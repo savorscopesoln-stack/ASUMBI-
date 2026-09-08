@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import API from "../../api";
+import API, { resolveFileUrl } from "../../api";
 import {
   MonitorCheck, Clock, UserRound, Loader2, Inbox, AlertTriangle,
-  User, Lock, LogIn, ClipboardList,
+  User, Lock, LogIn, ClipboardList, FileText,
 } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
@@ -312,6 +312,31 @@ export default function TakeAssessmentPicker() {
                 <span style={S.badge}>{a.status}</span>
               </div>
 
+              {a.cover_page_url && (
+                <div
+                  className="cover-preview"
+                  style={S.coverWrap}
+                  onClick={() => navigate(`/take-assessment/${a.id}`)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View cover page and start ${a.title}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") navigate(`/take-assessment/${a.id}`);
+                  }}
+                >
+                  <iframe
+                    src={`${resolveFileUrl(a.cover_page_url)}#toolbar=0&navpanes=0&scrollbar=0`}
+                    title={`${a.title} cover page`}
+                    style={S.coverFrame}
+                    tabIndex={-1}
+                  />
+                  <div style={S.coverClickCatcher} />
+                  <div style={S.coverCaption}>
+                    <FileText size={12} /> Click to view cover page & start exam
+                  </div>
+                </div>
+              )}
+
               <div className="assess-info" style={S.info}>
                 <div style={S.infoBox}>
                   <span style={S.infoLabel}>
@@ -441,6 +466,40 @@ const S = {
     height: "fit-content",
     textTransform: "capitalize",
     flexShrink: 0,
+  },
+  coverWrap: {
+    position: "relative",
+    borderRadius: "var(--radius-sm)",
+    overflow: "hidden",
+    border: "1px solid var(--border)",
+    cursor: "pointer",
+    marginBottom: 16,
+    background: "var(--bg)",
+  },
+  coverFrame: {
+    width: "100%",
+    height: 220,
+    border: "none",
+    display: "block",
+    pointerEvents: "none",
+  },
+  coverClickCatcher: {
+    position: "absolute",
+    inset: 0,
+  },
+  coverCaption: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "7px 10px",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#fff",
+    background: "linear-gradient(transparent, rgba(11,15,25,0.72))",
   },
   info: { display: "flex", gap: 10, marginBottom: 18 },
   infoBox: {
