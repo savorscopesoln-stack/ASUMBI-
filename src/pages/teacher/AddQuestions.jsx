@@ -223,9 +223,9 @@ const submitQuestion = async () => {
           borderRadius: 8,
           fontSize: 13,
           fontWeight: 600,
-          background: deadlinePassed ? "rgba(239,68,68,0.12)" : "rgba(99,102,241,0.10)",
-          border: `1px solid ${deadlinePassed ? "rgba(239,68,68,0.4)" : "rgba(99,102,241,0.3)"}`,
-          color: deadlinePassed ? "#f87171" : "#a5b4fc",
+          background: deadlinePassed ? "rgba(239,68,68,0.12)" : "rgba(159,18,57,0.10)",
+          border: `1px solid ${deadlinePassed ? "rgba(239,68,68,0.4)" : "rgba(159,18,57,0.3)"}`,
+          color: deadlinePassed ? "#f87171" : "#fda4af",
         }}>
           {deadlinePassed
             ? `Deadline to add questions passed on ${deadline.toLocaleString()}. New questions can no longer be added — existing ones can still be viewed below.`
@@ -247,8 +247,8 @@ const submitQuestion = async () => {
                 ...S.formHeaderIcon,
                 background: editingId
                   ? "rgba(245,158,11,0.15)"
-                  : "rgba(99,102,241,0.15)",
-                border: `1px solid ${editingId ? "rgba(245,158,11,0.4)" : "rgba(99,102,241,0.4)"}`,
+                  : "rgba(159,18,57,0.15)",
+                border: `1px solid ${editingId ? "rgba(245,158,11,0.4)" : "rgba(159,18,57,0.4)"}`,
               }}>
                 {editingId ? "✏️" : "➕"}
               </div>
@@ -444,16 +444,16 @@ const submitQuestion = async () => {
                       <div style={S.qCardHeaderLeft}>
                         <span style={{
                           ...S.qIndexBadge,
-                          background: isMcq ? "rgba(99,102,241,0.18)" : "rgba(168,85,247,0.18)",
-                          border: `1px solid ${isMcq ? "rgba(99,102,241,0.4)" : "rgba(168,85,247,0.4)"}`,
-                          color: isMcq ? "#818cf8" : "#c084fc",
+                          background: isMcq ? "rgba(159,18,57,0.18)" : "rgba(168,85,247,0.18)",
+                          border: `1px solid ${isMcq ? "rgba(159,18,57,0.4)" : "rgba(168,85,247,0.4)"}`,
+                          color: isMcq ? "#fb7185" : "#c084fc",
                         }}>
                           Q{index + 1}
                         </span>
                         <span style={{
                           ...S.qTypePill,
-                          background: isMcq ? "rgba(99,102,241,0.1)" : "rgba(168,85,247,0.1)",
-                          color: isMcq ? "#6366f1" : "#a855f7",
+                          background: isMcq ? "rgba(159,18,57,0.1)" : "rgba(168,85,247,0.1)",
+                          color: isMcq ? "#fb7185" : "#a855f7",
                         }}>
                           {isMcq ? "◉ MCQ" : "✍ Essay"}
                         </span>
@@ -660,9 +660,9 @@ const S = {
     fontSize: 14, fontWeight: 700, transition: "all 0.2s",
   },
   typeBtnActive: {
-    background: "rgba(99,102,241,0.18)",
-    border: "1.5px solid rgba(99,102,241,0.5)",
-    color: "#a5b4fc",
+    background: "rgba(159,18,57,0.18)",
+    border: "1.5px solid rgba(159,18,57,0.5)",
+    color: "#fda4af",
   },
 
   /* Fields */
@@ -691,12 +691,12 @@ const S = {
 
   /* MCQ section */
   mcqSection: {
-    background: "rgba(99,102,241,0.06)",
-    border: "1px solid rgba(99,102,241,0.2)",
+    background: "rgba(159,18,57,0.06)",
+    border: "1px solid rgba(159,18,57,0.2)",
     borderRadius: 18, padding: 20, marginBottom: 18,
   },
   mcqSectionHeader: { marginBottom: 14 },
-  mcqSectionTitle: { fontSize: 14, fontWeight: 800, color: "#a5b4fc" },
+  mcqSectionTitle: { fontSize: 14, fontWeight: 800, color: "#fda4af" },
   mcqSectionHint: { display: "block", fontSize: 12, color: "#475569", marginTop: 4 },
   optionsGrid: { display: "flex", flexDirection: "column", gap: 10 },
   optionInputRow: {
@@ -751,9 +751,9 @@ const S = {
   saveBtn: {
     flex: 1, padding: "14px",
     borderRadius: 14, border: "none",
-    background: "linear-gradient(135deg,#4f46e5,#6366f1)",
+    background: "linear-gradient(135deg,#9f1239,#e11d48)",
     color: "#fff", fontWeight: 800, fontSize: 15,
-    cursor: "pointer", boxShadow: "0 6px 20px rgba(99,102,241,0.3)",
+    cursor: "pointer", boxShadow: "0 6px 20px rgba(159,18,57,0.3)",
   },
   cancelBtn: {
     padding: "14px 20px", borderRadius: 14, border: "none",

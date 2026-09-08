@@ -123,26 +123,28 @@ function useGlobalMarkingStyles() {
       style.id = styleId;
       style.textContent = `
         :root {
-          --mp-bg: #ffffff;
-          --mp-surface: #ffffff;
-          --mp-surface-2: #fafafa;
-          --mp-surface-3: #f0f0f1;
-          --mp-border: #e5e5e7;
-          --mp-border-strong: #d6d6d9;
-          --mp-text: #0a0a0b;
-          --mp-text-dim: #63636a;
-          --mp-text-faint: #9a9aa1;
-          --mp-highlight-bg: rgba(250, 204, 21, .32);
-          --mp-highlight-border: #ca8a04;
-          --mp-green: #15803d;
-          --mp-green-bg: #f0fdf4;
-          --mp-green-border: #bbf7d0;
-          --mp-red: #b91c1c;
-          --mp-red-bg: #fef2f2;
-          --mp-red-border: #fecaca;
-          --mp-amber-text: #92400e;
-          --mp-amber-bg: #fffbeb;
-          --mp-amber-border: #fde68a;
+          --mp-bg: #0a0f1c;
+          --mp-surface: #0f172a;
+          --mp-surface-2: rgba(255,255,255,.04);
+          --mp-surface-3: rgba(255,255,255,.08);
+          --mp-border: rgba(255,255,255,.08);
+          --mp-border-strong: rgba(255,255,255,.16);
+          --mp-text: #f1f5f9;
+          --mp-text-dim: #94a3b8;
+          --mp-text-faint: #64748b;
+          --mp-primary: #9f1239;
+          --mp-primary-hover: #e11d48;
+          --mp-highlight-bg: rgba(251, 191, 36, .22);
+          --mp-highlight-border: #fbbf24;
+          --mp-green: #34d399;
+          --mp-green-bg: rgba(16, 185, 129, .12);
+          --mp-green-border: rgba(16, 185, 129, .35);
+          --mp-red: #fb7185;
+          --mp-red-bg: rgba(244, 63, 94, .12);
+          --mp-red-border: rgba(244, 63, 94, .35);
+          --mp-amber-text: #fbbf24;
+          --mp-amber-bg: rgba(251, 191, 36, .12);
+          --mp-amber-border: rgba(251, 191, 36, .35);
         }
         * { box-sizing: border-box; }
 
@@ -151,7 +153,7 @@ function useGlobalMarkingStyles() {
         @keyframes mp-toast-in { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @keyframes mp-pop { 0% { background-color: rgba(250,204,21,.65); } 100% { background-color: var(--mp-highlight-bg); } }
 
-        .mp-root { min-height: 100%; background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+        .mp-root { min-height: 100%; background: linear-gradient(180deg, #0a0f1c 0%, #0f172a 100%);
           padding: 32px 28px 90px; color: var(--mp-text); font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 0 auto; }
         @media (max-width: 720px) { .mp-root { padding: 18px 12px 90px; } }
 
@@ -169,21 +171,21 @@ function useGlobalMarkingStyles() {
         .essay-readonly { user-select: text; caret-color: transparent; outline: none; }
         .essay-readonly:focus { outline: none; }
         .hl-mark { background: var(--mp-highlight-bg); border-bottom: 2px solid var(--mp-highlight-border); border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mp-pop .4s ease; transition: background .15s ease; color: var(--mp-text); }
-        .hl-mark:hover { background: rgba(250,204,21,.5); }
-        .hl-mark::after { content: "+" attr(data-mark); position: absolute; top: -9px; right: -6px; background: var(--mp-text); color: #fff; font-size: 9px; font-weight: 800; border-radius: 5px; padding: 0 3px; line-height: 13px; font-family: 'JetBrains Mono', monospace; pointer-events: none; }
+        .hl-mark:hover { background: rgba(251,191,36,.38); }
+        .hl-mark::after { content: "+" attr(data-mark); position: absolute; top: -9px; right: -6px; background: var(--mp-primary); color: #fff; font-size: 9px; font-weight: 800; border-radius: 5px; padding: 0 3px; line-height: 13px; font-family: 'JetBrains Mono', monospace; pointer-events: none; }
 
         .mp-btn { transition: transform .12s ease, box-shadow .15s ease, background .15s ease, opacity .15s ease, border-color .15s ease; cursor: pointer; font-family: inherit; }
-        .mp-btn:hover:not(:disabled) { box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+        .mp-btn:hover:not(:disabled) { box-shadow: 0 4px 14px rgba(0,0,0,.35); }
         .mp-btn:active:not(:disabled) { transform: translateY(0.5px); }
         .mp-btn:focus-visible { outline: 2px solid var(--mp-text); outline-offset: 2px; }
         .mp-btn:disabled { cursor: not-allowed; }
 
         .mp-dot { transition: all .15s ease; }
         .mp-dot.mp-dot-flagged { box-shadow: 0 0 0 2px var(--mp-amber-border) inset; }
-        .mp-dot.mp-dot-current { box-shadow: 0 0 0 3px rgba(10,10,11,.14); }
+        .mp-dot.mp-dot-current { box-shadow: 0 0 0 3px rgba(159,18,57,.35); }
 
         .mp-progress-track { position: relative; overflow: hidden; }
-        .mp-progress-fill { background: var(--mp-text); }
+        .mp-progress-fill { background: var(--mp-primary); }
 
         .mp-toast { animation: mp-toast-in .25s cubic-bezier(.2,.9,.3,1.1); }
         .mp-stepper-btn { transition: background .15s ease, opacity .15s ease; }
@@ -217,7 +219,7 @@ function Toast({ toast, onDismiss }) {
     <div className="mp-toast" style={{
       position: "fixed", bottom: 20, right: 20, left: 20, margin: "0 auto", maxWidth: 380, zIndex: 1000,
       background: palette.bg, border: `1px solid ${palette.border}`, color: palette.text,
-      padding: "12px 16px", borderRadius: 10, boxShadow: "0 10px 30px rgba(0,0,0,.1)",
+      padding: "12px 16px", borderRadius: 10, boxShadow: "0 10px 30px rgba(0,0,0,.4)",
       display: "flex", alignItems: "center", gap: 14, fontSize: 13.5,
     }}>
       <span style={{ flex: 1 }}>{toast.message}</span>
@@ -248,8 +250,8 @@ function ScoreGauge({ value, max, size = 60 }) {
         transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ transition: "stroke-dashoffset .5s cubic-bezier(.4,0,.2,1)" }} />
       <defs>
         <linearGradient id="mpGaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#0a0a0b" />
-          <stop offset="100%" stopColor="#52525b" />
+          <stop offset="0%" stopColor="#9f1239" />
+          <stop offset="100%" stopColor="#fbbf24" />
         </linearGradient>
       </defs>
       <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill="var(--mp-text)" fontSize={size * 0.24} fontWeight="700" fontFamily="'JetBrains Mono', monospace">
@@ -353,7 +355,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         onMouseUp={handleMouseUp}
         onClick={handleContainerClick}
         style={s.essayText}
-        dangerouslySetInnerHTML={{ __html: html || '<em style="color:#9a9aa1">No answer was submitted for this question.</em>' }}
+        dangerouslySetInnerHTML={{ __html: html || '<em style="color:#64748b">No answer was submitted for this question.</em>' }}
       />
 
       {highlights.length > 0 && (
@@ -691,7 +693,7 @@ export default function Marking() {
             <p style={s.subheading}>Every question in this submission has a mark.</p>
           </div>
           <button onClick={saveMarking} disabled={saving} className="mp-btn"
-            style={{ ...s.btn, background: saved ? "var(--mp-green)" : "var(--mp-text)", opacity: saving ? 0.6 : 1 }}>
+            style={{ ...s.btn, background: saved ? "var(--mp-green)" : "var(--mp-primary)", opacity: saving ? 0.6 : 1 }}>
             {saving ? "Saving…" : saved ? "Saved" : "Save final marks"}
           </button>
         </div>
@@ -731,7 +733,7 @@ export default function Marking() {
             {maxPossible > 0 && <span style={{ color: "var(--mp-text-faint)" }}> / {maxPossible}</span>}
           </p>
           <button onClick={saveMarking} disabled={saving} className="mp-btn"
-            style={{ ...s.btn, background: saved ? "var(--mp-green)" : "var(--mp-text)", marginTop: 20, padding: "13px 36px", fontSize: 15 }}>
+            style={{ ...s.btn, background: saved ? "var(--mp-green)" : "var(--mp-primary)", marginTop: 20, padding: "13px 36px", fontSize: 15 }}>
             {saving ? "Saving…" : saved ? "Marks saved" : "Save & finish"}
           </button>
         </div>
@@ -753,7 +755,7 @@ export default function Marking() {
           </p>
         </div>
         <button onClick={saveMarking} disabled={saving || allAnswers.length === 0} className="mp-btn"
-          style={{ ...s.btn, background: saved ? "var(--mp-green)" : "var(--mp-text)", opacity: saving || allAnswers.length === 0 ? 0.6 : 1 }}>
+          style={{ ...s.btn, background: saved ? "var(--mp-green)" : "var(--mp-primary)", opacity: saving || allAnswers.length === 0 ? 0.6 : 1 }}>
           {saving ? "Saving…" : saved ? "Saved" : "Save marks"}
         </button>
       </div>
@@ -796,7 +798,7 @@ export default function Marking() {
               onClick={() => setCurrentIdx(i)}
               title={`Question ${i + 1}${flags[a.id] ? " — flagged" : ""}`}
               className={`mp-dot${i === currentIdx ? " mp-dot-current" : ""}${flags[a.id] ? " mp-dot-flagged" : ""}`}
-              style={{ ...s.dot, background: i === currentIdx ? "var(--mp-text)" : "var(--mp-surface-3)", border: `1px solid ${i === currentIdx ? "var(--mp-text)" : "var(--mp-border)"}` }}
+              style={{ ...s.dot, background: i === currentIdx ? "var(--mp-primary)" : "var(--mp-surface-3)", border: `1px solid ${i === currentIdx ? "var(--mp-primary)" : "var(--mp-border)"}` }}
             />
           ))}
         </div>
@@ -872,7 +874,7 @@ export default function Marking() {
             Score so far: <strong style={{ color: "var(--mp-text)" }}>{totalScore}</strong>
             {maxPossible > 0 && <span style={{ color: "var(--mp-text-faint)" }}> / {maxPossible}</span>}
           </span>
-          <button onClick={saveMarking} disabled={saving} className="mp-btn" style={{ ...s.btn, background: saved ? "var(--mp-green)" : "var(--mp-text)", opacity: saving ? 0.6 : 1 }}>
+          <button onClick={saveMarking} disabled={saving} className="mp-btn" style={{ ...s.btn, background: saved ? "var(--mp-green)" : "var(--mp-primary)", opacity: saving ? 0.6 : 1 }}>
             {saving ? "Saving…" : saved ? "Saved" : "Save final marks"}
           </button>
         </div>
@@ -941,7 +943,7 @@ const s = {
   input: { width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--mp-border)", background: "var(--mp-surface)", color: "var(--mp-text)", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "'JetBrains Mono', monospace" },
   textarea: { width: "100%", minHeight: 80, padding: "10px 14px", borderRadius: 8, border: "1px solid var(--mp-border)", background: "var(--mp-surface)", color: "var(--mp-text)", fontSize: 14, lineHeight: 1.6, resize: "vertical", outline: "none", boxSizing: "border-box", fontFamily: "inherit" },
 
-  markDoneBtn: { background: "var(--mp-text)", color: "#fff", border: "none", padding: "9px 22px", borderRadius: 8, fontSize: 14, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 },
+  markDoneBtn: { background: "var(--mp-primary)", color: "#fff", border: "none", padding: "9px 22px", borderRadius: 8, fontSize: 14, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 },
   navBtn: { background: "var(--mp-surface)", color: "var(--mp-text-dim)", border: "1px solid var(--mp-border)", padding: "9px 18px", borderRadius: 8, fontSize: 14, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center" },
 
   btn: { color: "#fff", border: "none", padding: "10px 20px", borderRadius: 8, fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" },
