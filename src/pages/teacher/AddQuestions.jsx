@@ -2,7 +2,90 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../../api";
 
+/* ─── design-token stylesheet ───
+   Copied verbatim from Dashboard.jsx (same id guard, so if the user
+   already visited /dashboard this is a no-op and both pages share
+   one injected <style>). This is what makes this page's colors
+   actually match Dashboard instead of guessing at a palette. */
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:translateY(0);} }
+
+    .dash-card:hover { box-shadow: var(--shadow); }
+    .dash-btn { transition: filter 0.15s ease, background-color .15s ease, border-color .15s ease; }
+    .dash-btn:hover { filter: brightness(0.97); }
+    .dash-btn-secondary:hover { background: var(--bg) !important; }
+
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
 export default function AddQuestions() {
+  injectStyles();
+
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -202,7 +285,7 @@ const submitQuestion = async () => {
 
       {/* ── TOP NAV ── */}
       <div style={S.topNav}>
-        <button style={S.backBtn} onClick={() => navigate(-1)}>← Back</button>
+        <button style={S.backBtn} className="dash-btn dash-btn-secondary" onClick={() => navigate(-1)}>← Back</button>
         <div style={S.topNavRight}>
           <span style={S.topNavStat}>
             <span style={S.topNavStatIcon}>◉</span> {mcqCount} MCQ
@@ -210,7 +293,7 @@ const submitQuestion = async () => {
           <span style={S.topNavStat}>
             <span style={S.topNavStatIcon}>✍</span> {essayCount} Essay
           </span>
-          <span style={{ ...S.topNavStat, color: "#fbbf24" }}>
+          <span style={{ ...S.topNavStat, color: "var(--warning)", background: "var(--warning-tint)", border: "1px solid rgba(180,83,9,0.25)" }}>
             <span style={S.topNavStatIcon}>★</span> {totalMarks} marks
           </span>
         </div>
@@ -220,12 +303,12 @@ const submitQuestion = async () => {
         <div style={{
           margin: "0 0 16px",
           padding: "10px 16px",
-          borderRadius: 8,
+          borderRadius: "var(--radius-sm)",
           fontSize: 13,
           fontWeight: 600,
-          background: deadlinePassed ? "rgba(239,68,68,0.12)" : "rgba(159,18,57,0.10)",
-          border: `1px solid ${deadlinePassed ? "rgba(239,68,68,0.4)" : "rgba(159,18,57,0.3)"}`,
-          color: deadlinePassed ? "#f87171" : "#fda4af",
+          background: deadlinePassed ? "var(--destructive-tint)" : "var(--primary-tint)",
+          border: `1px solid ${deadlinePassed ? "var(--destructive)" : "var(--primary)"}`,
+          color: deadlinePassed ? "var(--destructive)" : "var(--primary-dark)",
         }}>
           {deadlinePassed
             ? `Deadline to add questions passed on ${deadline.toLocaleString()}. New questions can no longer be added — existing ones can still be viewed below.`
@@ -239,16 +322,14 @@ const submitQuestion = async () => {
             LEFT — FORM
         ══════════════════════════════════════ */}
         <div style={S.formCol}>
-          <div style={S.formCard}>
+          <div style={S.formCard} className="dash-card">
 
             {/* Header */}
             <div style={S.formHeader}>
               <div style={{
                 ...S.formHeaderIcon,
-                background: editingId
-                  ? "rgba(245,158,11,0.15)"
-                  : "rgba(159,18,57,0.15)",
-                border: `1px solid ${editingId ? "rgba(245,158,11,0.4)" : "rgba(159,18,57,0.4)"}`,
+                background: editingId ? "var(--warning-tint)" : "var(--primary-tint)",
+                border: `1px solid ${editingId ? "var(--warning)" : "var(--primary)"}`,
               }}>
                 {editingId ? "✏️" : "➕"}
               </div>
@@ -275,7 +356,7 @@ const submitQuestion = async () => {
               <button
                 style={{
                   ...S.typeBtn,
-                  ...(questionType === "essay" ? { ...S.typeBtnActive, background: "rgba(168,85,247,0.18)", border: "1.5px solid rgba(168,85,247,0.5)", color: "#c084fc" } : {}),
+                  ...(questionType === "essay" ? S.typeBtnActiveEssay : {}),
                 }}
                 onClick={() => setQuestionType("essay")}
               >
@@ -387,7 +468,7 @@ const submitQuestion = async () => {
       onChange={(e) => setEssayAnswer(e.target.value)}
       style={{
         ...S.textarea,
-        borderColor: "rgba(168,85,247,0.4)",
+        borderColor: "var(--info)",
         minHeight: 120,
       }}
       rows={5}
@@ -398,14 +479,15 @@ const submitQuestion = async () => {
             {/* Actions */}
             <div style={S.formActions}>
               <button
-                style={{ ...S.saveBtn, opacity: (loading || (deadlinePassed && !editingId)) ? 0.5 : 1, cursor: (deadlinePassed && !editingId) ? "not-allowed" : "pointer" }}
+                style={{ ...S.saveBtn, opacity: (loading || (deadlinePassed && !editingId)) ? 0.55 : 1, cursor: (deadlinePassed && !editingId) ? "not-allowed" : "pointer" }}
+                className="dash-btn"
                 disabled={loading || (deadlinePassed && !editingId)}
                 onClick={submitQuestion}
               >
                 {loading ? "Saving…" : (deadlinePassed && !editingId) ? "Deadline passed" : editingId ? "Update Question" : "Add Question"}
               </button>
               {editingId && (
-                <button style={S.cancelBtn} onClick={resetForm}>
+                <button style={S.cancelBtn} className="dash-btn dash-btn-secondary" onClick={resetForm}>
                   Cancel
                 </button>
               )}
@@ -438,22 +520,23 @@ const submitQuestion = async () => {
                       ...S.qCard,
                       ...(editingId === q.id ? S.qCardEditing : {}),
                     }}
+                    className="dash-card"
                   >
                     {/* Q header */}
                     <div style={S.qCardHeader}>
                       <div style={S.qCardHeaderLeft}>
                         <span style={{
                           ...S.qIndexBadge,
-                          background: isMcq ? "rgba(159,18,57,0.18)" : "rgba(168,85,247,0.18)",
-                          border: `1px solid ${isMcq ? "rgba(159,18,57,0.4)" : "rgba(168,85,247,0.4)"}`,
-                          color: isMcq ? "#fb7185" : "#c084fc",
+                          background: isMcq ? "var(--primary-tint)" : "var(--info-tint)",
+                          border: `1px solid ${isMcq ? "var(--primary)" : "var(--info)"}`,
+                          color: isMcq ? "var(--primary-dark)" : "var(--info)",
                         }}>
                           Q{index + 1}
                         </span>
                         <span style={{
                           ...S.qTypePill,
-                          background: isMcq ? "rgba(159,18,57,0.1)" : "rgba(168,85,247,0.1)",
-                          color: isMcq ? "#fb7185" : "#a855f7",
+                          background: isMcq ? "var(--primary-tint)" : "var(--info-tint)",
+                          color: isMcq ? "var(--primary-dark)" : "var(--info)",
                         }}>
                           {isMcq ? "◉ MCQ" : "✍ Essay"}
                         </span>
@@ -499,47 +582,26 @@ const submitQuestion = async () => {
                       </div>
                     )}
 
-                    {/* Essay note */}
-{/* Essay Answer / Marking Guide */}
-{!isMcq && (
-  <div style={{
-    background: "rgba(168,85,247,0.06)",
-    border: "1px solid rgba(168,85,247,0.25)",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 16,
-  }}>
-    <div style={{
-      fontSize: 13,
-      fontWeight: 800,
-      color: "#c084fc",
-      marginBottom: 6,
-      display: "flex",
-      alignItems: "center",
-      gap: 8,
-    }}>
-      ✍ Expected Answer / Marking Guide
-    </div>
-
-    <div style={{
-      fontSize: 14,
-      color: "#e2e8f0",
-      lineHeight: 1.6,
-      whiteSpace: "pre-wrap",
-    }}>
-      {q.marking_guide?.trim()
-        ? q.marking_guide
-        : "No marking guide provided for this essay question."}
-    </div>
-  </div>
-)}
+                    {/* Essay Answer / Marking Guide */}
+                    {!isMcq && (
+                      <div style={S.essayNoteBox}>
+                        <div style={S.essayNoteTitle}>
+                          ✍ Expected Answer / Marking Guide
+                        </div>
+                        <div style={S.essayNoteBody}>
+                          {q.marking_guide?.trim()
+                            ? q.marking_guide
+                            : "No marking guide provided for this essay question."}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Card actions */}
                     <div style={S.qCardActions}>
-                      <button style={S.editBtn} onClick={() => editQuestion(q)}>
+                      <button style={S.editBtn} className="dash-btn" onClick={() => editQuestion(q)}>
                         ✏️ Edit
                       </button>
-                      <button style={S.deleteBtn} onClick={() => deleteQuestion(q.id)}>
+                      <button style={S.deleteBtn} className="dash-btn" onClick={() => deleteQuestion(q.id)}>
                         🗑 Delete
                       </button>
                     </div>
@@ -561,7 +623,7 @@ function Field({ label, hint, required, children }) {
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
         <label style={S.fieldLabel}>
           {label}
-          {required && <span style={{ color: "#f87171", marginLeft: 4 }}>*</span>}
+          {required && <span style={{ color: "var(--destructive)", marginLeft: 4 }}>*</span>}
         </label>
         {hint && <span style={S.fieldHint}>{hint}</span>}
       </div>
@@ -571,14 +633,17 @@ function Field({ label, hint, required, children }) {
 }
 
 /* =========================================================
-   STYLES
+   STYLES — every color/radius/shadow below reads from the
+   same CSS variables Dashboard.jsx defines, so this page
+   matches it exactly and stays in sync if those tokens
+   ever change (e.g. switching themes via [data-theme]).
 ========================================================= */
 const S = {
   page: {
     minHeight: "100vh",
-    background: "linear-gradient(160deg,#020617 0%,#0c0f1e 50%,#0f172a 100%)",
+    background: "var(--bg)",
     padding: "24px 28px 60px",
-    color: "#f1f5f9",
+    color: "var(--text)",
     fontFamily: "'Inter','Segoe UI',sans-serif",
   },
 
@@ -593,20 +658,21 @@ const S = {
   },
   backBtn: {
     padding: "9px 16px",
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.1)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#94a3b8",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text-secondary)",
     cursor: "pointer",
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 700,
+    fontFamily: "inherit",
   },
   topNavRight: { display: "flex", gap: 14, alignItems: "center" },
   topNavStat: {
     display: "flex", alignItems: "center", gap: 6,
-    fontSize: 14, fontWeight: 700, color: "#94a3b8",
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    fontSize: 13, fontWeight: 700, color: "var(--text-secondary)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
     padding: "7px 14px", borderRadius: 20,
   },
   topNavStatIcon: { opacity: 0.7 },
@@ -621,30 +687,29 @@ const S = {
   formCol: {},
   listCol: {},
 
-  /* Form card */
+  /* Form card — matches Dashboard's .panel/dash-card */
   formCard: {
-    background: "rgba(15,23,42,0.8)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 24,
-    padding: 30,
-    backdropFilter: "blur(14px)",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: 26,
+    boxShadow: "var(--shadow-sm)",
     position: "sticky",
     top: 20,
   },
   formHeader: {
     display: "flex", alignItems: "center", gap: 14,
-    marginBottom: 24,
-    paddingBottom: 20,
-    borderBottom: "1px solid rgba(255,255,255,0.07)",
+    marginBottom: 22,
+    paddingBottom: 18,
+    borderBottom: "1px solid var(--border)",
   },
   formHeaderIcon: {
-    width: 48, height: 48, borderRadius: 14,
+    width: 46, height: 46, borderRadius: 12,
     display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: 22, flexShrink: 0,
+    fontSize: 20, flexShrink: 0,
   },
-  formTitle: { margin: 0, fontSize: 20, fontWeight: 800 },
-  formSubtitle: { margin: "4px 0 0", fontSize: 13, color: "#64748b" },
+  formTitle: { margin: 0, fontSize: 17, fontWeight: 800, color: "var(--text)" },
+  formSubtitle: { margin: "3px 0 0", fontSize: 12.5, color: "var(--text-secondary)", fontWeight: 500 },
 
   /* Type toggle */
   typeToggle: {
@@ -652,125 +717,135 @@ const S = {
   },
   typeBtn: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-    gap: 8, padding: "11px 16px",
-    borderRadius: 12,
-    border: "1.5px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.04)",
-    color: "#64748b", cursor: "pointer",
-    fontSize: 14, fontWeight: 700, transition: "all 0.2s",
+    gap: 8, padding: "10px 14px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text-secondary)", cursor: "pointer",
+    fontSize: 13, fontWeight: 700, transition: "all 0.15s ease",
+    fontFamily: "inherit",
   },
   typeBtnActive: {
-    background: "rgba(159,18,57,0.18)",
-    border: "1.5px solid rgba(159,18,57,0.5)",
-    color: "#fda4af",
+    background: "var(--primary-tint)",
+    border: "1px solid var(--primary)",
+    color: "var(--primary-dark)",
+  },
+  typeBtnActiveEssay: {
+    background: "var(--info-tint)",
+    border: "1px solid var(--info)",
+    color: "var(--info)",
   },
 
-  /* Fields */
-  fieldLabel: { fontSize: 13, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" },
-  fieldHint: { fontSize: 12, color: "#475569" },
+  /* Fields — matches Dashboard's fieldLabel */
+  fieldLabel: { fontSize: 11.5, fontWeight: 700, color: "var(--text-secondary)" },
+  fieldHint: { fontSize: 11.5, color: "var(--text-muted)" },
   textarea: {
-    width: "100%", padding: "14px 16px",
-    borderRadius: 14,
-    border: "1.5px solid rgba(255,255,255,0.08)",
-    background: "rgba(30,41,59,0.7)",
-    color: "#f1f5f9", fontSize: 15, lineHeight: 1.7,
+    width: "100%", padding: "12px 14px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text)", fontSize: 14, lineHeight: 1.6,
     resize: "vertical", outline: "none",
     fontFamily: "'Inter',sans-serif",
     boxSizing: "border-box",
   },
   input: {
-    width: "100%", padding: "13px 16px",
-    borderRadius: 14,
-    border: "1.5px solid rgba(255,255,255,0.08)",
-    background: "rgba(30,41,59,0.7)",
-    color: "#f1f5f9", fontSize: 15, outline: "none",
+    width: "100%", padding: "9px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text)", fontSize: 13, outline: "none",
     fontFamily: "'Inter',sans-serif",
     boxSizing: "border-box",
+    minHeight: 38,
   },
   twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
 
   /* MCQ section */
   mcqSection: {
-    background: "rgba(159,18,57,0.06)",
-    border: "1px solid rgba(159,18,57,0.2)",
-    borderRadius: 18, padding: 20, marginBottom: 18,
+    background: "var(--primary-tint)",
+    border: "1px solid rgba(139,30,45,0.25)",
+    borderRadius: "var(--radius-sm)", padding: 18, marginBottom: 18,
   },
-  mcqSectionHeader: { marginBottom: 14 },
-  mcqSectionTitle: { fontSize: 14, fontWeight: 800, color: "#fda4af" },
-  mcqSectionHint: { display: "block", fontSize: 12, color: "#475569", marginTop: 4 },
+  mcqSectionHeader: { marginBottom: 12 },
+  mcqSectionTitle: { fontSize: 13, fontWeight: 800, color: "var(--primary-dark)" },
+  mcqSectionHint: { display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 },
   optionsGrid: { display: "flex", flexDirection: "column", gap: 10 },
   optionInputRow: {
     display: "flex", alignItems: "center", gap: 10,
-    padding: "10px 14px", borderRadius: 12,
-    background: "rgba(30,41,59,0.6)",
-    border: "1.5px solid rgba(255,255,255,0.07)",
+    padding: "9px 12px", borderRadius: "var(--radius-sm)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
     transition: "border 0.2s",
   },
   optionInputRowCorrect: {
-    border: "1.5px solid rgba(34,197,94,0.5)",
-    background: "rgba(34,197,94,0.06)",
+    border: "1px solid var(--success)",
+    background: "var(--success-tint)",
   },
   optLabelBubble: {
-    width: 34, height: 34, minWidth: 34, borderRadius: 9,
+    width: 30, height: 30, minWidth: 30, borderRadius: 8,
     display: "flex", alignItems: "center", justifyContent: "center",
-    background: "rgba(255,255,255,0.07)",
-    fontWeight: 800, fontSize: 14, color: "#94a3b8",
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    fontWeight: 800, fontSize: 13, color: "var(--text-secondary)",
   },
-  optLabelBubbleCorrect: { background: "#22c55e", color: "#fff" },
+  optLabelBubbleCorrect: { background: "var(--success)", color: "#fff", border: "1px solid var(--success)" },
   optInput: {
     flex: 1, background: "transparent", border: "none",
-    outline: "none", color: "#f1f5f9", fontSize: 15,
+    outline: "none", color: "var(--text)", fontSize: 14,
     fontFamily: "'Inter',sans-serif",
   },
   markCorrectBtn: {
-    width: 32, height: 32, borderRadius: 8, border: "1.5px solid rgba(255,255,255,0.12)",
-    background: "transparent", color: "#475569",
-    cursor: "pointer", fontSize: 16, fontWeight: 800,
+    width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border)",
+    background: "var(--card)", color: "var(--text-muted)",
+    cursor: "pointer", fontSize: 15, fontWeight: 800,
     display: "flex", alignItems: "center", justifyContent: "center",
     flexShrink: 0,
   },
-  markCorrectBtnActive: { border: "1.5px solid #22c55e", color: "#22c55e", background: "rgba(34,197,94,0.12)" },
+  markCorrectBtnActive: { border: "1px solid var(--success)", color: "var(--success)", background: "var(--success-tint)" },
   correctAnswerBadge: {
-    marginTop: 12, padding: "9px 14px", borderRadius: 10,
-    background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)",
-    color: "#4ade80", fontSize: 13, fontWeight: 600,
+    marginTop: 12, padding: "9px 14px", borderRadius: "var(--radius-sm)",
+    background: "var(--success-tint)", border: "1px solid var(--success)",
+    color: "var(--success)", fontSize: 12.5, fontWeight: 600,
   },
 
   /* Essay section */
   essaySection: {
-    background: "rgba(168,85,247,0.06)",
-    border: "1px solid rgba(168,85,247,0.2)",
-    borderRadius: 18, padding: 20, marginBottom: 18,
+    background: "var(--info-tint)",
+    border: "1px solid rgba(29,78,216,0.25)",
+    borderRadius: "var(--radius-sm)", padding: 18, marginBottom: 18,
   },
-  essayHeader: { marginBottom: 14 },
-  essaySectionTitle: { fontSize: 14, fontWeight: 800, color: "#c084fc" },
-  essaySectionHint: { display: "block", fontSize: 12, color: "#475569", marginTop: 4 },
+  essayHeader: { marginBottom: 12 },
+  essaySectionTitle: { fontSize: 13, fontWeight: 800, color: "var(--info)" },
+  essaySectionHint: { display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 },
 
-  /* Form actions */
+  /* Form actions — PrimaryBtn / SecondaryBtn equivalents */
   formActions: { display: "flex", gap: 10, marginTop: 6 },
   saveBtn: {
-    flex: 1, padding: "14px",
-    borderRadius: 14, border: "none",
-    background: "linear-gradient(135deg,#9f1239,#e11d48)",
-    color: "#fff", fontWeight: 800, fontSize: 15,
-    cursor: "pointer", boxShadow: "0 6px 20px rgba(159,18,57,0.3)",
+    flex: 1, padding: "12px",
+    borderRadius: "var(--radius-sm)", border: "1px solid var(--primary)",
+    background: "var(--primary)",
+    color: "#fff", fontWeight: 700, fontSize: 14,
+    fontFamily: "inherit",
   },
   cancelBtn: {
-    padding: "14px 20px", borderRadius: 14, border: "none",
-    background: "rgba(255,255,255,0.07)",
-    color: "#94a3b8", cursor: "pointer", fontWeight: 700, fontSize: 15,
+    padding: "12px 20px", borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text)", fontWeight: 700, fontSize: 14,
+    fontFamily: "inherit",
   },
 
   /* List column */
   listHeader: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 18,
+    marginBottom: 16,
   },
-  listTitle: { margin: 0, fontSize: 20, fontWeight: 800 },
+  listTitle: { margin: 0, fontSize: 17, fontWeight: 800, color: "var(--text)" },
   listCount: {
-    fontSize: 13, color: "#64748b", fontWeight: 700,
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    fontSize: 12, color: "var(--text-secondary)", fontWeight: 700,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
     padding: "5px 12px", borderRadius: 20,
   },
   questionList: { display: "flex", flexDirection: "column", gap: 16 },
@@ -778,25 +853,24 @@ const S = {
     display: "flex", flexDirection: "column",
     alignItems: "center", justifyContent: "center",
     padding: "60px 20px", gap: 14,
-    background: "rgba(15,23,42,0.5)",
-    border: "1px dashed rgba(255,255,255,0.1)",
-    borderRadius: 20, textAlign: "center",
+    background: "var(--card)",
+    border: "1px dashed var(--border)",
+    borderRadius: "var(--radius)", textAlign: "center",
   },
-  emptyIcon: { fontSize: 36 },
-  emptyText: { margin: 0, color: "#475569", fontSize: 15 },
+  emptyIcon: { fontSize: 34 },
+  emptyText: { margin: 0, color: "var(--text-secondary)", fontSize: 14, fontWeight: 500 },
 
   /* Question card */
   qCard: {
-    background: "rgba(15,23,42,0.8)",
-    border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: 20, padding: 22,
-    backdropFilter: "blur(12px)",
-    boxShadow: "0 8px 30px rgba(0,0,0,0.3)",
-    transition: "border 0.2s",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)", padding: 20,
+    boxShadow: "var(--shadow-sm)",
+    transition: "box-shadow 0.15s ease",
   },
   qCardEditing: {
-    border: "1.5px solid rgba(245,158,11,0.5)",
-    boxShadow: "0 0 0 3px rgba(245,158,11,0.08)",
+    border: "1px solid var(--warning)",
+    boxShadow: "0 0 0 3px var(--warning-tint)",
   },
   qCardHeader: {
     display: "flex", alignItems: "center",
@@ -807,76 +881,93 @@ const S = {
   qCardHeaderRight: { display: "flex", alignItems: "center", gap: 8 },
   qIndexBadge: {
     padding: "4px 12px", borderRadius: 8,
-    fontSize: 13, fontWeight: 800,
+    fontSize: 12.5, fontWeight: 800,
   },
   qTypePill: {
     padding: "4px 10px", borderRadius: 20,
-    fontSize: 12, fontWeight: 700,
+    fontSize: 11.5, fontWeight: 700,
   },
   marksPill: {
     padding: "4px 10px", borderRadius: 20,
-    background: "rgba(251,191,36,0.1)",
-    border: "1px solid rgba(251,191,36,0.3)",
-    color: "#fbbf24", fontSize: 12, fontWeight: 700,
+    background: "var(--warning-tint)",
+    border: "1px solid rgba(180,83,9,0.25)",
+    color: "var(--warning)", fontSize: 11.5, fontWeight: 700,
   },
   timePill: {
     padding: "4px 10px", borderRadius: 20,
-    background: "rgba(100,116,139,0.12)",
-    border: "1px solid rgba(100,116,139,0.25)",
-    color: "#64748b", fontSize: 12, fontWeight: 700,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    color: "var(--text-muted)", fontSize: 11.5, fontWeight: 700,
   },
 
-  qText: { fontSize: 16, lineHeight: 1.7, color: "#e2e8f0", margin: "0 0 16px", fontWeight: 600 },
+  qText: { fontSize: 15, lineHeight: 1.6, color: "var(--text)", margin: "0 0 16px", fontWeight: 600 },
 
   /* Options in card */
   qOptions: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 },
   qOption: {
     display: "flex", alignItems: "center", gap: 12,
-    padding: "10px 14px", borderRadius: 12,
-    background: "rgba(30,41,59,0.6)",
-    border: "1.5px solid rgba(255,255,255,0.06)",
+    padding: "9px 12px", borderRadius: "var(--radius-sm)",
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
   },
   qOptionCorrect: {
-    background: "rgba(34,197,94,0.08)",
-    border: "1.5px solid rgba(34,197,94,0.4)",
+    background: "var(--success-tint)",
+    border: "1px solid var(--success)",
   },
   qOptLabel: {
-    width: 30, height: 30, minWidth: 30, borderRadius: 8,
-    background: "rgba(255,255,255,0.07)",
+    width: 28, height: 28, minWidth: 28, borderRadius: 8,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
     display: "flex", alignItems: "center", justifyContent: "center",
-    fontWeight: 800, fontSize: 13, color: "#64748b",
+    fontWeight: 800, fontSize: 12.5, color: "var(--text-secondary)",
   },
-  qOptLabelCorrect: { background: "#22c55e", color: "#fff" },
-  qOptText: { flex: 1, fontSize: 14, color: "#cbd5e1" },
+  qOptLabelCorrect: { background: "var(--success)", color: "#fff", border: "1px solid var(--success)" },
+  qOptText: { flex: 1, fontSize: 13.5, color: "var(--text)" },
   qOptCorrectMark: {
-    fontSize: 12, fontWeight: 700, color: "#4ade80",
-    background: "rgba(34,197,94,0.12)",
+    fontSize: 11.5, fontWeight: 700, color: "var(--success)",
+    background: "var(--success-tint)",
     padding: "3px 10px", borderRadius: 20,
-    border: "1px solid rgba(34,197,94,0.3)",
+    border: "1px solid var(--success)",
   },
 
   /* Essay note */
-  essayNote: {
-    display: "flex", alignItems: "flex-start", gap: 10,
-    padding: "12px 14px", borderRadius: 12,
-    background: "rgba(168,85,247,0.07)",
-    border: "1px solid rgba(168,85,247,0.2)",
-    color: "#c084fc", fontSize: 13, marginBottom: 16,
+  essayNoteBox: {
+    background: "var(--info-tint)",
+    border: "1px solid rgba(29,78,216,0.25)",
+    borderRadius: "var(--radius-sm)",
+    padding: 14,
+    marginBottom: 16,
   },
-  essayNoteIcon: { fontSize: 16, flexShrink: 0 },
+  essayNoteTitle: {
+    fontSize: 12.5,
+    fontWeight: 800,
+    color: "var(--info)",
+    marginBottom: 6,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  essayNoteBody: {
+    fontSize: 13.5,
+    color: "var(--text)",
+    lineHeight: 1.6,
+    whiteSpace: "pre-wrap",
+  },
 
   /* Card actions */
   qCardActions: { display: "flex", gap: 10, paddingTop: 4 },
   editBtn: {
-    flex: 1, padding: "10px", borderRadius: 11, border: "none",
-    background: "rgba(245,158,11,0.15)",
-    border: "1px solid rgba(245,158,11,0.3)",
-    color: "#fbbf24", cursor: "pointer", fontWeight: 700, fontSize: 14,
+    flex: 1, padding: "9px", borderRadius: "var(--radius-sm)",
+    background: "var(--warning-tint)",
+    border: "1px solid rgba(180,83,9,0.3)",
+    color: "var(--warning)", cursor: "pointer", fontWeight: 700, fontSize: 13,
+    fontFamily: "inherit",
   },
   deleteBtn: {
-    flex: 1, padding: "10px", borderRadius: 11,
-    border: "1px solid rgba(239,68,68,0.3)",
-    background: "rgba(239,68,68,0.1)",
-    color: "#f87171", cursor: "pointer", fontWeight: 700, fontSize: 14,
+    flex: 1, padding: "9px", borderRadius: "var(--radius-sm)",
+    border: "1px solid rgba(220,38,38,0.3)",
+    background: "var(--destructive-tint)",
+    color: "var(--destructive)", cursor: "pointer", fontWeight: 700, fontSize: 13,
+    fontFamily: "inherit",
   },
 };
