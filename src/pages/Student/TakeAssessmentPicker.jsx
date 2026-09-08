@@ -315,7 +315,13 @@ export default function TakeAssessmentPicker() {
               {a.cover_page_url && (
                 <div
                   className="cover-preview"
-                  style={S.coverWrap}
+                  style={{
+                    ...S.coverWrap,
+                    aspectRatio:
+                      a.cover_page_width && a.cover_page_height
+                        ? `${a.cover_page_width} / ${a.cover_page_height}`
+                        : "210 / 297",
+                  }}
                   onClick={() => navigate(`/take-assessment/${a.id}`)}
                   role="button"
                   tabIndex={0}
@@ -325,7 +331,7 @@ export default function TakeAssessmentPicker() {
                   }}
                 >
                   <iframe
-                    src={`${resolveFileUrl(a.cover_page_url)}#toolbar=0&navpanes=0&scrollbar=0`}
+                    src={`${resolveFileUrl(a.cover_page_url)}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
                     title={`${a.title} cover page`}
                     style={S.coverFrame}
                     tabIndex={-1}
@@ -478,7 +484,7 @@ const S = {
   },
   coverFrame: {
     width: "100%",
-    height: 220,
+    height: "100%",
     border: "none",
     display: "block",
     pointerEvents: "none",

@@ -355,7 +355,6 @@ export default function TakeEAssessment() {
 
   // reveal step
   const [revealCountdown, setRevealCountdown] = useState(REVEAL_SECONDS);
-  const [coverPageUrl, setCoverPageUrl] = useState("");
 
   // verify step
   const [verifyInput, setVerifyInput] = useState("");
@@ -386,20 +385,6 @@ export default function TakeEAssessment() {
       const t = startRes.data.token;
       setToken(t);
       setRevealCountdown(REVEAL_SECONDS);
-
-      // Best-effort fetch of this exam's cover page (if the admin/teacher
-      // set one) so it can be offered on the reveal screen below, before
-      // the student commits to starting. Never blocks the exam flow if
-      // this fails for any reason.
-      try {
-        const detail = await API.get(`/e-assessments/${id}`);
-        if (detail?.data?.assessment?.cover_page_url) {
-          setCoverPageUrl(detail.data.assessment.cover_page_url);
-        }
-      } catch {
-        // no cover page, or couldn't fetch one — exam proceeds regardless
-      }
-
       setPhase("reveal");
     } catch (err) {
       if (err?.response?.status === 423) {
@@ -976,20 +961,6 @@ export default function TakeEAssessment() {
             lock to whichever device you use first.
           </p>
           <div style={S.tokenDisplay}>{token}</div>
-          {coverPageUrl && (
-            <a
-              href={resolveFileUrl(coverPageUrl)}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6, margin: "0 0 16px",
-                padding: "8px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
-                color: "var(--primary)", border: "1px solid var(--primary)", textDecoration: "none",
-              }}
-            >
-              📄 View Exam Cover Page / Instructions
-            </a>
-          )}
           <button
             style={{ ...S.primaryBtn, opacity: revealCountdown > 0 ? 0.55 : 1, cursor: revealCountdown > 0 ? "not-allowed" : "pointer" }}
             onClick={confirmSaved}
