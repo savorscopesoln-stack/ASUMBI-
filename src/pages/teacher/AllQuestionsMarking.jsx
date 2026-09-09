@@ -807,11 +807,18 @@ export default function Marking() {
       const submissionId = submissions?.[0]?.submission_id;
       if (!submissionId) { showToast("Nothing to save yet", "error"); return; }
 
-      const computedScores = queue.reduce((acc, q) => {
-        const hls = highlights[q.id] || [];
-        acc[q.id] = hls.reduce((sum, h) => sum + (Number(h.mark) || 0), 0);
-        return acc;
-      }, {});
+      // MCQ marks are auto-graded server-side and tracked separately in
+      // mcqScores (see the load effect above) — they must be included here
+      // too, or the backend never re-persists/finalizes them and the
+      // submission can end up "marked" with a 0 (or understated) score.
+      const computedScores = {
+        ...mcqScores,
+        ...queue.reduce((acc, q) => {
+          const hls = highlights[q.id] || [];
+          acc[q.id] = hls.reduce((sum, h) => sum + (Number(h.mark) || 0), 0);
+          return acc;
+        }, {}),
+      };
 
       const payload = { submission_id: submissionId, scores: computedScores, remarks: remarks || {}, highlights: highlights || {} };
       await API.post("/e-assessments/save-marking/bulk", payload);

@@ -221,7 +221,13 @@ const submitQuestion = async () => {
 
   setOptions(
     q.options?.length
-      ? q.options
+      // Options come back from the API as {option_label, option_text} —
+      // normalize to {label, text}, which is what the option-editing form
+      // (and the "mark as correct" comparison against correctAnswer) uses.
+      ? q.options.map((o) => ({
+          label: o.label ?? o.option_label ?? "",
+          text: o.text ?? o.option_text ?? "",
+        }))
       : [
           { label: "A", text: "" },
           { label: "B", text: "" },
