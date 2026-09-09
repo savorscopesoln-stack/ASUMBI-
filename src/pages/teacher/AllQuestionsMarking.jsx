@@ -494,6 +494,12 @@ export default function Marking() {
   const [flags, setFlags]           = useState({});
 
   const [submissions, setSubmissions] = useState([]);
+  // Auto-graded MCQ marks — kept out of the essay `queue` (nothing for a
+  // teacher to do with them) but still need to count toward the total
+  // score/max shown here, same as Marking.jsx's autoScores does for a
+  // single submission.
+  const [mcqScores, setMcqScores]     = useState({});
+  const [mcqMaxTotal, setMcqMaxTotal] = useState(0);
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState(false);
   const [saved, setSaved]             = useState(false);
@@ -545,6 +551,25 @@ export default function Marking() {
             return { submission_id: sub.id, student_id: sub.student_id, assessment_id: sub.assessment_id };
           })
         );
+
+        // MCQs are auto-marked server-side at submission time — they never
+        // need a teacher's input, so they don't belong in the essay queue.
+        // But their marks are already earned and must still count toward
+        // the total score/max shown while marking, or the running total
+        // looks wrong (understated) for any assessment that mixes MCQ and
+        // essay questions.
+        const mcqInitialScores = {};
+        let mcqMax = 0;
+        data.forEach((sub) => {
+          (sub.answers || [])
+            .filter((a) => a.question_type !== "essay")
+            .forEach((a) => {
+              mcqInitialScores[a.id] = a.marks_awarded != null ? a.marks_awarded : 0;
+              mcqMax += Number(a.max_marks) || 0;
+            });
+        });
+        setMcqScores(mcqInitialScores);
+        setMcqMaxTotal(mcqMax);
 
         const groups = data.map((sub) =>
           (sub.answers || [])
@@ -640,8 +665,10 @@ export default function Marking() {
   /* ── DERIVED ── */
   const remaining = useMemo(() => queue.filter((q) => !dismissed.has(q.id)), [queue, dismissed]);
   const current    = remaining[currentIdx] ?? null;
-  const totalScore = Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0);
-  const maxPossible = queue.reduce((s, q) => s + (Number(q.max_marks) || 0), 0);
+  const totalScore =
+    Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0) +
+    Object.values(mcqScores).reduce((s, v) => s + (Number(v) || 0), 0);
+  const maxPossible = queue.reduce((s, q) => s + (Number(q.max_marks) || 0), 0) + mcqMaxTotal;
   const progressPct = queue.length > 0 ? Math.round(((queue.length - remaining.length) / queue.length) * 100) : 0;
 
   const hlForCurrent   = current ? highlights[current.id] || [] : [];

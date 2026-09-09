@@ -62,6 +62,7 @@ import TakeAssessmentPicker from "./pages/Student/TakeAssessmentPicker";
 /* ================= NEW ================= */
 import StudentEAssessments from "./pages/Student/StudentEAssessments";
 import StudentMarkedPaper from "./pages/Student/StudentMarkedPaper";
+import StudentResults from "./pages/Student/StudentResults";
 
 /* =========================================================
    TEACHER
@@ -873,6 +874,17 @@ export default function App() {
         <Route
           path="e-assessments/:id/result"
           element={<StudentMarkedPaper />}
+        />
+
+        {/* RESULTS SUMMARY — the "Results Summary" sidebar item already
+            existed in StudentLayout's NAV_GROUPS (and so already showed
+            up in the admin Portal Pages toggle, which reads that same
+            registry) but had no route/component behind it. This rounds
+            up every released result and links each into the marked-paper
+            breakdown above. */}
+        <Route
+          path="results"
+          element={<StudentResults />}
         />
       </Route>
 
