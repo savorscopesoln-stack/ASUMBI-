@@ -2,18 +2,19 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
 import {
-  ArrowLeft, Loader2, AlertTriangle, CheckCircle2, XCircle,
-  Award, FileQuestion, MessageSquareText, Trophy,
+  ArrowLeft, Loader2, AlertTriangle, FileQuestion, MessageSquareText,
 } from "lucide-react";
 
-/* ─── shared design-token stylesheet — identical id/tokens to the
-   rest of the app; a no-op if already mounted elsewhere. ─── */
+/* ─── shared design-token stylesheet, plus a couple of things unique
+   to this "physical exam script" page: a handwriting face for the
+   red-pen marks, and the wobble/draw-in keyframes those marks use.
+   Everything else stays a no-op if already mounted elsewhere. ─── */
 const injectStyles = () => {
   if (document.getElementById("dash-tokens")) return;
   const el = document.createElement("style");
   el.id = "dash-tokens";
   el.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap');
 
     :root {
       --bg: #F8FAFC;
@@ -38,6 +39,8 @@ const injectStyles = () => {
       --shadow: 0 1px 3px rgba(16,24,40,0.06);
       --radius: 14px;
       --radius-sm: 10px;
+      --ink: #C41E3A;
+      --paper: #FFFDF8;
     }
     [data-theme='dark'] {
       --bg: #0F1115;
@@ -60,12 +63,22 @@ const injectStyles = () => {
       --info-tint: rgba(37,99,235,0.18);
       --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
       --shadow: 0 1px 3px rgba(0,0,0,0.4);
+      --ink: #FF5C77;
+      --paper: #171A21;
     }
 
     body { background: var(--bg); transition: background-color .2s ease; }
 
     @keyframes spin { to { transform: rotate(360deg); } }
     .dash-spin { animation: spin 0.8s linear infinite; }
+
+    @keyframes mp-draw { from { stroke-dashoffset: 1px; } to { stroke-dashoffset: 0; } }
+    .mp-mark path, .mp-mark circle, .mp-mark ellipse {
+      stroke-dasharray: 1px;
+      stroke-dashoffset: 1px;
+      animation: mp-draw 0.55s ease-out forwards;
+    }
+    .mp-mark-cross path:nth-child(2) { animation-delay: 0.28s; }
 
     button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
       outline: 2px solid var(--primary);
@@ -77,7 +90,8 @@ const injectStyles = () => {
       .dash-main { padding: 20px 16px 48px !important; }
     }
     @media (max-width: 640px) {
-      .mp-summary-grid { grid-template-columns: 1fr !important; }
+      .mp-cover-grid { grid-template-columns: 1fr !important; }
+      .mp-cover-score { justify-self: start !important; margin-top: 18px; }
     }
   `;
   document.head.appendChild(el);
@@ -90,6 +104,67 @@ const gradeFor = (pct) => {
   if (pct >= 40) return { label: "PASS", bg: "var(--warning-tint)", fg: "var(--warning)" };
   return { label: "REFER", bg: "var(--destructive-tint)", fg: "var(--destructive)" };
 };
+
+const remarkFor = (pct) => {
+  if (pct === null) return "";
+  if (pct >= 75) return "Excellent work!";
+  if (pct >= 60) return "Good effort.";
+  if (pct >= 40) return "Fair — room to grow.";
+  return "See me.";
+};
+
+/* ═══════════════════════════════ RED-PEN MARKS ═══════════════════════════════
+   Hand-drawn SVG so the grading reads as "marked with a pen", not a UI icon:
+   a slightly crooked tick, a slightly crooked cross, and a loose double-loop
+   circle for scores — the same three marks every graded script actually has. */
+
+function HandTick({ size = 30 }) {
+  return (
+    <svg className="mp-mark" width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      <path
+        d="M6 21 L16 31 L35 7"
+        stroke="var(--ink)" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round"
+        transform="rotate(-4 20 19)"
+      />
+    </svg>
+  );
+}
+
+function HandCross({ size = 30 }) {
+  return (
+    <svg className="mp-mark mp-mark-cross" width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      <path d="M7 8 L33 32" stroke="var(--ink)" strokeWidth="4.2" strokeLinecap="round" transform="rotate(-3 20 20)" />
+      <path d="M33 9 L7 31" stroke="var(--ink)" strokeWidth="4.2" strokeLinecap="round" transform="rotate(-3 20 20)" />
+    </svg>
+  );
+}
+
+/* A loose, slightly imperfect double-circle — the way a teacher actually
+   circles a tally, not a perfect CSS border-radius. Content is centered on
+   top of the SVG via the wrapping div. */
+function HandCircle({ children, size = 118, strokeWidth = 4 }) {
+  return (
+    <div style={{ position: "relative", width: size, height: size, display: "grid", placeItems: "center", flexShrink: 0 }}>
+      <svg
+        className="mp-mark"
+        width={size} height={size} viewBox="0 0 120 120"
+        style={{ position: "absolute", inset: 0 }}
+        aria-hidden="true"
+      >
+        <path
+          d="M62 10 C90 8 112 30 110 60 C113 90 88 111 59 110 C31 113 9 89 10 60 C8 32 33 9 62 10 Z"
+          fill="none" stroke="var(--ink)" strokeWidth={strokeWidth} strokeLinecap="round"
+        />
+        <path
+          d="M60 14 C86 13 108 34 106 60"
+          fill="none" stroke="var(--ink)" strokeWidth={strokeWidth * 0.8} strokeLinecap="round"
+          opacity="0.55"
+        />
+      </svg>
+      <div style={{ position: "relative", textAlign: "center" }}>{children}</div>
+    </div>
+  );
+}
 
 export default function StudentMarkedPaper() {
   injectStyles();
@@ -186,26 +261,36 @@ export default function StudentMarkedPaper() {
     <main className="dash-main" style={D.main}>
       <BackBtn onClick={() => navigate("/student/e-assessments")} />
 
-      <header style={D.pageHeader}>
-        <h1 style={D.pageTitle}>{submission.assessment_title || "Marked Paper"}</h1>
-        <p style={D.pageSub}>
-          {submission.assessment_subject || "—"} · {submission.teacher_name || "Teacher"}
-        </p>
-      </header>
-
-      {/* ── Score summary ── */}
-      <section style={{ ...D.panel, marginBottom: 20 }} className="dash-card">
-        <div className="mp-summary-grid" style={D.summaryGrid}>
-          <SummaryStat icon={Trophy} label="Score" value={`${score} / ${totalMarks || "—"}`} tint="primary" />
-          <SummaryStat icon={Award} label="Percentage" value={pct !== null ? `${pct}%` : "—"} tint="info" />
-          <div style={D.gradeCard}>
-            <div style={D.statLabel}>Grade</div>
+      {/* ── Cover page — the front sheet of the script: title, subject/
+          teacher line, and the examiner's circled final tally ── */}
+      <section style={D.cover} className="dash-card">
+        <div className="mp-cover-grid" style={D.coverGrid}>
+          <div style={{ minWidth: 0 }}>
+            <div style={D.coverEyebrow}>Marked Paper</div>
+            <h1 style={D.coverTitle}>{submission.assessment_title || "Assessment"}</h1>
+            <p style={D.coverMeta}>
+              {submission.assessment_subject || "—"} · Marked by {submission.teacher_name || "your teacher"}
+            </p>
             <span style={{ ...D.gradeBadge, background: grade.bg, color: grade.fg }}>{grade.label}</span>
+          </div>
+
+          <div className="mp-cover-score" style={D.coverScoreWrap}>
+            <HandCircle size={128}>
+              <div style={D.coverScoreValue}>{score}<span style={D.coverScoreOutOf}>/{totalMarks || "—"}</span></div>
+              {pct !== null && <div style={D.coverScorePct}>{pct}%</div>}
+            </HandCircle>
+            {remarkFor(pct) && <div style={D.examinerNote}>{remarkFor(pct)}</div>}
           </div>
         </div>
       </section>
 
-      {/* ── Question-by-question breakdown ── */}
+      {/* ── Question-by-question breakdown — the answer script itself ── */}
+      <div style={D.scriptDivider}>
+        <span style={D.scriptDividerLine} />
+        <span>Answer Script</span>
+        <span style={D.scriptDividerLine} />
+      </div>
+
       <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {questions.map((q, idx) => (
           <QuestionCard key={q.id} q={q} index={idx + 1} />
@@ -232,25 +317,6 @@ function BackBtn({ onClick }) {
   );
 }
 
-function SummaryStat({ icon: Icon, label, value, tint }) {
-  const tints = {
-    primary: { bg: "var(--primary-tint)", fg: "var(--primary)" },
-    info: { bg: "var(--info-tint)", fg: "var(--info)" },
-  };
-  const t = tints[tint] || tints.primary;
-  return (
-    <div style={D.statCard}>
-      <div style={{ ...D.statIconWrap, background: t.bg }}>
-        <Icon size={18} color={t.fg} strokeWidth={2} />
-      </div>
-      <div>
-        <div style={D.statLabel}>{label}</div>
-        <div style={D.statValue}>{value}</div>
-      </div>
-    </div>
-  );
-}
-
 /* ── one question, with the student's answer overlaid against the
    correct one for MCQ, or the essay text + teacher remarks for essay ── */
 function QuestionCard({ q, index }) {
@@ -272,17 +338,18 @@ function QuestionCard({ q, index }) {
             </div>
           )}
         </div>
+
+        {/* the actual red-pen mark — a tick/cross for MCQ (it's binary),
+            a circled fraction for essay (it's rarely all-or-nothing) */}
         <div style={D.qMarksWrap}>
-          {attempted ? (
-            correctFlag ? (
-              <CheckCircle2 size={18} color="var(--success)" />
-            ) : (
-              <XCircle size={18} color="var(--destructive)" />
-            )
-          ) : null}
-          <span style={D.qMarks}>
-            {q.marks_awarded ?? 0} / {q.max_marks}
-          </span>
+          {!isEssay ? (
+            attempted ? (correctFlag ? <HandTick size={30} /> : <HandCross size={30} />) : null
+          ) : (
+            <HandCircle size={54} strokeWidth={3}>
+              <span style={D.qCircledMarks}>{q.marks_awarded ?? 0}/{q.max_marks}</span>
+            </HandCircle>
+          )}
+          {!isEssay && <span style={D.qMarks}>{q.marks_awarded ?? 0} / {q.max_marks}</span>}
         </div>
       </div>
 
@@ -299,8 +366,8 @@ function QuestionCard({ q, index }) {
               <div key={opt.option_label} style={style}>
                 <span style={D.optionLabel}>{opt.option_label}</span>
                 <span style={{ flex: 1 }}>{opt.option_text}</span>
-                {isCorrectOpt && <CheckCircle2 size={15} color="var(--success)" />}
-                {isSelectedOpt && !isCorrectOpt && <XCircle size={15} color="var(--destructive)" />}
+                {isCorrectOpt && <HandTick size={20} />}
+                {isSelectedOpt && !isCorrectOpt && <HandCross size={20} />}
                 {isSelectedOpt && <span style={D.yourAnswerTag}>Your answer</span>}
               </div>
             );
@@ -356,9 +423,6 @@ const D = {
     padding: "7px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", marginBottom: 18,
     fontFamily: "inherit",
   },
-  pageHeader: { marginBottom: 20 },
-  pageTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
-  pageSub: { margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
 
   panel: {
     background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
@@ -369,13 +433,32 @@ const D = {
     fontWeight: 600, display: "flex", flexDirection: "column", alignItems: "center",
   },
 
-  summaryGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, alignItems: "center" },
-  statCard: { display: "flex", alignItems: "center", gap: 12 },
-  statIconWrap: { width: 40, height: 40, minWidth: 40, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center" },
-  statLabel: { fontSize: 11.5, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 3 },
-  statValue: { fontSize: 17, fontWeight: 800, color: "var(--text)" },
-  gradeCard: { display: "flex", flexDirection: "column", gap: 6 },
-  gradeBadge: { display: "inline-flex", alignItems: "center", borderRadius: 20, padding: "5px 14px", fontSize: 13, fontWeight: 800, width: "fit-content" },
+  /* ── cover page ── */
+  cover: {
+    background: "var(--paper)", border: "1px solid var(--border)", borderTop: "5px solid var(--ink)",
+    borderRadius: "var(--radius)", padding: "28px 28px 24px", boxShadow: "var(--shadow-sm)", marginBottom: 22,
+  },
+  coverGrid: { display: "grid", gridTemplateColumns: "1fr auto", gap: 24, alignItems: "center" },
+  coverEyebrow: { fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.04em", marginBottom: 6 },
+  coverTitle: { margin: 0, fontSize: 24, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em", lineHeight: 1.25 },
+  coverMeta: { margin: "6px 0 12px", fontSize: 13.5, color: "var(--text-secondary)", fontWeight: 500 },
+  gradeBadge: { display: "inline-flex", alignItems: "center", borderRadius: 20, padding: "5px 14px", fontSize: 12.5, fontWeight: 800, width: "fit-content" },
+
+  coverScoreWrap: { display: "flex", flexDirection: "column", alignItems: "center", justifySelf: "end" },
+  coverScoreValue: { fontFamily: "'Caveat', cursive", fontSize: 30, fontWeight: 700, color: "var(--ink)", lineHeight: 1 },
+  coverScoreOutOf: { fontSize: 17, opacity: 0.75 },
+  coverScorePct: { fontFamily: "'Caveat', cursive", fontSize: 15, fontWeight: 600, color: "var(--ink)", marginTop: 2 },
+  examinerNote: {
+    fontFamily: "'Caveat', cursive", fontSize: 17, fontWeight: 600, color: "var(--ink)",
+    marginTop: 6, transform: "rotate(-2deg)",
+  },
+
+  scriptDivider: {
+    display: "flex", alignItems: "center", gap: 10, margin: "4px 0 16px",
+    fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.04em",
+    textAlign: "center",
+  },
+  scriptDividerLine: { flex: 1, height: 1, background: "var(--border)" },
 
   qCard: {
     background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
@@ -391,6 +474,7 @@ const D = {
   qImage: { width: 120, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" },
   qMarksWrap: { display: "flex", alignItems: "center", gap: 6, flexShrink: 0 },
   qMarks: { fontSize: 13, fontWeight: 800, color: "var(--text)" },
+  qCircledMarks: { fontFamily: "'Caveat', cursive", fontSize: 17, fontWeight: 700, color: "var(--ink)" },
 
   optionsWrap: { display: "flex", flexDirection: "column", gap: 7 },
   option: {
