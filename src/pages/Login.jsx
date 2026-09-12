@@ -115,6 +115,31 @@ const injectAuthStyles = () => {
 */
 const HERO_IMAGE_SRC = "/assets/student-hero.jpg";
 
+/* ═══════════════════════════════════════════════════════════
+   NEW — LOGIN RETRY CONFIG
+   ─────────────────────────────────────────────────────────
+   Under a login burst (many students/staff hitting /auth/login at
+   once), a request can fail for a purely TRANSIENT reason — the
+   connection is refused/reset before it reaches Express, or the
+   backend responds with a retryable status (408/429/500/502/503/504)
+   rather than a definitive auth decision. Retrying those for a
+   bounded window turns a temporary blip into a successful login
+   instead of an immediate error. A definitive failure — wrong
+   credentials (401), forbidden (403), or any other 4xx business-logic
+   response — must never be retried; those are handled exactly as
+   before, on the first attempt.
+   ═════════════════════════════════════════════════════════ */
+const LOGIN_RETRY_WINDOW_MS = 15000;
+const LOGIN_RETRY_BASE_DELAY_MS = 400;
+const LOGIN_RETRY_MAX_DELAY_MS = 2000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableLoginError = (err) => {
+  if (!err.response) return true; // connection refused/reset, timeout, DNS, etc. — nothing reached us
+  return [408, 429, 500, 502, 503, 504].includes(err.response.status);
+};
+
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -175,60 +200,107 @@ export default function Login() {
     navigate("/login", { replace: true });
   };
 
-  /* ================= LOGIN (unchanged) ================= */
+  /* ================= LOGIN =================
+     CHANGED — the single API.post("/auth/login") call is now wrapped
+     in a bounded retry loop: up to 15 seconds total, retrying only on
+     transient failures (no response at all, or 408/429/5xx) with
+     backoff + jitter. A 401/403/any other definitive response is
+     handled on the very first attempt exactly as before — no retry.
+     A successful response stops the loop immediately, exactly as the
+     original single-shot version did. The existing spinner/disabled-
+     button state (`loading`) is reused as-is for the whole retry
+     window, so "Signing in…" simply stays up a little longer instead
+     of flashing an error on the first transient blip. ================= */
   const login = async (e) => {
     e.preventDefault();
 
+    setLoading(true);
+    setError("");
+
+    const deadline = Date.now() + LOGIN_RETRY_WINDOW_MS;
+    let attempt = 0;
+
     try {
-      setLoading(true);
-      setError("");
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        attempt++;
+        try {
+          const res = await API.post("/auth/login", {
+            username,
+            password,
+          });
 
-      const res = await API.post("/auth/login", {
-        username,
-        password,
-      });
+          const { token, user } = res.data;
 
-      const { token, user } = res.data;
+          if (!token || !user) {
+            setError("Invalid server response.");
+            return;
+          }
 
-      if (!token || !user) {
-        setError("Invalid server response.");
-        return;
+          const role = (user.role || "").toLowerCase();
+
+          localStorage.setItem("token", token);
+          localStorage.setItem("user", JSON.stringify(user));
+          // Marks the start of this session for the 5-min-idle / 24-hr
+          // absolute session-timeout checks in useSessionTimeout.
+          const now = String(Date.now());
+          localStorage.setItem("loginAt", now);
+          localStorage.setItem("lastActivityAt", now);
+
+          if (user.mustChangePassword) {
+            navigate("/force-password-change", { replace: true });
+            return;
+          }
+
+          navigate(routes[role] || getDefaultRoute(user), { replace: true });
+          return;
+
+        } catch (err) {
+          console.log("LOGIN ERROR:", err);
+
+          const status = err.response?.status;
+
+          if (status === 401) {
+            logout();
+            setError("Invalid username or password.");
+            return;
+          }
+
+          if (status === 403) {
+            setError("You do not have permission to access this system.");
+            return;
+          }
+
+          if (!isRetryableLoginError(err)) {
+            setError(err.response?.data?.message || "Login failed. Try again.");
+            return;
+          }
+
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) {
+            setError(
+              "The server is currently busy. We could not complete your login within 15 seconds. Please try again."
+            );
+            return;
+          }
+
+          // Bounded exponential backoff + jitter, capped, honoring the
+          // server's Retry-After when present, never scheduled past the
+          // remaining deadline. Jitter keeps many browsers retrying after
+          // the same failure from resynchronizing into another burst.
+          const serverRetryAfterMs = (Number(err?.response?.headers?.["retry-after"]) || 0) * 1000;
+          const backoff = Math.min(
+            LOGIN_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+            LOGIN_RETRY_MAX_DELAY_MS
+          );
+          const jitter = Math.random() * backoff * 0.5;
+          const delay = Math.min(Math.max(serverRetryAfterMs, backoff) + jitter, Math.max(remaining - 50, 0));
+
+          await sleep(delay);
+          // loop continues to the next attempt, unless the deadline check
+          // above catches it first on the following iteration
+        }
       }
-
-      const role = (user.role || "").toLowerCase();
-
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
-      // Marks the start of this session for the 5-min-idle / 24-hr
-      // absolute session-timeout checks in useSessionTimeout.
-      const now = String(Date.now());
-      localStorage.setItem("loginAt", now);
-      localStorage.setItem("lastActivityAt", now);
-
-      if (user.mustChangePassword) {
-        navigate("/force-password-change", { replace: true });
-        return;
-      }
-
-      navigate(routes[role] || getDefaultRoute(user), { replace: true });
-
-    } catch (err) {
-      console.log("LOGIN ERROR:", err);
-
-      const status = err.response?.status;
-
-      if (status === 401) {
-        logout();
-        setError("Invalid username or password.");
-        return;
-      }
-
-      if (status === 403) {
-        setError("You do not have permission to access this system.");
-        return;
-      }
-
-      setError(err.response?.data?.message || "Login failed. Try again.");
     } finally {
       setLoading(false);
     }
