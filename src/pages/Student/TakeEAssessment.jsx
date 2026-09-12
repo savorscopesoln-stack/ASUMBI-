@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import API, { resolveFileUrl } from "../../api";
+import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
+import EssayEditor from "./EssayEditor";
 import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
-  Camera, CameraOff, Eye, EyeOff,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
@@ -36,10 +36,6 @@ import {
         keyboard/mouse input on THIS page until the exam ends
         or an admin clears the lock. That overlay persists
         across refresh (via localStorage) for this device.
-     4. Webcam eye/gaze monitoring — both eyes open and the head
-        facing the screen (best-effort, and deliberately scoped
-        honestly — see the note above the EYES_OFF_LIMIT_MS
-        constant below for exactly what this can and can't detect).
    ═════════════════════════════════════════════════════════ */
 
 /* ─── shared design-token stylesheet ───
@@ -142,12 +138,6 @@ const injectExamStyles = () => {
       .exam-top-bar > div:last-child { align-self: stretch !important; justify-content: space-between !important; }
     }
     .exam-option-row:hover { border-color: var(--primary) !important; }
-
-    @keyframes eyesOffFlash {
-      0%, 100% { box-shadow: 0 0 0 0 var(--destructive); }
-      50%      { box-shadow: 0 0 14px 3px var(--destructive); }
-    }
-    .eyes-off-flash { animation: eyesOffFlash 0.6s ease-in-out infinite; }
   `;
   document.head.appendChild(el);
 };
@@ -156,86 +146,35 @@ const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
 const REVEAL_SECONDS = 15; // minimum time the student must sit with the token before continuing
 
-/* ── webcam eye/gaze monitoring ──────────────────────────────────
-   HONEST SCOPE NOTE: a browser has no reliable way to compute exact
-   on-screen gaze coordinates (pixel x/y) without a per-student
-   calibration step (look at 9 dots, etc.) that most exam platforms
-   skip because it's slow and finicky, AND without iris-level
-   landmarks that this lightweight model doesn't provide. What this
-   DOES implement, which is the practical and enforceable version of
-   "make sure both eyes are looking at the screen": a client-side
-   face detector + 68-point facial landmark model (face-api.js's
-   tiny_face_detector + faceLandmark68TinyNet, ~190KB + ~1.4MB, runs
-   entirely in-browser, nothing is ever uploaded) checks the webcam
-   feed roughly once a second and, from the landmark positions,
-   evaluates two things every real "looking at the screen" needs:
-     1. HEAD ORIENTATION — is the face actually turned toward the
-        camera, or turned away to the side/up/down? Estimated from
-        where the nose sits relative to the eye line and jaw width
-        (a standard 2D-landmark heuristic, not true 3D head-pose
-        solving, but accurate enough to catch "looking at a second
-        monitor" or "talking to someone beside them").
-     2. EYE OPENNESS — are both eyes actually open, via the
-        well-known Eye-Aspect-Ratio (EAR) formula on each eye's 6
-        landmark points? Catches eyes closed/mostly-shut (reading
-        notes below the desk, eyes down) even while the head is
-        still facing forward.
-   Both eyes must be open AND the head must be reasonably front-on
-   for a frame to count as "looking at the screen". If neither holds
-   — or no face is found at all — for EYES_OFF_LIMIT_MS of continuous
-   time, it feeds into the exact same registerViolation() escalation
-   path as the other detectors above (tab-switch, devtools, etc.), so
-   it counts toward the same 3-strikes lockout.
-   Camera access is requested but never made mandatory to start the
-   exam — a student without a webcam, or who denies the permission,
-   simply continues without this particular check (a one-time notice
-   is shown, not an error) rather than being locked out of an exam
-   entirely over a hardware/permission issue outside their control. */
-const EYES_OFF_LIMIT_MS = 10000;
-const FACE_CHECK_INTERVAL_MS = 1000;
-const EAR_CLOSED_THRESHOLD = 0.20;   // below this, an eye counts as closed (typical open EAR is ~0.28-0.35)
-const YAW_OFFSET_LIMIT = 0.16;       // how far the nose may sit off-center (as a fraction of face width) before "turned away"
-const FACE_API_SCRIPT_SRC = "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js";
-const FACE_API_MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights";
+/* ═══════════════════════════════════════════════════════════
+   NEW — EXAM-LOGIN RETRY CONFIG
+   ─────────────────────────────────────────────────────────
+   Backend resilience (config/db.js pool sizing, server.js listen
+   backlog, examLoginConcurrencyGuard, examLogin's withTransientRetry/
+   respondDbBusy) already exists to absorb load spikes and signal
+   "try again shortly" via 503 DB_BUSY / 503 EXAM_LOGIN_BUSY, or via a
+   raw connection-refused/reset if the burst is severe enough. Nothing
+   on the frontend was retrying those signals — a single failed
+   /exam-login call just showed an error and stopped. This adds a
+   bounded 15-second retry window with backoff + jitter, and is the
+   ONLY change in this file.
+   ═════════════════════════════════════════════════════════ */
+const LOGIN_RETRY_WINDOW_MS = 15000;
+const LOGIN_RETRY_BASE_DELAY_MS = 400;
+const LOGIN_RETRY_MAX_DELAY_MS = 2000;
 
-/* Distance between two face-api.js landmark points ({x,y}). */
-const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/* Eye Aspect Ratio: the standard measure of how "open" an eye is from
-   its 6 outline landmark points, ordered [outerCorner, top1, top2,
-   innerCorner, bottom2, bottom1] — which is exactly what face-api.js's
-   getLeftEye()/getRightEye() return. Falls as the eyelid closes. */
-const eyeAspectRatio = (eye) => {
-  const vertical = dist(eye[1], eye[5]) + dist(eye[2], eye[4]);
-  const horizontal = 2 * dist(eye[0], eye[3]);
-  return horizontal === 0 ? 0 : vertical / horizontal;
-};
-
-/* Is this frame's landmarks a person actually looking at the screen?
-   Requires both eyes open (EAR check) AND the head roughly front-on
-   (nose-position yaw check) — see the HONEST SCOPE NOTE above for
-   exactly what this can and can't detect. */
-const isLookingAtScreen = (landmarks) => {
-  const leftEye = landmarks.getLeftEye();
-  const rightEye = landmarks.getRightEye();
-  const jaw = landmarks.getJawOutline();
-  const nose = landmarks.getNose();
-
-  const leftEAR = eyeAspectRatio(leftEye);
-  const rightEAR = eyeAspectRatio(rightEye);
-  const eyesOpen = leftEAR >= EAR_CLOSED_THRESHOLD && rightEAR >= EAR_CLOSED_THRESHOLD;
-
-  // jaw[0] and jaw[16] are the leftmost/rightmost face-outline points;
-  // nose[3] is the nose tip. A centered nose tip sits near the midpoint
-  // between them — how far it drifts, as a fraction of face width,
-  // approximates how far the head is turned left/right.
-  const faceLeft = jaw[0], faceRight = jaw[16], noseTip = nose[3];
-  const faceWidth = dist(faceLeft, faceRight);
-  const faceMidX = (faceLeft.x + faceRight.x) / 2;
-  const yawOffset = faceWidth === 0 ? 0 : Math.abs(noseTip.x - faceMidX) / faceWidth;
-  const facingForward = yawOffset <= YAW_OFFSET_LIMIT;
-
-  return eyesOpen && facingForward;
+// Retry only on failures that are TRANSIENT (no response at all — connection
+// refused/reset/timeout — or 408/429/500/502/503/504). examLogin
+// deliberately reports every credential/business-logic failure (wrong
+// password, unknown username, inactive/unapproved exam, missing fields) as
+// a plain 400/404 JSON body specifically so it's never confused with a
+// "session invalid" 401/403 — those definitive failures must never be
+// retried here either.
+const isRetryableLoginError = (err) => {
+  if (!err.response) return true; // no HTTP response reached us at all
+  return [408, 429, 500, 502, 503, 504].includes(err.response.status);
 };
 
 const getDeviceId = () => {
@@ -249,37 +188,11 @@ const getDeviceId = () => {
 
 const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
 
-/* Loads the face-api.js UMD bundle from CDN exactly once, however many
-   times this is called (e.g. StrictMode double-invoke, remounts) — the
-   in-flight/loaded promise is memoized at module scope. */
-let faceApiLoadPromise = null;
-const loadFaceApi = () => {
-  if (window.faceapi?.nets?.faceLandmark68TinyNet?.isLoaded) return Promise.resolve(window.faceapi);
-  if (faceApiLoadPromise) return faceApiLoadPromise;
-  faceApiLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${FACE_API_SCRIPT_SRC}"]`);
-    const onReady = () => {
-      Promise.all([
-        window.faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL),
-        window.faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL),
-      ])
-        .then(() => resolve(window.faceapi))
-        .catch(reject);
-    };
-    if (existing) {
-      if (window.faceapi) onReady();
-      else existing.addEventListener("load", onReady);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = FACE_API_SCRIPT_SRC;
-    script.async = true;
-    script.onload = onReady;
-    script.onerror = () => reject(new Error("Failed to load face-api.js"));
-    document.head.appendChild(script);
-  });
-  return faceApiLoadPromise;
-};
+// Local autosave for in-progress answers, scoped per assessment. Without
+// this, `answers` is pure React state — any refresh, accidental reload,
+// flaky connection, or the browser restoring a crashed tab wipes every
+// answer the student has entered, with the countdown still running.
+const answersKey = (assessmentId) => `exam_answers_${assessmentId}`;
 
 /* ─── read the JWT payload without a decode library ───
    Only used to decide, client-side, whether the token already in
@@ -341,11 +254,6 @@ export default function TakeEAssessment() {
   const [violations, setViolations] = useState(0);
   const [lockReason, setLockReason] = useState("");
 
-  // camera/eye-gaze monitoring — see EYES_OFF_LIMIT_MS note above
-  const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | denied | unsupported | error
-  const [faceVisible, setFaceVisible] = useState(true); // true = "looking at the screen" (see isLookingAtScreen)
-  const [faceAbsentSeconds, setFaceAbsentSeconds] = useState(0); // seconds of continuous not-looking-at-screen
-
   // exam-login step (username + this assessment's exam password —
   // no portal account required)
   const [examUsername, setExamUsername] = useState("");
@@ -363,10 +271,6 @@ export default function TakeEAssessment() {
 
   const heartbeatRef = useRef(null);
   const timerRef = useRef(null);
-  const videoRef = useRef(null);
-  const cameraStreamRef = useRef(null);
-  const faceCheckIntervalRef = useRef(null);
-  const faceAbsentSinceRef = useRef(null); // timestamp, or null while looking at the screen
 
   /* ── restore a persisted local lock (survives refresh) ── */
   useEffect(() => {
@@ -403,19 +307,8 @@ export default function TakeEAssessment() {
   }, [id]);
 
   useEffect(() => {
-    // Don't re-fetch a token if we booted straight into a persisted lock.
-    // Deliberately re-reads localStorage here rather than checking the
-    // `phase` state: this effect and the lock-restore effect above both
-    // run once on mount, and this one's closure would otherwise see the
-    // pre-update "examlogin" phase from the initial render — the two
-    // effects fire in the same commit, before React has flushed the
-    // other effect's setPhase("locked") into a value this closure can
-    // see. That race is exactly what let a locked exam un-lock itself
-    // on refresh: this effect would find a still-valid exam-only token
-    // in localStorage and happily call bootStart() again, bypassing a
-    // lock that (from the server's point of view) never happened in the
-    // first place — it's purely a local, client-side violation lock.
-    if (localStorage.getItem(lockKey(id))) return;
+    // don't re-fetch a token if we booted straight into a persisted lock
+    if (phase === "locked") return;
     // already have a usable session for this exact assessment (a full
     // portal login, or a previously-issued exam-only token) — skip the
     // login form and go straight to starting the exam
@@ -427,7 +320,18 @@ export default function TakeEAssessment() {
   }, []);
 
   /* ── exam-login: username + this assessment's exam password,
-       no portal account needed ── */
+       no portal account needed.
+
+       CHANGED — now wraps the single POST in a bounded retry loop:
+       any TRANSIENT failure (no response at all, or 408/429/5xx —
+       which is exactly what examLoginConcurrencyGuard's 503
+       EXAM_LOGIN_BUSY and examLogin's 503 DB_BUSY return under load)
+       is retried with backoff + jitter for up to 15 seconds total,
+       honoring the server's Retry-After header when present. Any
+       definitive failure (400/404 — wrong password, unknown username,
+       inactive/unapproved exam) stops immediately, exactly as before.
+       A successful response stops all retries immediately and behaves
+       exactly as the original single-shot version did. ── */
   const handleExamLogin = async (e) => {
     e.preventDefault();
     if (examLoggingIn) return;
@@ -436,22 +340,70 @@ export default function TakeEAssessment() {
       return;
     }
     setExamLoginError("");
-    setExamLoggingIn(true);
+    setExamLoggingIn(true); // existing spinner/disabled-button state — reused as-is
+
+    const deadline = Date.now() + LOGIN_RETRY_WINDOW_MS;
+    let attempt = 0;
+
     try {
-      const res = await API.post("/e-assessments/exam-login", {
-        assessmentId: Number(id),
-        username: examUsername.trim(),
-        examPassword: examPasswordInput.trim(),
-      });
-      if (!res.data?.success) {
-        setExamLoginError(res.data?.message || "Login failed. Please try again.");
-        return;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        attempt++;
+        try {
+          const res = await API.post("/e-assessments/exam-login", {
+            assessmentId: Number(id),
+            username: examUsername.trim(),
+            examPassword: examPasswordInput.trim(),
+          });
+
+          if (!res.data?.success) {
+            // Defensive only — examLogin's failure paths use explicit
+            // status codes, not a 200 with success:false — but if that
+            // ever changes, treat it as definitive rather than retrying.
+            setExamLoginError(res.data?.message || "Login failed. Please try again.");
+            return;
+          }
+
+          // Success — stop immediately. Never send another login request.
+          localStorage.setItem("token", res.data.token);
+          localStorage.setItem("user", JSON.stringify(res.data.user));
+          await bootStart();
+          return;
+        } catch (err) {
+          if (!isRetryableLoginError(err)) {
+            setExamLoginError(
+              err?.response?.data?.message || "Login failed. Check your username and exam password."
+            );
+            return;
+          }
+
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) {
+            setExamLoginError(
+              "The server is currently busy. We could not complete your login within 15 seconds. Please try again."
+            );
+            return;
+          }
+
+          // Bounded exponential backoff + jitter, capped at
+          // LOGIN_RETRY_MAX_DELAY_MS, honoring the server's Retry-After
+          // when present (DB_BUSY / EXAM_LOGIN_BUSY both send "2"), and
+          // never scheduled past the remaining deadline. Jitter keeps
+          // many simultaneously-failing browsers from retrying in lockstep
+          // and re-synchronizing into another burst.
+          const serverRetryAfterMs = (Number(err?.response?.headers?.["retry-after"]) || 0) * 1000;
+          const backoff = Math.min(
+            LOGIN_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+            LOGIN_RETRY_MAX_DELAY_MS
+          );
+          const jitter = Math.random() * backoff * 0.5;
+          const delay = Math.min(Math.max(serverRetryAfterMs, backoff) + jitter, Math.max(remaining - 50, 0));
+
+          await sleep(delay);
+          // loop continues to the next attempt, unless the deadline check
+          // above catches it first on the following iteration
+        }
       }
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-      await bootStart();
-    } catch (err) {
-      setExamLoginError(err?.response?.data?.message || "Login failed. Check your username and exam password.");
     } finally {
       setExamLoggingIn(false);
     }
@@ -470,14 +422,42 @@ export default function TakeEAssessment() {
     setPhase("verify");
   };
 
-  /* ── step 3: fetch the actual questions and enter the locked-down exam ── */
+  /* ── step 3: fetch the actual questions and enter the locked-down exam ──
+     Uses the server-computed `remaining_seconds` (true elapsed-aware
+     time) when available, instead of always resetting to the full
+     nominal duration — otherwise every refresh or lock/unlock resume
+     would hand the student a brand new full countdown. See the
+     matching comment in backend/controllers/eAssessment.controller.js
+     (getEAssessmentById) for where remaining_seconds comes from. */
   const enterActive = useCallback(async () => {
     const detail = await API.get(`/e-assessments/${id}`);
     setAssessment(detail.data.assessment);
     setQuestions(detail.data.questions || []);
-    setSecondsLeft((detail.data.assessment.duration_minutes || 30) * 60);
+    const fullDuration = (detail.data.assessment.duration_minutes || 30) * 60;
+    const remaining = detail.data.remaining_seconds;
+    setSecondsLeft(typeof remaining === "number" ? remaining : fullDuration);
+
+    // Restore any answers autosaved locally before this refresh/resume —
+    // see the autosave effect below for where these get written.
+    try {
+      const saved = localStorage.getItem(answersKey(id));
+      if (saved) setAnswers(JSON.parse(saved));
+    } catch {
+      /* corrupt/unreadable autosave — start with whatever's in state (likely empty) rather than block entry */
+    }
+
     setPhase("active");
   }, [id]);
+
+  /* ── autosave answers locally on every change, while the exam is active ── */
+  useEffect(() => {
+    if (phase !== "active") return;
+    try {
+      localStorage.setItem(answersKey(id), JSON.stringify(answers));
+    } catch {
+      /* storage full/unavailable — non-fatal, submission still works from in-memory state */
+    }
+  }, [answers, phase, id]);
 
   /* ── step 2: the student re-types the token to prove they saved it,
        this also performs the device-binding activation ── */
@@ -544,12 +524,24 @@ export default function TakeEAssessment() {
     return () => clearInterval(heartbeatRef.current);
   }, [phase, token, deviceId]);
 
-  /* ── countdown timer ── */
+  /* ── countdown timer ──
+     BUG FIX: this interval is created once, when phase first becomes
+     "active" (deps=[phase] only, intentionally, so the 1-second tick
+     doesn't reset/drift every time an answer changes). That means its
+     callback closure is frozen at creation time — calling
+     `handleSubmit` directly here would call the version captured at
+     mount, which itself closed over `answers` as it was at that exact
+     instant (essentially empty, since the student hadn't answered
+     anything yet). Every time-based auto-submit would silently submit
+     blank/stale answers regardless of what the student actually
+     selected. Routing through a ref that's kept current on every
+     render (see handleSubmitRef below) fixes this without needing to
+     restart the interval. */
   useEffect(() => {
     if (phase !== "active") return;
     timerRef.current = setInterval(() => {
       setSecondsLeft((s) => {
-        if (s <= 1) { clearInterval(timerRef.current); handleSubmit(true); return 0; }
+        if (s <= 1) { clearInterval(timerRef.current); handleSubmitRef.current(true); return 0; }
         return s - 1;
       });
     }, 1000);
@@ -646,95 +638,6 @@ export default function TakeEAssessment() {
     };
   }, [phase, registerViolation]);
 
-  /* ── webcam eye/gaze monitoring ──
-     Only runs during the active exam, same lifecycle as the other
-     detectors above. Requests the camera, then polls a lightweight
-     face+landmark detector roughly once a second to check both eyes
-     are open and the head is facing the screen (see isLookingAtScreen
-     and the HONEST SCOPE NOTE above); sustained failure feeds into
-     the same registerViolation() escalation as everything else. */
-  useEffect(() => {
-    if (phase !== "active") return;
-    let cancelled = false;
-
-    const stopCamera = () => {
-      clearInterval(faceCheckIntervalRef.current);
-      faceCheckIntervalRef.current = null;
-      if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach((t) => t.stop());
-        cameraStreamRef.current = null;
-      }
-    };
-
-    const startMonitoring = async () => {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraStatus("unsupported");
-        return;
-      }
-      setCameraStatus("requesting");
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false });
-      } catch {
-        if (!cancelled) setCameraStatus("denied");
-        return;
-      }
-      if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
-
-      cameraStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        try { await videoRef.current.play(); } catch { /* autoplay quirks — detection loop below still starts */ }
-      }
-
-      let faceapi;
-      try {
-        faceapi = await loadFaceApi();
-      } catch {
-        if (!cancelled) setCameraStatus("error");
-        return;
-      }
-      if (cancelled) return;
-
-      setCameraStatus("active");
-      const detectorOptions = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
-
-      faceCheckIntervalRef.current = setInterval(async () => {
-        if (!videoRef.current || videoRef.current.readyState < 2) return;
-        let result;
-        try {
-          result = await faceapi
-            .detectSingleFace(videoRef.current, detectorOptions)
-            .withFaceLandmarks(true); // true = the lighter "tiny" landmark model, matching tinyFaceDetector
-        } catch {
-          return; // transient decode error — try again next tick
-        }
-
-        const now = Date.now();
-        const looking = !!result && isLookingAtScreen(result.landmarks);
-
-        if (looking) {
-          faceAbsentSinceRef.current = null;
-          setFaceVisible(true);
-          setFaceAbsentSeconds(0);
-        } else {
-          if (!faceAbsentSinceRef.current) faceAbsentSinceRef.current = now;
-          const absentMs = now - faceAbsentSinceRef.current;
-          setFaceVisible(false);
-          setFaceAbsentSeconds(Math.floor(absentMs / 1000));
-          if (absentMs >= EYES_OFF_LIMIT_MS) {
-            faceAbsentSinceRef.current = now; // require another full window before flagging again
-            setFaceAbsentSeconds(0);
-            registerViolation("eyes not on the screen for 10+ seconds");
-          }
-        }
-      }, FACE_CHECK_INTERVAL_MS);
-    };
-
-    startMonitoring();
-    return () => { cancelled = true; stopCamera(); };
-  }, [phase, registerViolation]);
-
   /* ── while locked, keep polling in case an admin unlocks this session ── */
   useEffect(() => {
     if (phase !== "locked" || !token) return;
@@ -773,6 +676,7 @@ export default function TakeEAssessment() {
       };
       await API.post("/e-assessments/submit", payload);
       localStorage.removeItem(lockKey(id));
+      localStorage.removeItem(answersKey(id));
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       setPhase("ended");
       setErrorMsg(auto ? "Time's up — your assessment was submitted automatically." : "Assessment submitted successfully.");
@@ -782,6 +686,14 @@ export default function TakeEAssessment() {
       setSubmitting(false);
     }
   };
+
+  /* Always points at the current render's handleSubmit (with today's
+     `answers`) — see the countdown timer effect above for why this
+     exists instead of calling handleSubmit directly from that interval. */
+  const handleSubmitRef = useRef(handleSubmit);
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  });
 
   const mmss = (total) => {
     const m = Math.floor(total / 60).toString().padStart(2, "0");
@@ -1030,47 +942,10 @@ export default function TakeEAssessment() {
         </div>
       </div>
 
-      {cameraStatus === "active" && !faceVisible && (
-        <div className="eyes-off-flash" style={S.eyesOffBanner}>
-          <EyeOff size={18} color="#fff" style={{ flexShrink: 0 }} />
-          <span style={S.eyesOffBannerText}>Keep your eyes on the computer</span>
-        </div>
-      )}
-
       {violations > 0 && (
         <div style={S.warningStrip}>
           <ShieldAlert size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
           <span>Warning {violations}/{MAX_VIOLATIONS}: suspicious activity detected on this device. Reaching {MAX_VIOLATIONS} will lock your exam.</span>
-        </div>
-      )}
-
-      {cameraStatus === "denied" && (
-        <div style={S.warningStrip}>
-          <CameraOff size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
-          <span>Camera access was not granted, so eye-gaze monitoring is off for this session. This alone will not affect your submission.</span>
-        </div>
-      )}
-
-      {/* Floating camera-monitor widget — visible to the student the whole
-          time their camera is on, on purpose: the point is honest, visible
-          monitoring, not a hidden check. */}
-      {(cameraStatus === "requesting" || cameraStatus === "active") && (
-        <div style={S.camWidget}>
-          <div style={{ ...S.camDot, background: faceVisible ? "var(--success)" : "var(--destructive)" }} />
-          <video ref={videoRef} muted playsInline style={S.camVideo} />
-          <div style={S.camStatusText}>
-            {cameraStatus === "requesting" ? (
-              <><Camera size={12} /> Starting camera…</>
-            ) : faceVisible ? (
-              <><Eye size={12} /> Looking at screen</>
-            ) : (
-              <><EyeOff size={12} color="var(--destructive)" />
-                <span style={{ color: "var(--destructive)" }}>
-                  Eyes off screen — {faceAbsentSeconds}s
-                </span>
-              </>
-            )}
-          </div>
         </div>
       )}
 
@@ -1089,25 +964,11 @@ export default function TakeEAssessment() {
               <span style={S.qMarks}>{q.marks} mark{q.marks !== 1 ? "s" : ""}</span>
             </p>
 
-            {Array.isArray(q.images) && q.images.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-                {q.images.map((img) => (
-                  <img
-                    key={img.id}
-                    src={resolveFileUrl(img.image_url)}
-                    alt="Diagram for this question"
-                    style={{ maxWidth: 260, maxHeight: 220, objectFit: "contain", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)" }}
-                  />
-                ))}
-              </div>
-            )}
-
             {q.question_type === "essay" ? (
-              <textarea
-                style={S.essayInput}
-                placeholder="Type your answer here…"
+              <EssayEditor
                 value={answers[q.id] || ""}
-                onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                onChange={(html) => setAnswers({ ...answers, [q.id]: html })}
+                placeholder="Type your answer here…"
               />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1189,34 +1050,6 @@ const S = {
     background: "var(--warning-tint)", border: "1px solid var(--warning)",
     color: "var(--warning)", borderRadius: "var(--radius-sm)",
     padding: "10px 14px", fontSize: 13, fontWeight: 600, marginBottom: 16,
-  },
-  eyesOffBanner: {
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-    background: "var(--destructive)", border: "1px solid var(--destructive)",
-    borderRadius: "var(--radius-sm)", padding: "12px 14px", marginBottom: 16,
-  },
-  eyesOffBannerText: {
-    color: "#fff", fontSize: 14, fontWeight: 800, letterSpacing: "0.01em",
-  },
-  camWidget: {
-    position: "fixed", bottom: 18, right: 18, zIndex: 500,
-    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-    background: "var(--card)", border: "1px solid var(--border)",
-    borderRadius: "var(--radius-sm)", padding: 8,
-    boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
-  },
-  camVideo: {
-    width: 120, height: 90, borderRadius: 8, objectFit: "cover",
-    background: "#000", transform: "scaleX(-1)", // mirror, like a real camera preview
-  },
-  camDot: {
-    position: "absolute", top: 14, right: 14,
-    width: 9, height: 9, borderRadius: "50%",
-    boxShadow: "0 0 0 2px var(--card)",
-  },
-  camStatusText: {
-    display: "flex", alignItems: "center", gap: 5,
-    fontSize: 11, fontWeight: 600, color: "var(--text-secondary)",
   },
   instructionsBox: {
     display: "flex", gap: 10,
