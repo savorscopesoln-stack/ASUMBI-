@@ -6,8 +6,9 @@ import {
   Search, X, RefreshCw, Download, Plus, UserPlus, ChevronDown, ArrowLeft, Pencil, Trash2,
   Check, CheckCircle2, AlertTriangle, Lock, Unlock, Zap, Rocket, MessageSquare, Mail,
   BarChart3, ClipboardList, FileText, Award, LockKeyhole, Users, Inbox, Clock, TrendingUp,
-  Sun, Moon,
+  Sun, Moon, Server,
 } from "lucide-react";
+import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 
 /* ═══════════════════════════════════════════════════════════
    DESIGN TOKENS — shared with the rest of the app
@@ -155,6 +156,7 @@ const IconClipboardList= ClipboardList;
 const IconFileText     = FileText;
 const IconAward        = Award;
 const IconLockKeyhole  = LockKeyhole;
+const IconServer       = Server;
 const IconUsers        = Users;
 const IconInbox        = Inbox;
 const IconClock        = Clock;
@@ -205,6 +207,7 @@ const TABS = [
   { label: "Remark Requests", icon: IconMessage },
   { label: "Released Marks",  icon: IconAward },
   { label: "Device Locks",    icon: IconLockKeyhole },
+  { label: "Local Sync",      icon: IconServer },
 ];
 
 /* ═══════════════════════════════════════════════════════════
@@ -1228,6 +1231,8 @@ export default function AdminEAssessments() {
           )}
         </>
       )}
+
+      {activeTab === 5 && <LocalSyncPanel assessments={list} />}
 
       {/* ════════════════════════════════════════════
           MODALS
