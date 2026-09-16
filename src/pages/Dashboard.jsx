@@ -12,7 +12,7 @@ import {
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
   Award, Activity, Inbox, KeyRound, Bell, Settings, Vote, SlidersHorizontal,
-  UserRoundCog, Globe,
+  UserRoundCog, Globe, Building2,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
@@ -172,6 +172,13 @@ const NAV_GROUPS = [
       // need admin-only trust the way Notification Settings/Portal
       // Pages do.
       { name: "Website", Icon: Globe },
+      // The school's own identity — name, address, phone/email, exam
+      // centre code, number of classes, and the officials (Principal,
+      // Dean, etc.) whose names appear on downloaded reports and
+      // certificates. See backend routes/schoolSettings.js. Grantable
+      // like Website, since it's this school's own data, not a
+      // Doravo Core platform-level setting.
+      { name: "School Settings", Icon: Building2 },
       // Not part of the grantable sub-admin PAGE_KEYS list (see
       // permissions.js) on purpose — hasPage() only returns true for
       // this key when role === "admin" (its unconditional bypass), so
@@ -200,6 +207,7 @@ const ROUTES = {
   "Profile Change Requests":"/profile-change-requests",
   "Portal Pages":"/portal-pages",
   Website:"/website",
+  "School Settings":"/school-settings",
 };
 
 const formatYear = (y) => {

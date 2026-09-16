@@ -52,21 +52,6 @@ API.interceptors.request.use(
       req.headers.Authorization = `Bearer ${token}`;
     }
 
-    // ================================
-    // DB TENANT (multi-institution backend)
-    // One backend can serve more than one database (e.g. the main
-    // campus DB and a second institution's DB). Which one a request
-    // should hit is chosen once, on the Login screen (see
-    // Login.jsx), and stored here so every subsequent call — not
-    // just the login POST itself — keeps targeting the same
-    // database for the rest of the session. Omitted entirely for
-    // the default/main institution, so a plain single-DB backend
-    // (nothing set in localStorage) behaves exactly as before.
-    const dbTenant = localStorage.getItem("dbTenant");
-    if (dbTenant && dbTenant !== "default") {
-      req.headers["X-Db-Tenant"] = dbTenant;
-    }
-
     return req;
   },
   (error) => Promise.reject(error)

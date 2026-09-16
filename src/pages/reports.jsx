@@ -3,6 +3,7 @@ import API from "../api";
 import QRCode from "qrcode";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import useSchoolSettings from "../hooks/useSchoolSettings";
 import {
   ResponsiveContainer,
   BarChart,
@@ -44,7 +45,7 @@ const getOverallResult = (avg) => {
 };
 
 /* ================= OFFICIAL LETTERHEAD ================= */
-const LetterHead = ({ mode }) => (
+const LetterHead = ({ mode, school }) => (
   <div style={styles.letterheadBox}>
 
     <div style={styles.letterheadInner}>
@@ -52,7 +53,7 @@ const LetterHead = ({ mode }) => (
       {/* LEFT SIDE - INSTITUTION INFO */}
       <div style={styles.schoolBlock}>
         <h1 style={styles.schoolName}>
-          ASUMBI TEACHERS TRAINING COLLEGE
+          {school?.schoolName || "ASUMBI TEACHERS TRAINING COLLEGE"}
         </h1>
 
         <h3 style={styles.subTitle}>
@@ -105,6 +106,9 @@ const getRemark = (score) => {
 const COLORS = ["#16a34a", "#facc15", "#f97316", "#dc2626"];
 
 export default function Reports() {
+  const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const dean = getOfficial("dean");
+  const principal = getOfficial("principal");
   const [printClass, setPrintClass] = useState("ALL");
   const [assessmentId, setAssessmentId] = useState("");
   const [marks, setMarks] = useState([]);
@@ -338,7 +342,7 @@ const printAllReports = async () => {
 
       {/* TOPBAR */}
       <div style={styles.topbar}>
-        <h2>📘 ASUMBI TTC EXAM SYSTEM</h2>
+        <h2>📘 DORAVO CORE EXAM SYSTEM</h2>
 
         <div style={{ display: "flex", gap: 10 }}>
           <select value={assessmentId} onChange={(e) => setAssessmentId(e.target.value)}>
@@ -382,7 +386,7 @@ const printAllReports = async () => {
           Academic Performance Dashboard
         </h2>
         <p style={styles.pageSubTitle}>
-          ASUMBI TTC • Examination & Results Analysis System
+          {school?.shortName || "ASUMBI TTC"} • Examination & Results Analysis System
         </p>
       </div>
     </div>
@@ -803,7 +807,7 @@ const printAllReports = async () => {
     <b>
       {printClass === "ALL" ? "All Classes" : printClass}
     </b>{" "}
-    • PDF generation enabled • Asumbi TTC Exam System
+    • PDF generation enabled • Doravo Core Exam System
   </div>
 </div>
 </div>
@@ -1099,7 +1103,7 @@ const printAllReports = async () => {
       {/* ================= MERIT ================= */}
       {tab === "merit" && (
         <div style={styles.card} ref={meritRef}>
-          <LetterHead mode={mode} />
+          <LetterHead mode={mode} school={school} />
 
           <h2>MERIT LIST</h2>
 
@@ -1136,7 +1140,7 @@ const printAllReports = async () => {
               <div>
                 <p>Approved by</p>
                 <div style={styles.signLine}></div>
-                <small>Chief Principal</small>
+                <small>{principal?.title || signatory?.title || "Chief Principal"}</small>
               </div>
             </div>
           <div style={styles.stampBox}>
@@ -1144,7 +1148,7 @@ const printAllReports = async () => {
         </div>
 {/* 🔥 SECURITY LINE (adds authenticity feel) */}
     <div style={styles.securityLine}>
-      This document is system-generated and valid only when verified by Asumbi TTC Examination Office
+      This document is system-generated and valid only when verified by {school?.shortName || "Asumbi TTC"} Examination Office
     </div>
 
           <button onClick={() => printPDF(meritRef, "MERIT.pdf")}>
@@ -1167,7 +1171,7 @@ const printAllReports = async () => {
           {/* LEFT SIDE */}
           <div style={styles.schoolBlock}>
             <h1 style={styles.schoolName}>
-              ASUMBI TEACHERS TRAINING COLLEGE
+              {school?.schoolName || "ASUMBI TEACHERS TRAINING COLLEGE"}
             </h1>
 
             <h3 style={styles.subTitle}>
@@ -1442,7 +1446,7 @@ INDIVIDUAL CARDS
               letterSpacing: 1,
             }}
           >
-            ASUMBI TEACHERS TRAINING COLLEGE
+            {school?.schoolName || "ASUMBI TEACHERS TRAINING COLLEGE"}
           </h1>
 
           <p
@@ -1973,7 +1977,7 @@ INDIVIDUAL CARDS
                   color: "#7f1d1d",
                 }}
               >
-                Kaunda K.M
+                {dean?.name || "—"}
               </h2>
 
               <p
@@ -1982,7 +1986,7 @@ INDIVIDUAL CARDS
                   color: "#475569",
                 }}
               >
-                Dean of Curriculum
+                {dean?.title || "Dean of Curriculum"}
               </p>
 
               <p
@@ -1991,7 +1995,7 @@ INDIVIDUAL CARDS
                   color: "#64748b",
                 }}
               >
-                For: Chief Principal
+                For: {principal?.title || signatory?.title || "Chief Principal"}
               </p>
 
               <div
@@ -2072,7 +2076,7 @@ INDIVIDUAL CARDS
               }}
             >
               This transcript is an official academic
-              document generated by the Asumbi TTC
+              document generated by the {school?.shortName || "Asumbi TTC"}
               Examination Management System. Any
               alteration renders this document invalid.
             </p>

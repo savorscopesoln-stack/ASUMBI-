@@ -3,6 +3,7 @@ import API from "../../api";
 import html2canvas from "html2canvas";
 import QRCode from "react-qr-code";
 import jsPDF from "jspdf";
+import useSchoolSettings from "../../hooks/useSchoolSettings";
 import {
   ResponsiveContainer,
   BarChart,
@@ -31,6 +32,8 @@ const theme = {
 
 /* ================= MAIN ================= */
 export default function TeacherReports() {
+  const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const principal = getOfficial("principal") || signatory;
   const [assessmentId, setAssessmentId] = useState("");
   const [selectedSubject, setSelectedSubject] = useState(""); // ✅ NEW
   const [marks, setMarks] = useState([]);
@@ -282,7 +285,7 @@ const insights = useMemo(() => {
 <div ref={reportRef} style={printStyles.page}>
 
   {/* WATERMARK */}
-  <div style={printStyles.watermark}>ASUMBI TTC OFFICIAL</div>
+  <div style={printStyles.watermark}>{(school?.shortName || "ASUMBI TTC")} OFFICIAL</div>
 
   {/* ================= HEADER ================= */}
   <div style={printStyles.header}>
@@ -292,11 +295,13 @@ const insights = useMemo(() => {
 
       <div>
         <h1 style={printStyles.title}>
-          ASUMBI TEACHERS TRAINING COLLEGE
+          {school?.schoolName || "ASUMBI TEACHERS TRAINING COLLEGE"}
         </h1>
 
         <p style={printStyles.subtitle}>
-          P.O BOX XXX - KENYA | TEL: 07XX XXX XXX | EMAIL: info@asumbi.ac.ke
+          {[school?.address, school?.phone && `Tel: ${school.phone}`, school?.email]
+            .filter(Boolean)
+            .join(" | ") || "P.O BOX XXX - KENYA | TEL: 07XX XXX XXX | EMAIL: info@asumbi.ac.ke"}
         </p>
 
         <h3 style={printStyles.reportTitle}>
@@ -396,7 +401,7 @@ const insights = useMemo(() => {
 
     <div style={printStyles.signBlock}>
       <div style={printStyles.line}></div>
-      <p>Principal</p>
+      <p>{principal?.title || "Principal"}</p>
     </div>
 
   </div>

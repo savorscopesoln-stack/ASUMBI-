@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { useTheme } from "../../context/ThemeContext";
 import ThemeToggle from "../../components/ThemeToggle";
+import useSchoolSettings from "../../hooks/useSchoolSettings";
 
 /* ================= GRADING (unchanged) ================= */
 const getKnecGrade = (score) => {
@@ -228,6 +229,9 @@ const getScoreBadgeStyle = (score) => {
 export default function StudentReport() {
   useReportGlobalStyles();
   const { theme } = useTheme();
+  const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const dean = getOfficial("dean");
+  const principal = getOfficial("principal");
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const admissionNo = user.admissionNo || user.id;
@@ -374,7 +378,7 @@ export default function StudentReport() {
       pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, "", "FAST");
       heightLeft -= pdfHeight;
     }
-    pdf.save(`${user.name}_ASUMBI_RESULT_SLIP.pdf`);
+    pdf.save(`${user.name}_${school?.shortName || "RESULT"}_RESULT_SLIP.pdf`);
 
     setIsExporting(false);
   };
@@ -398,7 +402,7 @@ export default function StudentReport() {
       {/* ── TOP BAR (screen only) ── */}
       <div style={styles.topBar} className="no-print">
         <div>
-          <h2 style={styles.portalTitle}>ASUMBI SMART CAMPUS SYSTEM</h2>
+          <h2 style={styles.portalTitle}>DORAVO CORE</h2>
           <p style={styles.portalSub}>Official Academic Result Slip Portal</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -444,8 +448,12 @@ export default function StudentReport() {
                 {/* Centre text */}
                 <div style={{ flex: 1, textAlign: "center" }}>
                   <p style={styles.collegeTagline}>REPUBLIC OF KENYA</p>
-                  <h1 style={styles.collegeName}>ASUMBI TEACHERS TRAINING COLLEGE</h1>
-                  <p style={styles.collegeAddress}>P.O. Box 22 – 40305, Asumbi | Tel: 059-22001 | knec@asumbi.ac.ke</p>
+                  <h1 style={styles.collegeName}>{school?.schoolName || "Asumbi Teachers Training College"}</h1>
+                  <p style={styles.collegeAddress}>
+                    {[school?.address, school?.phone && `Tel: ${school.phone}`, school?.email]
+                      .filter(Boolean)
+                      .join(" | ") || "P.O. Box 22 – 40305, Asumbi | Tel: 059-22001 | knec@asumbi.ac.ke"}
+                  </p>
                   <div style={styles.slipTitleBox}>
                     <p style={styles.slipTitle}>
                       PROVISIONAL RESULTS SLIP — TERM 1, NOVEMBER 2025
@@ -478,7 +486,7 @@ export default function StudentReport() {
                 <span style={styles.sectionLabel}>CANDIDATE INFORMATION</span>
               </div>
               <div style={styles.infoGrid}>
-                <InfoItem label="Centre Code" value="ASB-214" />
+                <InfoItem label="Centre Code" value={school?.centreCode || "ASB-214"} />
                 <InfoItem label="Admission Number" value={admissionNo} />
                 <InfoItem label="Class / Stream" value={studentClass} />
                 <InfoItem label="Gender" value={user.gender || "N/A"} />
@@ -602,9 +610,9 @@ export default function StudentReport() {
                 <div style={styles.authCard}>
                   <p style={styles.authCardTitle}>Approved By</p>
                   <div style={{ padding: "4px 0" }}>
-                    <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>Kaunda, K.M</p>
-                    <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>Dean of Curriculum</p>
-                    <p style={{ margin: "0 0 10px", fontSize: 12, color: "#334155" }}>For: Chief Principal</p>
+                    <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{dean?.name || "—"}</p>
+                    <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{dean?.title || "Dean of Curriculum"}</p>
+                    <p style={{ margin: "0 0 10px", fontSize: 12, color: "#334155" }}>For: {principal?.title || signatory?.title || "Chief Principal"}</p>
                   </div>
                   <div style={styles.sigGrid}>
                     <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>

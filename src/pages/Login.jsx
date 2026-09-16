@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import API from "../api";
 import { useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle, GraduationCap } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
+import useSchoolSettings from "../hooks/useSchoolSettings";
 import { useTheme } from "../context/ThemeContext";
 import ThemeToggle from "../components/ThemeToggle";
 import PasswordInput, { authStyles } from "../components/PasswordInput";
@@ -140,29 +141,10 @@ const isRetryableLoginError = (err) => {
   return [408, 429, 500, 502, 503, 504].includes(err.response.status);
 };
 
-/* ═══════════════════════════════════════════════════════════
-   INSTITUTIONS
-   ─────────────────────────────────────────────────────────
-   This one frontend serves more than one institution, each backed
-   by its own database on the same shared backend. `value` here must
-   exactly match a tenant key the backend knows about (see
-   backend/.env's DB_TENANTS + DB_USER_<KEY> etc.) — "default" is
-   always the main campus DB and needs no backend env changes;
-   anything else needs a matching DB_TENANTS entry or logins for
-   that institution will always 401 (wrong database, not wrong
-   password). Add new institutions here as they're onboarded.
-   ═════════════════════════════════════════════════════════ */
-const INSTITUTIONS = [
-  { value: "default", label: "Asumbi Teachers Training College" },
-  { value: "eregi", label: "Eregi Teachers Training College" },
-];
-
 export default function Login() {
+  const { settings: schoolSettings } = useSchoolSettings();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [institution, setInstitution] = useState(
-    () => localStorage.getItem("dbTenant") || "default"
-  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [heroImageOk, setHeroImageOk] = useState(true);
@@ -236,14 +218,6 @@ export default function Login() {
 
     setLoading(true);
     setError("");
-
-    // Persist BEFORE the request fires — api.js's request interceptor
-    // reads this on every call (including this very login POST) to
-    // decide which database the backend should use. Stored (not just
-    // held in state) so it survives a refresh and every subsequent
-    // API call for the rest of this session keeps hitting the same
-    // institution's DB, not just this login attempt.
-    localStorage.setItem("dbTenant", institution);
 
     const deadline = Date.now() + LOGIN_RETRY_WINDOW_MS;
     let attempt = 0;
@@ -385,11 +359,11 @@ export default function Login() {
         <div style={S.brandRow}>
           <div style={S.brandMark}>
             <div style={S.logoSquare}>
-              <GraduationCap size={20} color="#fff" strokeWidth={2.25} />
+              <img src="/assets/doravo-icon.png" alt="Doravo Core" style={{ width: 26, height: 26, objectFit: "contain" }} />
             </div>
             <div>
-              <div style={S.brandName}>ASUMBI</div>
-              <div style={S.brandSub}>Smart Campus</div>
+              <div style={S.brandName}>DORAVO CORE</div>
+              <div style={S.brandSub}>Moving Education Forward</div>
             </div>
           </div>
           <ThemeToggle />
@@ -408,23 +382,6 @@ export default function Login() {
         )}
 
         <form onSubmit={login} style={S.form} noValidate>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label htmlFor="institution" style={authStyles.label}>Institution</label>
-            <select
-              id="institution"
-              className="auth-input"
-              value={institution}
-              onChange={(e) => setInstitution(e.target.value)}
-              style={authStyles.input}
-            >
-              {INSTITUTIONS.map((inst) => (
-                <option key={inst.value} value={inst.value}>
-                  {inst.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label htmlFor="username" style={authStyles.label}>Username</label>
             <input
@@ -469,7 +426,7 @@ export default function Login() {
         </form>
 
         <p style={S.footerNote}>
-          © {new Date().getFullYear()} Asumbi Teachers Training College
+          © {new Date().getFullYear()} {schoolSettings?.schoolName || "Asumbi Teachers Training College"}
         </p>
         </div>
       </div>
@@ -572,7 +529,8 @@ const S = {
     width: 38,
     height: 38,
     borderRadius: 10,
-    background: "var(--primary)",
+    background: "#fff",
+    border: "1px solid var(--border)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",

@@ -35,11 +35,13 @@ import StudentCouncil from "./pages/StudentCouncil";
 import GatePage from "./pages/GatePage";
 import KitchenPage from "./pages/KitchenPage";
 import Website from "./pages/Website";
+import SchoolSettings from "./pages/SchoolSettings";
 
 /* =========================================================
    AUTH
 ========================================================= */
 import Login from "./pages/Login";
+import Landing from "./pages/Landing";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
 import CompleteProfile from "./pages/CompleteProfile";
 
@@ -310,7 +312,9 @@ export default function App() {
   return (
     <Routes>
 
-      {/* ROOT */}
+      {/* ROOT — the marketing landing page for anyone not logged in yet.
+          Logged-in users are bounced straight to their own dashboard
+          (see Landing.jsx's own header comment for the reasoning). */}
       <Route
         path="/"
         element={
@@ -320,10 +324,7 @@ export default function App() {
               replace
             />
           ) : (
-            <Navigate
-              to="/login"
-              replace
-            />
+            <Landing />
           )
         }
       />
@@ -672,6 +673,18 @@ export default function App() {
             page="Website"
           >
             <Website />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/school-settings"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="School Settings"
+          >
+            <SchoolSettings />
           </ProtectedRoute>
         }
       />

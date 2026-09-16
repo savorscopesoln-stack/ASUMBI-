@@ -333,6 +333,52 @@ const SITE_URL =
 const CONTACT_EMAIL = "hello@doravo.core"; // TODO: replace with a real, registered domain before launch
 
 /* ---------------------------------------------------------
+   SIGN IN DESTINATION
+   This app is reachable at two production domains —
+   www.doravocore.co.ke (the app itself: this landing page,
+   /login, every dashboard) and www.doravo.co.ke (the company's
+   shorter marketing-facing domain, which may also host a
+   separate/duplicated copy of this same landing page). A
+   visitor already on the app's own domain gets a same-app
+   client-side <Link to="/login"> — no full reload needed. A
+   visitor on any other host (the marketing domain, a preview
+   URL, localhost) gets an absolute link straight to the real
+   app's login page, so "Sign In" works correctly no matter
+   which domain served this page.
+--------------------------------------------------------- */
+const APP_LOGIN_URL = "https://www.doravocore.co.ke/login";
+const isOnAppDomain = () => {
+  if (typeof window === "undefined") return true;
+  const host = window.location.hostname.toLowerCase();
+  return (
+    host === "doravocore.co.ke" ||
+    host === "www.doravocore.co.ke" ||
+    host === "localhost" ||
+    host === "127.0.0.1"
+  );
+};
+
+/* Renders as an internal, client-side <Link> when this page is being
+   served from the app's own domain, or a plain <a> pointing at the
+   real app otherwise (e.g. when embedded on the marketing site). Takes
+   the same props/children as the call sites below so it's a drop-in
+   swap for the three places "Sign In" appears. */
+const SignInLink = ({ className, onClick, children }) => {
+  if (isOnAppDomain()) {
+    return (
+      <Link className={className} to="/login" onClick={onClick}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <a className={className} href={APP_LOGIN_URL} onClick={onClick}>
+      {children}
+    </a>
+  );
+};
+
+/* ---------------------------------------------------------
    SEO: title, meta description, Open Graph / Twitter tags and
    JSON-LD structured data. Only known, real values are used —
    no ratings, review counts or user totals are fabricated.
@@ -357,12 +403,12 @@ const injectSEO = () => {
   setMetaTag("property", "og:title", PAGE_TITLE);
   setMetaTag("property", "og:description", PAGE_DESCRIPTION);
   setMetaTag("property", "og:type", "website");
-  setMetaTag("property", "og:image", `${SITE_URL}/assets/doravo-wordmark.png`);
+  setMetaTag("property", "og:image", `${SITE_URL}/assets/doravo-core-lockup.png`);
   setMetaTag("property", "og:url", SITE_URL);
   setMetaTag("name", "twitter:card", "summary_large_image");
   setMetaTag("name", "twitter:title", PAGE_TITLE);
   setMetaTag("name", "twitter:description", PAGE_DESCRIPTION);
-  setMetaTag("name", "twitter:image", `${SITE_URL}/assets/doravo-wordmark.png`);
+  setMetaTag("name", "twitter:image", `${SITE_URL}/assets/doravo-core-lockup.png`);
 
   // Note: this still runs client-side on mount, same as before. For a page
   // where SEO genuinely matters, the fundamental <title>/<meta description>/
@@ -390,7 +436,7 @@ const injectSEO = () => {
           name: "Doravo",
           slogan: "Moving Education Forward",
           url: SITE_URL,
-          logo: `${SITE_URL}/assets/doravo-wordmark.png`,
+          logo: `${SITE_URL}/assets/doravo-core-lockup.png`,
         },
         {
           "@type": "SoftwareApplication",
@@ -595,12 +641,12 @@ export default function Landing() {
             <a href="#contact">Contact</a>
           </nav>
           <div className="nav-right">
-            <Link className="navlogin" to="/login">
+            <SignInLink className="navlogin">
               <span className="label-full">Sign In</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
-            </Link>
+            </SignInLink>
             <a className="navcta" href="#contact">Request a Demo</a>
             <button
               className="hamburger"
@@ -621,7 +667,7 @@ export default function Landing() {
           <a href="#about" onClick={closeMobile}>About</a>
           <a href="#contact" onClick={closeMobile}>Contact</a>
           <div className="mobile-ctas">
-            <Link className="btn-ghost" to="/login" onClick={closeMobile}>Sign In</Link>
+            <SignInLink className="btn-ghost" onClick={closeMobile}>Sign In</SignInLink>
             <a className="btn-primary" href="#contact" onClick={closeMobile}>Request a Demo</a>
           </div>
         </nav>
@@ -902,7 +948,7 @@ export default function Landing() {
         <div className="wrap">
           <div className="foot-grid">
             <div className="foot-brand">
-              <img src="/assets/doravo-wordmark.png" alt="Doravo Core" style={{ height: 44, width: "auto" }} />
+              <img src="/assets/doravo-core-lockup.png" alt="Doravo Core" style={{ height: 44, width: "auto" }} />
               <p>Education management software for schools — built so each one keeps its own identity, with room to add campuses later.</p>
             </div>
             <div className="foot-cols">
@@ -919,7 +965,7 @@ export default function Landing() {
               </div>
               <div className="foot-col">
                 <h5>Account</h5>
-                <Link to="/login">Sign In</Link>
+                <SignInLink>Sign In</SignInLink>
               </div>
             </div>
           </div>

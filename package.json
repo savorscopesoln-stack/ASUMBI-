@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "doravo-core-frontend",
   "private": true,
   "version": "1.6.7",
   "type": "module",
