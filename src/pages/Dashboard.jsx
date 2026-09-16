@@ -276,6 +276,9 @@ function Dashboard() {
   const [stats, setStats]                     = useState({ users:0, students:0, teachers:0, activeStudents:0 });
   const [roles, setRoles]                     = useState([]);
   const [uploadType, setUploadType]           = useState("students");
+  const [tables, setTables]                   = useState([]); // every table the Data Manager can browse/edit
+  const [tablesLoading, setTablesLoading]     = useState(false);
+  const [primaryKeyCol, setPrimaryKeyCol]     = useState("id"); // PK column of the currently loaded table, from the backend
   const [file, setFile]                       = useState(null);
   const [uploading, setUploading]             = useState(false);
   const [searchLoading, setSearchLoading]     = useState(false);
@@ -372,6 +375,25 @@ function Dashboard() {
     return () => clearInterval(interval);
   }, [loadStats]);
 
+  /* ── Data Manager: every table in the DB, for the record-type picker ──
+     "students"/"teachers"/"users" stay as the original lowercase values
+     (the bulk-import endpoint still expects exactly those), everything
+     else is the table's real name as reported by the schema. */
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        setTablesLoading(true);
+        const res = await API.get("/records/tables");
+        setTables(res.data?.tables || []);
+      } catch (err) {
+        console.log(err);
+      } finally {
+        setTablesLoading(false);
+      }
+    })();
+  }, [isAdmin]);
+
   const handleFileSelect = (f) => {
     setFile(f);
     if (!f) return;
@@ -392,11 +414,15 @@ function Dashboard() {
   const quickSearch = async () => {
     try {
       setSearchLoading(true);
-      const res = await API.get("/search", { params: { type: uploadType, q: searchTerm } });
-      const data = res.data || [];
+      // Routed through /records (not the old /search endpoint) so this
+      // works against any table, not just students/teachers/users —
+      // the backend matches the term against every text column.
+      const res = await API.get("/records", { params: { type: uploadType, search: searchTerm, page: 1, limit: 200 } });
+      const data = res.data?.records || [];
       setPreviewData(data);
       setActiveData(JSON.parse(JSON.stringify(data)));
       setPreviewHeaders(data.length ? Object.keys(data[0]) : []);
+      setPrimaryKeyCol(res.data?.primaryKey || "id");
       setSelectedIndex(null);
       setEditMode(false);
     } catch (err) { console.log(err); showToast("Search failed", "error"); }
@@ -410,6 +436,7 @@ function Dashboard() {
       setPreviewData(data);
       setActiveData(JSON.parse(JSON.stringify(data)));
       setPreviewHeaders(data.length ? Object.keys(data[0]) : []);
+      setPrimaryKeyCol(res.data?.primaryKey || "id");
       setSelectedIndex(null);
       setEditMode(false);
     } catch (err) { console.log(err); showToast("Failed to load records", "error"); }
@@ -427,7 +454,7 @@ function Dashboard() {
     if (selectedIndex === null) return;
     const record = activeData[selectedIndex];
     try {
-      await API.post("/update-records/delete", { type: uploadType, id: record.id || record._id });
+      await API.post("/update-records/delete", { type: uploadType, id: record[primaryKeyCol] ?? record.id ?? record._id });
       const updated = [...activeData];
       updated.splice(selectedIndex, 1);
       setActiveData(updated);
@@ -729,23 +756,32 @@ function Dashboard() {
             <div style={D.panelHeader}>
               <div>
                 <h3 style={D.panelTitle}>Data Manager</h3>
-                <p style={D.panelDesc}>Import, review and manage institutional records.</p>
+                <p style={D.panelDesc}>Import, review and manage records in any table.</p>
               </div>
               <span style={D.panelBadge}>Admin</span>
             </div>
 
             <div className="dash-tool-row" style={D.toolRow}>
               <label style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                <span style={D.fieldLabel}>Record type</span>
+                <span style={D.fieldLabel}>Table</span>
                 <select
                   value={uploadType}
-                  onChange={(e) => setUploadType(e.target.value)}
+                  onChange={(e) => { setUploadType(e.target.value); setActiveData([]); setPreviewHeaders([]); setSelectedIndex(null); }}
                   style={D.select}
-                  aria-label="Record type"
+                  aria-label="Table"
+                  disabled={tablesLoading}
                 >
                   <option value="students">Students</option>
                   <option value="teachers">Teachers</option>
                   <option value="users">Users</option>
+                  {/* Every other table in the DB, fetched from the schema — the
+                      three above stay as their own options since they're also
+                      the special-cased bulk-import types below. */}
+                  {tables
+                    .filter((t) => !["students", "teachers", "users"].includes(t.toLowerCase()))
+                    .map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
                 </select>
               </label>
 
@@ -756,7 +792,7 @@ function Dashboard() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") quickSearch(); }}
-                    placeholder="Name, admission no…"
+                    placeholder="Search any text column…"
                     style={D.textInput}
                     aria-label="Search records"
                   />
@@ -774,24 +810,35 @@ function Dashboard() {
             </div>
 
             <div className="dash-tool-row" style={{ ...D.toolRow, marginTop: 12 }}>
-              <SecondaryBtn onClick={downloadTemplate} Icon={Download}>Template</SecondaryBtn>
               <SecondaryBtn onClick={pullRecords} Icon={RefreshCw}>Load</SecondaryBtn>
-              <SecondaryBtn onClick={promoteYear} Icon={GraduationCap}>Promote Year</SecondaryBtn>
 
-              <label style={D.fileLabel} className="dash-btn dash-btn-secondary">
-                <FolderOpen size={14} />
-                Choose file
-                <input
-                  type="file"
-                  style={{ position:"absolute", width:1, height:1, overflow:"hidden", clip:"rect(0 0 0 0)" }}
-                  onChange={(e) => handleFileSelect(e.target.files[0])}
-                  aria-label="Choose file to upload"
-                />
-              </label>
-              {file && <span style={D.fileName}>{file.name}</span>}
-              <PrimaryBtn onClick={handleUpload} disabled={uploading} Icon={Upload}>
-                {uploading ? "Uploading…" : "Upload"}
-              </PrimaryBtn>
+              {/* Bulk import (spreadsheet upload), template download, and year
+                  promotion are special-purpose flows tied to the original three
+                  record types (they create accounts / touch Students specifically)
+                  — they don't generalize to an arbitrary table, so they only show
+                  up for those three. Every other table still gets Load / Search /
+                  Edit / Save / Delete above and below. */}
+              {["students", "teachers", "users"].includes(uploadType) && (
+                <>
+                  <SecondaryBtn onClick={downloadTemplate} Icon={Download}>Template</SecondaryBtn>
+                  <SecondaryBtn onClick={promoteYear} Icon={GraduationCap}>Promote Year</SecondaryBtn>
+
+                  <label style={D.fileLabel} className="dash-btn dash-btn-secondary">
+                    <FolderOpen size={14} />
+                    Choose file
+                    <input
+                      type="file"
+                      style={{ position:"absolute", width:1, height:1, overflow:"hidden", clip:"rect(0 0 0 0)" }}
+                      onChange={(e) => handleFileSelect(e.target.files[0])}
+                      aria-label="Choose file to upload"
+                    />
+                  </label>
+                  {file && <span style={D.fileName}>{file.name}</span>}
+                  <PrimaryBtn onClick={handleUpload} disabled={uploading} Icon={Upload}>
+                    {uploading ? "Uploading…" : "Upload"}
+                  </PrimaryBtn>
+                </>
+              )}
             </div>
 
             {/* Selection actions */}

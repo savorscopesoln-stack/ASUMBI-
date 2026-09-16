@@ -329,8 +329,8 @@ const injectLandingStyles = () => {
      address once Doravo's official domain is finalized.
 --------------------------------------------------------- */
 const SITE_URL =
-  typeof window !== "wwww.doravo.co.ke" ? window.location.origin : ""; // TODO: replace with e.g. "https://www.doravo.com" before launch
-const CONTACT_EMAIL = "info@doravocore.co.ke"; // TODO: replace with a real, registered domain before launch
+  typeof window !== "undefined" ? window.location.origin : ""; // TODO: replace with e.g. "https://www.doravo.com" before launch
+const CONTACT_EMAIL = "hello@doravo.core"; // TODO: replace with a real, registered domain before launch
 
 /* ---------------------------------------------------------
    SIGN IN DESTINATION
