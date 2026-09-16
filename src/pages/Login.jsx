@@ -140,9 +140,29 @@ const isRetryableLoginError = (err) => {
   return [408, 429, 500, 502, 503, 504].includes(err.response.status);
 };
 
+/* ═══════════════════════════════════════════════════════════
+   INSTITUTIONS
+   ─────────────────────────────────────────────────────────
+   This one frontend serves more than one institution, each backed
+   by its own database on the same shared backend. `value` here must
+   exactly match a tenant key the backend knows about (see
+   backend/.env's DB_TENANTS + DB_USER_<KEY> etc.) — "default" is
+   always the main campus DB and needs no backend env changes;
+   anything else needs a matching DB_TENANTS entry or logins for
+   that institution will always 401 (wrong database, not wrong
+   password). Add new institutions here as they're onboarded.
+   ═════════════════════════════════════════════════════════ */
+const INSTITUTIONS = [
+  { value: "default", label: "Asumbi Teachers Training College" },
+  { value: "eregi", label: "Eregi Teachers Training College" },
+];
+
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [institution, setInstitution] = useState(
+    () => localStorage.getItem("dbTenant") || "default"
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [heroImageOk, setHeroImageOk] = useState(true);
@@ -216,6 +236,14 @@ export default function Login() {
 
     setLoading(true);
     setError("");
+
+    // Persist BEFORE the request fires — api.js's request interceptor
+    // reads this on every call (including this very login POST) to
+    // decide which database the backend should use. Stored (not just
+    // held in state) so it survives a refresh and every subsequent
+    // API call for the rest of this session keeps hitting the same
+    // institution's DB, not just this login attempt.
+    localStorage.setItem("dbTenant", institution);
 
     const deadline = Date.now() + LOGIN_RETRY_WINDOW_MS;
     let attempt = 0;
@@ -380,6 +408,23 @@ export default function Login() {
         )}
 
         <form onSubmit={login} style={S.form} noValidate>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label htmlFor="institution" style={authStyles.label}>Institution</label>
+            <select
+              id="institution"
+              className="auth-input"
+              value={institution}
+              onChange={(e) => setInstitution(e.target.value)}
+              style={authStyles.input}
+            >
+              {INSTITUTIONS.map((inst) => (
+                <option key={inst.value} value={inst.value}>
+                  {inst.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label htmlFor="username" style={authStyles.label}>Username</label>
             <input
