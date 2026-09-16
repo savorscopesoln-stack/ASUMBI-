@@ -12,7 +12,7 @@ import {
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
   Award, Activity, Inbox, KeyRound, Bell, Settings, Vote, SlidersHorizontal,
-  UserRoundCog, Globe, Building2,
+  UserRoundCog, Globe, Building2, Plus,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
@@ -279,6 +279,10 @@ function Dashboard() {
   const [tables, setTables]                   = useState([]); // every table the Data Manager can browse/edit
   const [tablesLoading, setTablesLoading]     = useState(false);
   const [primaryKeyCol, setPrimaryKeyCol]     = useState("id"); // PK column of the currently loaded table, from the backend
+  const [identityColumn, setIdentityColumn]   = useState(null); // auto-increment column (if any) of the currently loaded table — left out of the add-record form
+  const [showAddForm, setShowAddForm]         = useState(false);
+  const [newRecord, setNewRecord]             = useState({});   // field values for the "Add record" form
+  const [creating, setCreating]               = useState(false);
   const [file, setFile]                       = useState(null);
   const [uploading, setUploading]             = useState(false);
   const [searchLoading, setSearchLoading]     = useState(false);
@@ -421,8 +425,13 @@ function Dashboard() {
       const data = res.data?.records || [];
       setPreviewData(data);
       setActiveData(JSON.parse(JSON.stringify(data)));
-      setPreviewHeaders(data.length ? Object.keys(data[0]) : []);
+      // Headers come from the backend's schema-derived column list, not
+      // from the rows themselves — that way an empty result set (no
+      // matches, or a table with no data at all) still shows the table's
+      // columns instead of rendering nothing.
+      setPreviewHeaders(res.data?.columns || []);
       setPrimaryKeyCol(res.data?.primaryKey || "id");
+      setIdentityColumn(res.data?.identityColumn || null);
       setSelectedIndex(null);
       setEditMode(false);
     } catch (err) { console.log(err); showToast("Search failed", "error"); }
@@ -435,11 +444,63 @@ function Dashboard() {
       const data = res.data.records || [];
       setPreviewData(data);
       setActiveData(JSON.parse(JSON.stringify(data)));
-      setPreviewHeaders(data.length ? Object.keys(data[0]) : []);
+      // Same as quickSearch: always trust the backend's column list so a
+      // table with zero rows still renders its headers.
+      setPreviewHeaders(res.data?.columns || []);
       setPrimaryKeyCol(res.data?.primaryKey || "id");
+      setIdentityColumn(res.data?.identityColumn || null);
       setSelectedIndex(null);
       setEditMode(false);
     } catch (err) { console.log(err); showToast("Failed to load records", "error"); }
+  };
+
+  /* ── Add record: builds an INSERT for whichever table is selected,
+     using the same column list the table view shows. If the table
+     hasn't been loaded yet (previewHeaders is still empty — e.g. the
+     user picked a table and went straight for "Add Record" without
+     hitting "Load" first), pull the schema-derived columns first so
+     the form isn't blank. ── */
+  const openAddForm = async () => {
+    let headers = previewHeaders;
+    let identity = identityColumn;
+    if (!headers.length) {
+      try {
+        const res = await API.get("/records", { params: { type: uploadType, page: 1, limit: 1 } });
+        headers = res.data?.columns || [];
+        identity = res.data?.identityColumn || null;
+        setPreviewHeaders(headers);
+        setPrimaryKeyCol(res.data?.primaryKey || "id");
+        setIdentityColumn(identity);
+      } catch (err) {
+        console.log(err);
+        showToast("Couldn't load table columns", "error");
+        return;
+      }
+    }
+    const blank = {};
+    headers.filter((h) => h !== identity).forEach((h) => { blank[h] = ""; });
+    setNewRecord(blank);
+    setShowAddForm(true);
+  };
+
+  const handleNewRecordChange = (col, value) => {
+    setNewRecord((prev) => ({ ...prev, [col]: value }));
+  };
+
+  const submitNewRecord = async () => {
+    try {
+      setCreating(true);
+      const res = await API.post("/records/create", { type: uploadType, data: newRecord });
+      showToast(res.data?.message || "Record created successfully");
+      setShowAddForm(false);
+      setNewRecord({});
+      await pullRecords();
+    } catch (err) {
+      console.error("CREATE ERROR:", err.response?.data || err.message || err);
+      showToast(err.response?.data?.message || "Create failed", "error");
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleEdit = (i, key, value) => {
@@ -766,7 +827,7 @@ function Dashboard() {
                 <span style={D.fieldLabel}>Table</span>
                 <select
                   value={uploadType}
-                  onChange={(e) => { setUploadType(e.target.value); setActiveData([]); setPreviewHeaders([]); setSelectedIndex(null); }}
+                  onChange={(e) => { setUploadType(e.target.value); setActiveData([]); setPreviewHeaders([]); setSelectedIndex(null); setShowAddForm(false); setNewRecord({}); setIdentityColumn(null); }}
                   style={D.select}
                   aria-label="Table"
                   disabled={tablesLoading}
@@ -811,6 +872,7 @@ function Dashboard() {
 
             <div className="dash-tool-row" style={{ ...D.toolRow, marginTop: 12 }}>
               <SecondaryBtn onClick={pullRecords} Icon={RefreshCw}>Load</SecondaryBtn>
+              <SecondaryBtn onClick={openAddForm} Icon={Plus}>Add Record</SecondaryBtn>
 
               {/* Bulk import (spreadsheet upload), template download, and year
                   promotion are special-purpose flows tied to the original three
@@ -862,15 +924,64 @@ function Dashboard() {
                 <DestructiveBtn onClick={handleDelete} Icon={Trash2}>Delete</DestructiveBtn>
               </div>
             )}
+
+            {/* Add record: one input per writable column of the selected
+                table (the auto-increment primary key, if any, is left out —
+                the database assigns it). Works for any table, the same
+                way Load/Search/Edit do above. */}
+            {showAddForm && (
+              <div style={D.addFormPanel}>
+                <div style={D.addFormHeader}>
+                  <span style={D.selectionInfo}>New {uploadType} record</span>
+                  <button style={D.iconCloseBtn} onClick={() => setShowAddForm(false)} aria-label="Cancel new record">
+                    <X size={15} />
+                  </button>
+                </div>
+                <div style={D.addFormGrid}>
+                  {Object.keys(newRecord).map((col) => (
+                    <label key={col} style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                      <span style={D.fieldLabel}>{col}</span>
+                      <input
+                        value={newRecord[col]}
+                        onChange={(e) => handleNewRecordChange(col, e.target.value)}
+                        style={D.textInput}
+                        aria-label={col}
+                      />
+                    </label>
+                  ))}
+                </div>
+                {!Object.keys(newRecord).length && (
+                  <p style={{ fontSize:13, color:"var(--text-secondary)", margin:0 }}>
+                    This table has no writable columns.
+                  </p>
+                )}
+                <div style={{ display:"flex", gap:8, marginTop: 4 }}>
+                  <PrimaryBtn onClick={submitNewRecord} disabled={creating || !Object.keys(newRecord).length} Icon={Save}>
+                    {creating ? "Saving…" : "Save Record"}
+                  </PrimaryBtn>
+                  <SecondaryBtn onClick={() => setShowAddForm(false)}>Cancel</SecondaryBtn>
+                </div>
+              </div>
+            )}
           </section>
         )}
 
-        {/* ── Data table ── */}
-        {activeData.length > 0 && (
+        {/* ── Data table ──
+            Shows whenever the selected table's columns are known — i.e.
+            after Load/Search/Add — even if it currently has zero rows,
+            so an empty table still shows its headers instead of the
+            whole section disappearing. */}
+        {previewHeaders.length > 0 && (
           <section style={D.panel} aria-label="Records table">
             <div style={D.panelHeader}>
               <h3 style={D.panelTitle}>Records <span style={{ color:"var(--text-muted)", fontWeight:500 }}>— {activeData.length} rows</span></h3>
             </div>
+            {activeData.length === 0 ? (
+              <div style={D.emptyState}>
+                <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
+                <div>No records in this table yet</div>
+              </div>
+            ) : (
             <div style={D.tableWrap}>
               <table style={D.table}>
                 <thead>
@@ -917,6 +1028,7 @@ function Dashboard() {
                 </tbody>
               </table>
             </div>
+            )}
           </section>
         )}
 
@@ -1461,6 +1573,33 @@ const D = {
     background: "var(--destructive-tint)",
     border: "1px solid var(--destructive)",
     borderRadius: "var(--radius-sm)",
+  },
+
+  addFormPanel: {
+    marginTop: 14,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    padding: "14px",
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)",
+  },
+  addFormHeader: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+  addFormGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+    gap: 12,
+  },
+  iconCloseBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "transparent",
+    border: "none",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    padding: 4,
   },
 
   /* ── table ── */
