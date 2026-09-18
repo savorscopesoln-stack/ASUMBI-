@@ -6,7 +6,7 @@ import {
   Search, X, RefreshCw, Download, Plus, UserPlus, ChevronDown, ArrowLeft, Pencil, Trash2,
   Check, CheckCircle2, AlertTriangle, Lock, Unlock, Zap, Rocket, MessageSquare, Mail,
   BarChart3, ClipboardList, FileText, Award, LockKeyhole, Users, Inbox, Clock, TrendingUp,
-  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save,
+  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle,
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 
@@ -167,6 +167,7 @@ const IconGraduationCap= GraduationCap;
 const IconPlusCircle   = PlusCircle;
 const IconMinusCircle  = MinusCircle;
 const IconSave         = Save;
+const IconQuestions    = HelpCircle;
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -981,9 +982,8 @@ export default function AdminEAssessments() {
           {/* Main Examinations (§3) — scheduled/timetabled exam events
               built on top of these same assessments, in a separate
               dashboard at /main-exams. */}
-              <ActionButton primary icon={<IconPlus size={14} />} onClick={() => setFormOpen(true)}>New Assessment</ActionButton>
           <ActionButton icon={<IconClipboardList size={14} />} onClick={() => navigate("/main-exams")}>Main Examinations</ActionButton>
-          
+          <ActionButton primary icon={<IconPlus size={14} />} onClick={() => setFormOpen(true)}>New Assessment</ActionButton>
           <ActionButton icon={<IconUserPlus size={14} />} onClick={() => setAssignOpen(true)}>Assign Teacher</ActionButton>
           <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(list, "assessments.csv")}>Export</ActionButton>
           <button style={sx.iconBtn} className="dash-icon-btn" onClick={loadAll} title="Refresh data"><IconRefresh size={15} /></button>
@@ -1158,6 +1158,7 @@ export default function AdminEAssessments() {
                   onStats={() => openQuickStats(a)}
                   onEdit={() => openEditModal(a)}
                   onDelete={() => deleteAssessments([a.id])}
+                  onAddQuestions={() => navigate(`/admin-e-assessments/${a.id}/questions`)}
                 />
               ))}
             </div>
@@ -1907,7 +1908,7 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onStats, onEdit, onDelete }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onStats, onEdit, onDelete, onAddQuestions }) {
   const C = useC();
   // Exact-match against "Active" — kept in lockstep with the backend's
   // toggle-active logic (see eAssessment.controller.js), which only ever
@@ -1952,6 +1953,7 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onStats, onEdi
         <MiniBtn tone="success" grow icon={<IconCheck size={12} />} onClick={onStart} disabled={isActive} title={isActive ? "Already started" : "Approve (if needed) and open this assessment to students"}>Start</MiniBtn>
         <MiniBtn tone="danger"  grow icon={<IconX size={12} />}     onClick={onStop}  disabled={!isActive} title={!isActive ? "Already stopped" : "Close this assessment to students"}>Stop</MiniBtn>
         <MiniBtn grow icon={<IconBarChart size={12} />} onClick={onStats}>Stats</MiniBtn>
+        <MiniBtn icon={<IconQuestions size={12} />} onClick={onAddQuestions} title="Add / manage questions on this assessment" />
         <MiniBtn icon={<IconEdit size={12} />} onClick={onEdit} title="Edit" />
         <MiniBtn tone="danger" icon={<IconTrash size={12} />} onClick={onDelete} title="Delete" />
       </div>

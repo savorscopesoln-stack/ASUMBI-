@@ -649,6 +649,24 @@ export default function App() {
         }
       />
 
+      {/* Admin/sub-admin version of the teacher's "Add Questions" screen —
+          same component, same API calls (the backend already lets
+          admin/sub_admin manage questions on ANY assessment, see
+          canManageAssessmentQuestions in eAssessment.controller.js), just
+          reached by an admin picking an assessment from AdminEAssessments
+          instead of a teacher picking one from their own list. */}
+      <Route
+        path="/admin-e-assessments/:id/questions"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="E-Assessments"
+          >
+            <AddQuestions />
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/notifications"
         element={

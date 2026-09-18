@@ -59,6 +59,7 @@ export default function MainExaminationDashboard() {
   const [auditLoaded, setAuditLoaded] = useState(false);
   const [assessments, setAssessments] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [subjectCatalog, setSubjectCatalog] = useState([]); // master Subjects list, for the "Subject / Learning Area" dropdown
   const [toast, setToast] = useState(null);
 
   const showToast = useCallback((msg, type = "success") => {
@@ -94,12 +95,14 @@ export default function MainExaminationDashboard() {
 
   const loadPickerData = useCallback(async () => {
     try {
-      const [a, c] = await Promise.all([
+      const [a, c, s] = await Promise.all([
         API.get("/e-assessments").catch(() => ({ data: [] })),
         API.get("/e-assessments/classes").catch(() => ({ data: [] })),
+        API.get("/e-assessments/subjects").catch(() => ({ data: [] })),
       ]);
       setAssessments(extract(a));
       setClasses(extract(c));
+      setSubjectCatalog(extract(s));
     } catch (err) {
       console.error(err);
     }
@@ -179,6 +182,7 @@ export default function MainExaminationDashboard() {
             subjects={subjects}
             assessments={assessments}
             classes={classes}
+            subjectCatalog={subjectCatalog}
             mainExam={examination}
             onChanged={loadDashboard}
             showToast={showToast}
@@ -341,7 +345,7 @@ function splitDateTime(dtStr) {
   };
 }
 
-function SubjectsTab({ id, subjects, assessments, classes, mainExam, onChanged, showToast }) {
+function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainExam, onChanged, showToast }) {
   const C = useC();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null); // subject row being edited, or null for create
@@ -426,6 +430,18 @@ function SubjectsTab({ id, subjects, assessments, classes, mainExam, onChanged, 
   const assessmentOptions = assessments.map((a) => ({ value: a.id, label: `${a.title} (${a.status})` }));
   const locked = editing && ["active", "ended", "marking", "completed"].includes(editing.status);
 
+  // Dropdown of every subject in the school's master Subjects list, so an
+  // admin picks a name instead of free-typing it (and risking typos that
+  // would silently fork what should be the same subject across exams).
+  // If a subject being edited was typed in before this dropdown existed
+  // (or was since renamed/removed from the master list) its current value
+  // is still included so the form doesn't blank it out from under them.
+  const subjectOptions = useMemo(() => {
+    const names = subjectCatalog.map((s) => s.name || s.subject_name).filter(Boolean);
+    if (form.subject && !names.includes(form.subject)) names.push(form.subject);
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b)).map((n) => ({ value: n, label: n }));
+  }, [subjectCatalog, form.subject]);
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
@@ -457,7 +473,7 @@ function SubjectsTab({ id, subjects, assessments, classes, mainExam, onChanged, 
             </div>
           )}
           <FieldLabel>Subject / Learning Area</FieldLabel>
-          <ModalInput value={form.subject} onChange={(v) => setForm((f) => ({ ...f, subject: v }))} placeholder="e.g. Engineering Science" />
+          <ModalSelect value={form.subject} onChange={(v) => setForm((f) => ({ ...f, subject: v }))} options={subjectOptions} placeholder="Select a subject…" />
 
           <FieldLabel>Class (optional — leave blank for whole cohort)</FieldLabel>
           <ModalSelect value={form.class_id} onChange={(v) => setForm((f) => ({ ...f, class_id: v }))} options={classOptions} placeholder="Whole cohort" />
