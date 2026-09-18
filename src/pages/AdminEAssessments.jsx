@@ -255,7 +255,7 @@ export default function AdminEAssessments() {
   const [selAssignments, setSelAssignments] = useState([]);
 
   /* forms */
-  const blank = { title: "", subject: "", class_ids: [], duration_minutes: 30, instructions: "", total_marks: 100, exam_password: "", questions_deadline: "", question_setter_teacher_ids: [] };
+  const blank = { title: "", subject: "", subjects: [], class_ids: [], duration_minutes: 30, instructions: "", total_marks: 100, exam_password: "", questions_deadline: "", question_setter_teacher_ids: [] };
   const [form,          setForm]          = useState(blank);
   const [editForm,      setEditForm]      = useState(blank);
   const [assignForm,    setAssignForm]    = useState({ teacher_id: "", subject_id: "", class_ids: [] });
@@ -368,21 +368,53 @@ export default function AdminEAssessments() {
     return targets;
   };
 
+  // Resolves the Subject(s) picker's value — a mix of the "all" token
+  // and/or specific subject-name strings — down to a concrete list of
+  // subject names to create the assessment for. "all" expands to every
+  // known subject; anything else picked alongside it is redundant, so
+  // it's deduped away.
+  const resolveSubjects = (ids) => {
+    if (ids.includes("all")) return subjects.map((s) => s.name || s.subject_name);
+    return [...new Set(ids)];
+  };
+
+  // Builds the final assessment title by embedding the subject into
+  // whatever the admin typed — e.g. typing "Endterm" with "English"
+  // selected produces "English Endterm Assessment". Guards against
+  // double-prefixing if the subject name is already typed in, and
+  // against double-suffixing if "Assessment" is already there.
+  const buildAssessmentTitle = (subject, rawTitle) => {
+    const title = (rawTitle || "").trim();
+    if (!subject) return title;
+    let result = title.toLowerCase().startsWith(String(subject).toLowerCase())
+      ? title
+      : `${subject} ${title}`.trim();
+    if (!result.toLowerCase().endsWith("assessment")) {
+      result = `${result} Assessment`;
+    }
+    return result;
+  };
+
   const createAssessment = async () => {
     const targets = resolveAssessmentTargets(form.class_ids);
-    if (!form.title || !form.subject || !targets.length) {
+    const subjectNames = resolveSubjects(form.subjects);
+    if (!form.title || !subjectNames.length || !targets.length) {
       showToast("Please fill all required fields", "error"); return;
     }
     try {
       setSaving(true);
-      // One assessment per target — but a "year" target is ONE
-      // assessment covering every class in that year (via
-      // year_of_study), not one per class. Picking specific individual
-      // classes still creates one assessment per class, same as before.
-      await Promise.all(targets.map(({ class_id, year_of_study }) =>
+      // One assessment per (subject × target) combination — a "year"
+      // target is ONE assessment covering every class in that year (via
+      // year_of_study), not one per class, and each selected subject
+      // gets its own copy of that same target so e.g. "All Subjects" +
+      // "Year 1" creates one assessment per subject for that year.
+      const combos = subjectNames.flatMap((subject) =>
+        targets.map((target) => ({ subject, ...target }))
+      );
+      await Promise.all(combos.map(({ subject, class_id, year_of_study }) =>
         API.post("/e-assessments", {
-          title:            form.title,
-          subject:          form.subject,
+          title:            buildAssessmentTitle(subject, form.title),
+          subject,
           class_id,
           year_of_study,
           duration_minutes: Number(form.duration_minutes),
@@ -394,7 +426,7 @@ export default function AdminEAssessments() {
         })
       ));
       setForm(blank); setFormOpen(false);
-      showToast(targets.length > 1 ? `Created ${targets.length} assessments` : "Assessment created successfully");
+      showToast(combos.length > 1 ? `Created ${combos.length} assessments` : "Assessment created successfully");
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Create failed", "error");
@@ -801,6 +833,10 @@ export default function AdminEAssessments() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          {/* Main Examinations (§3) — scheduled/timetabled exam events
+              built on top of these same assessments, in a separate
+              dashboard at /main-exams. */}
+          <ActionButton icon={<IconClipboardList size={14} />} onClick={() => navigate("/main-exams")}>Main Examinations</ActionButton>
           <ActionButton primary icon={<IconPlus size={14} />} onClick={() => setFormOpen(true)}>New Assessment</ActionButton>
           <ActionButton icon={<IconUserPlus size={14} />} onClick={() => setAssignOpen(true)}>Assign Teacher</ActionButton>
           <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(list, "assessments.csv")}>Export</ActionButton>
@@ -1241,13 +1277,20 @@ export default function AdminEAssessments() {
       {formOpen && (
         <Modal title="Create New Assessment" onClose={() => setFormOpen(false)}>
           <FieldLabel>Assessment Title *</FieldLabel>
-          <ModalInput placeholder="e.g. Mid-Term Mathematics Paper 1" value={form.title}
+          <ModalInput placeholder="e.g. Endterm" value={form.title}
             onChange={(v) => setForm({ ...form, title: v })} />
+          <p style={sx.formHint}>
+            The subject is added automatically — e.g. typing "Endterm" with "English" selected
+            creates "English Endterm Assessment". No need to type the subject or the word
+            "Assessment" yourself.
+          </p>
 
-          <FieldLabel>Subject *</FieldLabel>
-          <ModalSelect value={form.subject} onChange={(v) => setForm({ ...form, subject: v })}
-            options={subjects.map((s) => ({ value: s.name || s.subject_name, label: s.name || s.subject_name }))}
-            placeholder="Select Subject" />
+          <FieldLabel>Subject(s) *</FieldLabel>
+          <SubjectMultiSelect value={form.subjects} onChange={(ids) => setForm({ ...form, subjects: ids })} subjects={subjects} />
+          <p style={sx.formHint}>
+            Check "All Subjects" to create this assessment for every subject at once, or pick
+            specific subjects — each one gets its own copy of the assessment below.
+          </p>
 
           <FieldLabel>Class(es) *</FieldLabel>
           <AssessmentTargetSelect value={form.class_ids} onChange={(ids) => setForm({ ...form, class_ids: ids })} classes={classes} classesByYear={classesByYear} />
@@ -2063,6 +2106,63 @@ function ClassMultiSelect({ value, onChange, classes }) {
             <input type="checkbox" checked={checked} disabled={isAll} onChange={() => toggleOne(id)}
               style={{ cursor: isAll ? "default" : "pointer" }} />
             {c.class_name || c.name}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SUBJECT MULTI-SELECT — Create Assessment's subject picker.
+   Supports a single subject, several specific subjects, or "All
+   Subjects" via one master checkbox. Value is an array of subject
+   names, or exactly ["all"] when "All Subjects" is checked.
+   Resolved by resolveSubjects() above into the concrete list of
+   subject names createAssessment loops over — one assessment per
+   subject (crossed with each selected class/year target).
+═══════════════════════════════════════════════════════════ */
+function SubjectMultiSelect({ value, onChange, subjects }) {
+  const C = useC();
+  const isAll = value.includes("all");
+
+  const toggleAll = () => onChange(isAll ? [] : ["all"]);
+
+  const toggleOne = (name) => {
+    // Picking a specific subject while "All" is checked drops "All" and
+    // starts a fresh specific-subject selection with just that one.
+    if (isAll) { onChange([name]); return; }
+    const has = value.includes(name);
+    onChange(has ? value.filter((v) => v !== name) : [...value, name]);
+  };
+
+  return (
+    <div style={{
+      maxHeight: 190, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8,
+      background: C.bgAlt, marginBottom: 6, padding: subjects.length ? "4px 0" : "10px 13px",
+    }}>
+      {!subjects.length && <span style={{ fontSize: 13, color: C.textMuted }}>No subjects found</span>}
+      {subjects.length > 0 && (
+        <label style={{
+          display: "flex", alignItems: "center", gap: 9, padding: "7px 13px",
+          cursor: "pointer", fontSize: 13.5, fontWeight: 700, color: C.textPri,
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          <input type="checkbox" checked={isAll} onChange={toggleAll} style={{ cursor: "pointer" }} />
+          All Subjects <span style={{ fontWeight: 400, color: C.textMuted }}>&mdash; {subjects.length} assessments, one per subject</span>
+        </label>
+      )}
+      {subjects.map((s) => {
+        const name = s.name || s.subject_name;
+        const checked = isAll || value.includes(name);
+        return (
+          <label key={s.id || name} style={{
+            display: "flex", alignItems: "center", gap: 9, padding: "7px 13px",
+            cursor: isAll ? "default" : "pointer", fontSize: 13.5, color: isAll ? C.textMuted : C.textPri,
+          }}>
+            <input type="checkbox" checked={checked} disabled={isAll} onChange={() => toggleOne(name)}
+              style={{ cursor: isAll ? "default" : "pointer" }} />
+            {name}
           </label>
         );
       })}

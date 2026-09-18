@@ -29,6 +29,8 @@ import Practicum from "./pages/Practicum";
 import Meals from "./pages/Meals";
 import AttendanceReport from "./pages/AttendanceReport";
 import AdminEAssessments from "./pages/AdminEAssessments";
+import MainExaminations from "./pages/MainExaminations";
+import MainExaminationDashboard from "./pages/MainExaminationDashboard";
 import AdminNotifications from "./pages/AdminNotifications";
 import AdminNotificationSettings from "./pages/AdminNotificationSettings";
 import StudentCouncil from "./pages/StudentCouncil";
@@ -54,6 +56,7 @@ import StudentDashboard from "./pages/Student/StudentDashboard";
 import StudentMarks from "./pages/Student/StudentMarks";
 import StudentProfile from "./pages/Student/StudentProfile";
 import StudentReport from "./pages/Student/StudentReport";
+import StudentMainExamTimetable from "./pages/Student/StudentMainExamTimetable";
 import StudentNotifications from "./pages/Student/StudentNotifications";
 import StudentMealCard from "./pages/Student/StudentMealCard";
 import StudentCouncilPortal from "./pages/Student/StudentCouncil";
@@ -424,6 +427,35 @@ export default function App() {
             page="E-Assessments"
           >
             <AdminEAssessments />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Main Examinations (§3 of the Main Examination spec) — a
+          sub-section of E-Assessments in the nav ("Dashboard →
+          E-Assessments → Main Examinations"), so it reuses the same
+          "E-Assessments" page permission rather than introducing a new
+          grantable page key, matching backend/routes/mainExams.js. */}
+      <Route
+        path="/main-exams"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="E-Assessments"
+          >
+            <MainExaminations />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/main-exams/:id"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="E-Assessments"
+          >
+            <MainExaminationDashboard />
           </ProtectedRoute>
         }
       />
@@ -898,6 +930,16 @@ export default function App() {
         <Route
           path="results"
           element={<StudentResults />}
+        />
+
+        {/* CLASS TIMETABLE — the "Class Timetable" sidebar item already
+            existed in StudentLayout's NAV_GROUPS (linking to
+            /student/timetable) but had no route/component behind it,
+            so it 404'd. Backed by the existing GET /student/main-exams/
+            :mainExamId/timetable (item 3 in NOT_DONE.md). */}
+        <Route
+          path="timetable"
+          element={<StudentMainExamTimetable />}
         />
       </Route>
 

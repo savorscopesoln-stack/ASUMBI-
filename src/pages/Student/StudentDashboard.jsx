@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import API from "../../api";
 import {
   ResponsiveContainer,
@@ -12,7 +13,7 @@ import {
 import QRCode from "react-qr-code";
 import {
   BarChart3, DoorOpen, Utensils, Percent, Award, TrendingUp, TrendingDown,
-  CheckCircle2, Clock, AlertTriangle, Inbox, Sun, Moon,
+  CheckCircle2, Clock, AlertTriangle, Inbox, Sun, Moon, LogIn, MapPin, CalendarClock,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -164,6 +165,7 @@ export default function StudentDashboard() {
   injectStudentStyles();
 
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const studentId = user.id;
 
@@ -173,6 +175,27 @@ export default function StudentDashboard() {
   const [mealCard, setMealCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  /* ================= MAIN EXAMINATIONS (§39 — "ACTIVE EXAMINATION" card) =================
+     Backed by GET /student/main-exams/dashboard (Phase 14, already exists on the
+     backend). Loaded separately from the rest of the dashboard so a failure here
+     never blocks marks/leave/meal-card from rendering — this is a read-only summary,
+     never the authority on whether exam entry is allowed (that's still the existing
+     /e-assessments/:id/start-exam check itself). */
+  const [examDash, setExamDash] = useState({ active: [], upcoming: [], completed: [] });
+  const [examLoading, setExamLoading] = useState(true);
+
+  const loadExamDash = async () => {
+    try {
+      setExamLoading(true);
+      const res = await API.get("/student/main-exams/dashboard");
+      setExamDash({ active: res.data?.active || [], upcoming: res.data?.upcoming || [], completed: res.data?.completed || [] });
+    } catch (err) {
+      console.log(err);
+    } finally {
+      setExamLoading(false);
+    }
+  };
 
   /* ================= LOAD ================= */
   const load = async () => {
@@ -199,7 +222,7 @@ export default function StudentDashboard() {
   };
 
   useEffect(() => {
-    if (studentId) load();
+    if (studentId) { load(); loadExamDash(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId]);
 
@@ -307,6 +330,47 @@ export default function StudentDashboard() {
           <span style={{ flex: 1 }}>Unable to load your dashboard data.</span>
           <button onClick={load} style={D.retryBtn} className="dash-btn-secondary">Retry</button>
         </div>
+      )}
+
+      {/* ── Active Main Examination (§39) ── */}
+      {!examLoading && examDash.active.length > 0 && (
+        <section style={{ marginBottom: 20 }} aria-label="Active examination">
+          {examDash.active.map((s) => (
+            <div key={s.session_id} style={D.activeExamCard}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div style={D.activeExamPulse} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={D.activeExamLabel}>Active Examination</div>
+                  <div style={D.activeExamSubject}>{s.subject}</div>
+                  <div style={D.activeExamMeta}>
+                    {s.main_examination_name}
+                    {s.venue ? ` · ${s.venue}` : ""}
+                    {s.end_time ? ` · Ends ${new Date(s.end_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+                  </div>
+                </div>
+              </div>
+              <button
+                style={D.enterExamBtn}
+                onClick={() => navigate(`/take-assessment/${s.e_assessment_id}`)}
+                disabled={!s.e_assessment_id}
+              >
+                <LogIn size={15} /> Enter Exam
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* ── No active exam right now, but something's coming up ── */}
+      {!examLoading && examDash.active.length === 0 && examDash.upcoming.length > 0 && (
+        <section style={D.upcomingExamStrip} aria-label="Upcoming examination">
+          <CalendarClock size={16} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+          <span>
+            Next up: <b style={{ color: "var(--text)" }}>{examDash.upcoming[0].subject}</b>
+            {" "}({examDash.upcoming[0].main_examination_name})
+            {examDash.upcoming[0].exam_date ? ` on ${new Date(examDash.upcoming[0].exam_date).toDateString()}` : ""}
+          </span>
+        </section>
       )}
 
       {/* ── Stat cards ── */}
@@ -525,6 +589,39 @@ const D = {
     fontWeight: 700,
     cursor: "pointer",
     flexShrink: 0,
+  },
+
+  /* ── active examination card (§39) ── */
+  activeExamCard: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    flexWrap: "wrap",
+    background: "var(--primary-tint)",
+    border: "1px solid var(--primary)",
+    borderRadius: "var(--radius)",
+    padding: "16px 20px",
+    marginBottom: 10,
+    boxShadow: "var(--shadow)",
+  },
+  activeExamPulse: {
+    width: 10, height: 10, borderRadius: "50%", background: "var(--primary)",
+    animation: "softPulse 1.4s ease-in-out infinite", flexShrink: 0,
+  },
+  activeExamLabel: { fontSize: 11, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.06em" },
+  activeExamSubject: { fontSize: 17, fontWeight: 800, color: "var(--text)", marginTop: 2 },
+  activeExamMeta: { fontSize: 12.5, color: "var(--text-secondary)", marginTop: 3 },
+  enterExamBtn: {
+    display: "inline-flex", alignItems: "center", gap: 7,
+    padding: "10px 18px", borderRadius: 9, border: "none",
+    background: "var(--primary)", color: "#fff", fontWeight: 700, fontSize: 13.5,
+    cursor: "pointer", flexShrink: 0,
+  },
+  upcomingExamStrip: {
+    display: "flex", alignItems: "center", gap: 8,
+    background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
+    padding: "10px 16px", marginBottom: 20, fontSize: 13, color: "var(--text-secondary)",
   },
 
   /* ── stat cards ── */
