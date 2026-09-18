@@ -14,31 +14,18 @@ import {
 import { useTheme } from "../../context/ThemeContext";
 import ThemeToggle from "../../components/ThemeToggle";
 import useSchoolSettings from "../../hooks/useSchoolSettings";
+import useGradingSystem from "../../hooks/useGradingSystem";
+import { getGradeForScore, getOverallResultForScore } from "../../utils/grading";
 
-/* ================= GRADING (unchanged) ================= */
-const getKnecGrade = (score) => {
-  const s = Number(score || 0);
-  if (s >= 95) return { grade: 1, label: "Exceeding Expectations 1 (EE1)", result: "Distinction" };
-  if (s >= 90) return { grade: 2, label: "Exceeding Expectations 2 (EE2)", result: "Distinction" };
-  if (s >= 80) return { grade: 3, label: "Meeting Expectations 1 (ME1)", result: "Credit" };
-  if (s >= 70) return { grade: 4, label: "Meeting Expectations 2 (ME2)", result: "Credit" };
-  if (s >= 60) return { grade: 5, label: "Approaching Expectations 1 (AE1)", result: "Credit" };
-  if (s >= 50) return { grade: 6, label: "Approaching Expectations 2 (AE2)", result: "Pass" };
-  if (s >= 40) return { grade: 7, label: "Below Expectations 1 (BE1)", result: "Pass" };
-  return { grade: 8, label: "Below Expectations 2 (BE2)", result: "Referred" };
-};
-
-const getOverallResult = (totalMarks) => {
-  const t = Number(totalMarks || 0);
-  if (t >= 1515 && t <= 1700) return "DISTINCTION 1 (EE1)";
-  if (t >= 1530 && t <= 1614) return "DISTINCTION 2 (EE2)";
-  if (t >= 1360 && t <= 1529) return "CREDIT 3 (ME1)";
-  if (t >= 1051 && t <= 1359) return "CREDIT 4 (ME2)";
-  if (t >= 901 && t <= 1050) return "CREDIT 5 (AE1)";
-  if (t >= 850 && t <= 900) return "PASS 6 (AE2)";
-  if (t >= 680 && t <= 849) return "PASS 7 (BE1)";
-  return "REFERRED (BE2)";
-};
+/* ================= GRADING =================
+   Sourced from Admin → E-Assessments → Grading System (see
+   hooks/useGradingSystem.js) instead of this page's own hard-coded
+   CBC-style scale — keeps subject/overall grades in sync with
+   reports.jsx and TeacherReports.jsx. getOverallResult used to run
+   off a raw summed-total scale (out of ~1700) that assumed a fixed
+   subject count and didn't match how `total` is actually computed
+   below (a sum of percentages, not out-of-1700 marks); it now uses
+   the same average-based overall bands as everywhere else. */
 
 /* ================= A4 SIZING CONSTANTS =================
    Fixed 96dpi reference pixels for 210mm × 297mm, used only
@@ -216,13 +203,27 @@ const InfoItem = ({ label, value }) => (
   </div>
 );
 
-const getScoreBadgeStyle = (score) => {
-  if (score >= 80) return { bg: "#dcfce7", color: "#14532d", text: score >= 95 ? "Distinction 1" : score >= 90 ? "Distinction 2" : "Credit 3" };
-  if (score >= 70) return { bg: "#dbeafe", color: "#1e3a8a", text: "Credit 4" };
-  if (score >= 60) return { bg: "#fef9c3", color: "#713f12", text: "Credit 5" };
-  if (score >= 50) return { bg: "#ffedd5", color: "#7c2d12", text: "Pass 6" };
-  if (score >= 40) return { bg: "#fee2e2", color: "#7f1d1d", text: "Pass 7" };
-  return { bg: "#f1f5f9", color: "#64748b", text: "Referred" };
+const BADGE_COLORS = [
+  { bg: "#dcfce7", color: "#14532d" }, // top band
+  { bg: "#dbeafe", color: "#1e3a8a" },
+  { bg: "#fef9c3", color: "#713f12" },
+  { bg: "#ffedd5", color: "#7c2d12" },
+  { bg: "#fee2e2", color: "#7f1d1d" },
+  { bg: "#f1f5f9", color: "#64748b" }, // lowest band
+];
+
+// Colors cycle by the band's rank (best → worst) rather than being
+// tied to specific score numbers, so this stays sensible no matter
+// how an admin configures the bands. Text comes straight from the
+// configured band's label.
+const getScoreBadgeStyle = (score, gradingSystem) => {
+  const bands = gradingSystem?.gradeBands?.length ? gradingSystem.gradeBands : [];
+  const sorted = [...bands].sort((a, b) => b.minScore - a.minScore);
+  const n = Number(score) || 0;
+  let idx = sorted.findIndex((b) => n >= Number(b.minScore));
+  if (idx === -1) idx = sorted.length - 1;
+  const colors = BADGE_COLORS[Math.min(idx, BADGE_COLORS.length - 1)] || BADGE_COLORS[BADGE_COLORS.length - 1];
+  return { ...colors, text: sorted[idx]?.label || "—" };
 };
 
 /* ================= MAIN COMPONENT ================= */
@@ -230,6 +231,7 @@ export default function StudentReport() {
   useReportGlobalStyles();
   const { theme } = useTheme();
   const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const { gradingSystem } = useGradingSystem();
   const dean = getOfficial("dean");
   const principal = getOfficial("principal");
 
@@ -318,10 +320,10 @@ export default function StudentReport() {
       avg: Math.round(avg),
       highest: scores.length ? Math.max(...scores) : 0,
       lowest: scores.length ? Math.min(...scores) : 0,
-      grade: getKnecGrade(avg),
-      result: getOverallResult(total),
+      grade: getGradeForScore(avg, gradingSystem),
+      result: getOverallResultForScore(avg, gradingSystem),
     };
-  }, [marks]);
+  }, [marks, gradingSystem]);
 
   /* ================= SUBJECT MAP (unchanged) ================= */
   const subjectMap = useMemo(() => {
@@ -530,7 +532,7 @@ export default function StudentReport() {
                 <tbody>
                   {subjectMap.map((s, i) => {
                     const valid = s.score !== null && s.score !== undefined;
-                    const badge = valid ? getScoreBadgeStyle(s.score) : null;
+                    const badge = valid ? getScoreBadgeStyle(s.score, gradingSystem) : null;
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
                         <td style={{ ...styles.td, color: "#64748b", fontSize: 8 }}>{s.code || `L/A-${i + 1}`}</td>

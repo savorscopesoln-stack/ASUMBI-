@@ -4,6 +4,8 @@ import html2canvas from "html2canvas";
 import QRCode from "react-qr-code";
 import jsPDF from "jspdf";
 import useSchoolSettings from "../../hooks/useSchoolSettings";
+import useGradingSystem from "../../hooks/useGradingSystem";
+import { getGradeForScore, getPassMark } from "../../utils/grading";
 import {
   ResponsiveContainer,
   BarChart,
@@ -14,13 +16,10 @@ import {
   Cell
 } from "recharts";
 
-/* ================= GRADE ================= */
-const getGrade = (score) => {
-  if (score >= 80) return "Distinction";
-  if (score >= 60) return "Credit";
-  if (score >= 40) return "Pass";
-  return "Fail";
-};
+/* ================= GRADE =================
+   Sourced from Admin → E-Assessments → Grading System (see
+   hooks/useGradingSystem.js) instead of a local hard-coded scale —
+   keeps this in sync with reports.jsx and StudentReport.jsx. */
 
 /* ================= THEME TOKENS ================= */
 const theme = {
@@ -33,6 +32,9 @@ const theme = {
 /* ================= MAIN ================= */
 export default function TeacherReports() {
   const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const { gradingSystem } = useGradingSystem();
+  const passMark = getPassMark(gradingSystem);
+  const getGrade = (score) => getGradeForScore(score, gradingSystem).label;
   const principal = getOfficial("principal") || signatory;
   const [assessmentId, setAssessmentId] = useState("");
   const [selectedSubject, setSelectedSubject] = useState(""); // ✅ NEW
@@ -134,17 +136,21 @@ const analytics = useMemo(() => {
     lowest: Math.min(...reports.map((r) => r.avg)),
     total: reports.length,
     passRate: Math.round(
-      (reports.filter((r) => r.avg >= 40).length / reports.length) * 100
+      (reports.filter((r) => r.avg >= passMark).length / reports.length) * 100
     ),
   };
-}, [reports]);
+}, [reports, passMark]);
 
 /* ================= INSIGHTS ================= */
 const insights = useMemo(() => {
   if (!reports.length) return [];
 
-  const risk = reports.filter((r) => r.avg < 40).length;
-  const top = reports.filter((r) => r.avg >= 75).length;
+  const topBandMin = gradingSystem?.overallBands?.length
+    ? Math.max(...gradingSystem.overallBands.map((b) => Number(b.minScore)))
+    : 75;
+
+  const risk = reports.filter((r) => r.avg < passMark).length;
+  const top = reports.filter((r) => r.avg >= topBandMin).length;
 
   return [
     risk > 0
@@ -159,7 +165,7 @@ const insights = useMemo(() => {
       ? "📈 Strong overall class performance"
       : "📉 Class needs intervention support",
   ];
-}, [reports, analytics]);
+}, [reports, analytics, gradingSystem, passMark]);
   /* ================= CHART ================= */
   const subjectStats = useMemo(() => {
     if (!subjectObj) return [];
@@ -383,7 +389,14 @@ const insights = useMemo(() => {
   {/* ================= GRADING LEGEND ================= */}
   <div style={printStyles.legend}>
     <h4>Grading Key</h4>
-    <p>80+ Distinction | 60-79 Credit | 40-59 Pass | Below 40 Fail</p>
+    <p>
+      {(gradingSystem?.gradeBands?.length
+        ? [...gradingSystem.gradeBands].sort((a, b) => b.minScore - a.minScore)
+        : []
+      )
+        .map((b) => `${b.minScore}+ ${b.label}`)
+        .join(" | ")}
+    </p>
   </div>
 
   {/* ================= SIGNATURES ================= */}

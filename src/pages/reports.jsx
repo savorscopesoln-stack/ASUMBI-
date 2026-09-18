@@ -4,6 +4,8 @@ import QRCode from "qrcode";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import useSchoolSettings from "../hooks/useSchoolSettings";
+import useGradingSystem from "../hooks/useGradingSystem";
+import { getGradeForScore, getOverallResultForScore, getRemarkForScore, getPassMark } from "../utils/grading";
 import {
   ResponsiveContainer,
   BarChart,
@@ -26,23 +28,10 @@ const GRADING_SYSTEMS = {
   DTE2: { total: 1700, referredLimit: 3 },
 };
 
-/* ================= GRADE SYSTEM (UNCHANGED) ================= */
-const getKnecGrade = (score) => {
-  if (score >= 80) return { grade: 1, label: "Distinction" };
-  if (score >= 75) return { grade: 2, label: "Distinction" };
-  if (score >= 70) return { grade: 3, label: "Credit" };
-  if (score >= 60) return { grade: 4, label: "Credit" };
-  if (score >= 50) return { grade: 5, label: "Pass" };
-  if (score >= 40) return { grade: 6, label: "Pass" };
-  return { grade: 7, label: "Fail" };
-};
-
-const getOverallResult = (avg) => {
-  if (avg >= 75) return "DISTINCTION";
-  if (avg >= 60) return "CREDIT";
-  if (avg >= 40) return "PASS";
-  return "REFERRED";
-};
+/* ================= GRADE SYSTEM =================
+   Now sourced from Admin → E-Assessments → Grading System
+   (see hooks/useGradingSystem.js + utils/grading.js) instead of
+   being hard-coded here. */
 
 /* ================= OFFICIAL LETTERHEAD ================= */
 const LetterHead = ({ mode, school }) => (
@@ -94,19 +83,12 @@ const LetterHead = ({ mode, school }) => (
   
 );
 
-/* ================= REMARK SYSTEM ================= */
-const getRemark = (score) => {
-  if (score >= 80) return "Excellent Performance";
-  if (score >= 70) return "Good Performance";
-  if (score >= 60) return "Fair Performance";
-  if (score >= 50) return "Weak Performance";
-  return "Needs Improvement";
-};
-
 const COLORS = ["#16a34a", "#facc15", "#f97316", "#dc2626"];
 
 export default function Reports() {
   const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const { gradingSystem } = useGradingSystem();
+  const passMark = getPassMark(gradingSystem);
   const dean = getOfficial("dean");
   const principal = getOfficial("principal");
   const [printClass, setPrintClass] = useState("ALL");
@@ -190,13 +172,13 @@ export default function Reports() {
       total += score;
       count++;
 
-      const grade = getKnecGrade(score);
+      const grade = getGradeForScore(score, gradingSystem);
 
       return {
         subject: sub.name,
         score,
         grade: grade.label,
-        remark: getRemark(score),
+        remark: getRemarkForScore(score, gradingSystem),
       };
     });
 
@@ -207,14 +189,14 @@ export default function Reports() {
       student: studentMap[studentId],
       avg,
       subjects: subjectBreakdown,
-      grade: getKnecGrade(avg),
-      result: getOverallResult(avg),
+      grade: getGradeForScore(avg, gradingSystem),
+      result: getOverallResultForScore(avg, gradingSystem),
     };
   });
 
   // 🔥 SORT BY PERFORMANCE (THIS FIXES EVERYTHING)
   return list.sort((a, b) => b.avg - a.avg);
-}, [marks, students, subjects, studentMap]);
+}, [marks, students, subjects, studentMap, gradingSystem]);
 
   /* ================= MERIT LIST ================= */
   const meritList = useMemo(() => {
@@ -234,7 +216,7 @@ export default function Reports() {
     const avg =
       meritList.reduce((a, b) => a + b.avg, 0) / meritList.length;
 
-    const pass = meritList.filter((s) => s.avg >= 40).length;
+    const pass = meritList.filter((s) => s.avg >= passMark).length;
 
     return {
       avg: Math.round(avg),
@@ -243,17 +225,27 @@ export default function Reports() {
       total: meritList.length,
       passRate: Math.round((pass / meritList.length) * 100),
     };
-  }, [meritList]);
+  }, [meritList, passMark]);
 
   /* ================= DISTRIBUTION CHART ================= */
   const distribution = useMemo(() => {
-    return [
-      { name: "Distinction", value: meritList.filter(s => s.avg >= 75).length },
-      { name: "Credit", value: meritList.filter(s => s.avg >= 60 && s.avg < 75).length },
-      { name: "Pass", value: meritList.filter(s => s.avg >= 40 && s.avg < 60).length },
-      { name: "Fail", value: meritList.filter(s => s.avg < 40).length },
-    ];
-  }, [meritList]);
+    // Buckets follow whatever overall-result bands are configured
+    // (Admin → E-Assessments → Grading System) instead of a fixed
+    // Distinction/Credit/Pass/Fail split, so the chart always matches
+    // the labels used everywhere else on this page.
+    const bands = gradingSystem?.overallBands?.length
+      ? [...gradingSystem.overallBands].sort((a, b) => b.minScore - a.minScore)
+      : [];
+    if (!bands.length) return [];
+
+    return bands.map((band, i) => {
+      const upper = i > 0 ? bands[i - 1].minScore : Infinity;
+      return {
+        name: band.label,
+        value: meritList.filter((s) => s.avg >= band.minScore && s.avg < upper).length,
+      };
+    });
+  }, [meritList, gradingSystem]);
 
 
 const printPDF = async (ref, name) => {
@@ -1183,7 +1175,9 @@ const printAllReports = async () => {
             </p>
 
             <p style={styles.metaLine}>
-              P.O. BOX 32 - 40100, KISII, KENYA
+              {[school?.address, school?.phone && `Tel: ${school.phone}`]
+                .filter(Boolean)
+                .join(" | ") || "Address not configured — set it in School Settings"}
             </p>
           </div>
 

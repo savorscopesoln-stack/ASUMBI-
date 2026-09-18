@@ -6,7 +6,7 @@ import {
   Search, X, RefreshCw, Download, Plus, UserPlus, ChevronDown, ArrowLeft, Pencil, Trash2,
   Check, CheckCircle2, AlertTriangle, Lock, Unlock, Zap, Rocket, MessageSquare, Mail,
   BarChart3, ClipboardList, FileText, Award, LockKeyhole, Users, Inbox, Clock, TrendingUp,
-  Sun, Moon, Server,
+  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save,
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 
@@ -163,6 +163,10 @@ const IconClock        = Clock;
 const IconTrendUp      = TrendingUp;
 const IconSun          = Sun;
 const IconMoon         = Moon;
+const IconGraduationCap= GraduationCap;
+const IconPlusCircle   = PlusCircle;
+const IconMinusCircle  = MinusCircle;
+const IconSave         = Save;
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -185,9 +189,22 @@ const toDatetimeLocal = (isoString) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-const computeGrade = (score, total = 100) => {
+// Sourced from the shared Grading System (Admin → E-Assessments →
+// Grading System tab) instead of a hard-coded A/B/C/D/E scale, so
+// grades shown here (Submissions, Released Marks, etc.) match what
+// students/teachers see on their own report screens. `gradingSystem`
+// is optional so any pre-existing call site that forgets to pass it
+// still renders something sensible.
+const computeGrade = (score, total = 100, gradingSystem = null) => {
   if (score == null) return "—";
   const pct = (score / (total || 100)) * 100;
+  const bands = gradingSystem?.gradeBands?.length ? gradingSystem.gradeBands : null;
+  if (bands) {
+    const sorted = [...bands].sort((a, b) => b.minScore - a.minScore);
+    const band = sorted.find((b) => pct >= Number(b.minScore)) || sorted[sorted.length - 1];
+    return band?.label || "—";
+  }
+  // fallback if the grading system hasn't loaded yet
   if (pct >= 80) return "A";
   if (pct >= 70) return "B";
   if (pct >= 60) return "C";
@@ -208,6 +225,7 @@ const TABS = [
   { label: "Released Marks",  icon: IconAward },
   { label: "Device Locks",    icon: IconLockKeyhole },
   { label: "Local Sync",      icon: IconServer },
+  { label: "Grading System",  icon: IconGraduationCap },
 ];
 
 /* ═══════════════════════════════════════════════════════════
@@ -229,6 +247,9 @@ export default function AdminEAssessments() {
   const [remarkRequests,   setRemarkRequests]   = useState([]);
   const [releasedMarks,    setReleasedMarks]    = useState([]);
   const [examSessions,     setExamSessions]     = useState([]);
+  const [gradingSystem,    setGradingSystem]    = useState(null);
+  const [gradingDraft,     setGradingDraft]     = useState(null);
+  const [gradingSaving,    setGradingSaving]    = useState(false);
 
   /* ui */
   const [activeTab,     setActiveTab]     = useState(0);
@@ -271,7 +292,7 @@ export default function AdminEAssessments() {
   const loadAll = useCallback(async () => {
     try {
       setLoading(true);
-      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions] =
+      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions, grading] =
         await Promise.all([
           API.get("/e-assessments"),
           API.get("/e-assessments/classes"),
@@ -282,6 +303,7 @@ export default function AdminEAssessments() {
           API.get("/e-assessments/admin/remark-requests").catch(() => ({ data: [] })),
           API.get("/e-assessments/admin/released-marks").catch(() => ({ data: [] })),
           API.get("/e-assessments/admin/exam-sessions").catch(() => ({ data: [] })),
+          API.get("/e-assessments/grading-system").catch(() => ({ data: null })),
         ]);
 
       setList(extract(assessments));
@@ -293,6 +315,10 @@ export default function AdminEAssessments() {
       setRemarkRequests(extract(remarks));
       setReleasedMarks(extract(released));
       setExamSessions(extract(sessions));
+      if (grading.data) {
+        setGradingSystem(grading.data);
+        setGradingDraft(grading.data);
+      }
     } catch (err) {
       console.error(err);
       showToast("Failed to load dashboard data", "error");
@@ -743,6 +769,77 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
+  /* ── Grading System (Admin → E-Assessments → Grading System tab) ──
+     Edits the shared bands every report screen (Reports, Teacher
+     Reports, Student Report) reads via useGradingSystem(). */
+  const updateGradeBand = (idx, field, value) => {
+    setGradingDraft((d) => {
+      const bands = [...(d.gradeBands || [])];
+      bands[idx] = { ...bands[idx], [field]: value };
+      return { ...d, gradeBands: bands };
+    });
+  };
+  const addGradeBand = () => {
+    setGradingDraft((d) => ({
+      ...d,
+      gradeBands: [...(d.gradeBands || []), { minScore: 0, grade: "", label: "", remark: "" }],
+    }));
+  };
+  const removeGradeBand = (idx) => {
+    setGradingDraft((d) => ({ ...d, gradeBands: (d.gradeBands || []).filter((_, i) => i !== idx) }));
+  };
+
+  const updateOverallBand = (idx, field, value) => {
+    setGradingDraft((d) => {
+      const bands = [...(d.overallBands || [])];
+      bands[idx] = { ...bands[idx], [field]: value };
+      return { ...d, overallBands: bands };
+    });
+  };
+  const addOverallBand = () => {
+    setGradingDraft((d) => ({
+      ...d,
+      overallBands: [...(d.overallBands || []), { minScore: 0, label: "" }],
+    }));
+  };
+  const removeOverallBand = (idx) => {
+    setGradingDraft((d) => ({ ...d, overallBands: (d.overallBands || []).filter((_, i) => i !== idx) }));
+  };
+
+  const resetGradingDraft = () => setGradingDraft(gradingSystem);
+
+  const saveGradingSystem = async () => {
+    if (!gradingDraft) return;
+    const gradeBands = (gradingDraft.gradeBands || []).map((b) => ({
+      minScore: Number(b.minScore), grade: b.grade, label: b.label, remark: b.remark,
+    }));
+    const overallBands = (gradingDraft.overallBands || []).map((b) => ({
+      minScore: Number(b.minScore), label: b.label,
+    }));
+    if (gradeBands.some((b) => Number.isNaN(b.minScore) || !String(b.label || "").trim())) {
+      showToast("Every grade band needs a minimum score and a label", "error");
+      return;
+    }
+    if (overallBands.some((b) => Number.isNaN(b.minScore) || !String(b.label || "").trim())) {
+      showToast("Every overall-result band needs a minimum score and a label", "error");
+      return;
+    }
+    try {
+      setGradingSaving(true);
+      const res = await API.put("/e-assessments/admin/grading-system", {
+        systemName: gradingDraft.systemName,
+        passMark: gradingDraft.passMark,
+        gradeBands,
+        overallBands,
+      });
+      setGradingSystem(res.data);
+      setGradingDraft(res.data);
+      showToast("Grading system updated — every report screen will use it immediately");
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to save grading system", "error");
+    } finally { setGradingSaving(false); }
+  };
+
   const exportCSV = (rows, filename) => {
     if (!rows.length) { showToast("No data to export", "error"); return; }
     const keys  = Object.keys(rows[0]);
@@ -1055,7 +1152,7 @@ export default function AdminEAssessments() {
                                   : <Chip text="Unassigned" tone="danger" />}
                               </Td>
                               <Td>{sub.score != null ? <ScoreBadge score={sub.score} total={sub.total_marks || 100} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
-                              <Td>{sub.score != null ? <GradeBadge grade={computeGrade(sub.score, sub.total_marks)} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
+                              <Td>{sub.score != null ? <GradeBadge grade={computeGrade(sub.score, sub.total_marks, gradingSystem)} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
                               <Td><MarkPill status={sub.status} score={sub.score} /></Td>
                               <Td>
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -1130,7 +1227,7 @@ export default function AdminEAssessments() {
                   <div style={sx.metaGrid}>
                     <MetaRow label="Assigned To"  value={r.teacher_name || "Unassigned"} />
                     <MetaRow label="Current Mark" value={r.score != null ? `${r.score}/${r.total_marks || 100}` : "—"} />
-                    <MetaRow label="Grade"        value={computeGrade(r.score, r.total_marks)} />
+                    <MetaRow label="Grade"        value={computeGrade(r.score, r.total_marks, gradingSystem)} />
                     <MetaRow label="Submitted"    value={fmtDate(r.submitted_at)} />
                   </div>
 
@@ -1177,7 +1274,7 @@ export default function AdminEAssessments() {
               releasedMarks.map((m) => ({
                 student: m.student_name, assessment: m.assessment_title,
                 subject: m.subject_name, score: m.score, total: m.total_marks,
-                grade: computeGrade(m.score, m.total_marks), released: m.released_at,
+                grade: computeGrade(m.score, m.total_marks, gradingSystem), released: m.released_at,
               })), "released-marks.csv"
             )}>Export CSV</ActionButton>
           </div>
@@ -1203,7 +1300,7 @@ export default function AdminEAssessments() {
                         <Td style={{ color: C.textSec }}>{m.subject_name || "—"}</Td>
                         <Td><ScoreBadge score={m.score} total={total} /></Td>
                         <Td style={{ color: pct >= 50 ? C.success : C.danger, fontWeight: 700 }}>{pct != null ? `${pct}%` : "—"}</Td>
-                        <Td><GradeBadge grade={computeGrade(m.score, total)} /></Td>
+                        <Td><GradeBadge grade={computeGrade(m.score, total, gradingSystem)} /></Td>
                         <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDate(m.released_at)}</Td>
                       </tr>
                     );
@@ -1269,6 +1366,23 @@ export default function AdminEAssessments() {
       )}
 
       {activeTab === 5 && <LocalSyncPanel assessments={list} />}
+
+      {activeTab === 6 && (
+        <GradingSystemTab
+          draft={gradingDraft}
+          setDraft={setGradingDraft}
+          saving={gradingSaving}
+          dirty={JSON.stringify(gradingDraft) !== JSON.stringify(gradingSystem)}
+          onUpdateGradeBand={updateGradeBand}
+          onAddGradeBand={addGradeBand}
+          onRemoveGradeBand={removeGradeBand}
+          onUpdateOverallBand={updateOverallBand}
+          onAddOverallBand={addOverallBand}
+          onRemoveOverallBand={removeOverallBand}
+          onReset={resetGradingDraft}
+          onSave={saveGradingSystem}
+        />
+      )}
 
       {/* ════════════════════════════════════════════
           MODALS
@@ -1528,7 +1642,7 @@ export default function AdminEAssessments() {
               <>
                 <DetailRow label="Student" value={selected.student_name} />
                 <DetailRow label="Mark"    value={selected.score != null ? `${selected.score}/${selected.total_marks || 100}` : "Not marked"} />
-                <DetailRow label="Grade"   value={computeGrade(selected.score, selected.total_marks)} />
+                <DetailRow label="Grade"   value={computeGrade(selected.score, selected.total_marks, gradingSystem)} />
               </>
             )}
             <DetailRow label="Title"        value={selected.title || selected.assessment_title || "—"} />
@@ -1561,7 +1675,7 @@ export default function AdminEAssessments() {
         <Modal title={`Answers — ${answerModal.sub?.student_name || "Student"}`} onClose={() => setAnswerModal(null)}>
           <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
             <ScoreBadge score={answerModal.sub?.score} total={answerModal.sub?.total_marks || 100} />
-            <GradeBadge grade={computeGrade(answerModal.sub?.score, answerModal.sub?.total_marks)} />
+            <GradeBadge grade={computeGrade(answerModal.sub?.score, answerModal.sub?.total_marks, gradingSystem)} />
           </div>
 
           {(answerModal.answers || []).length === 0 ? (
@@ -1652,7 +1766,7 @@ export default function AdminEAssessments() {
             <DetailRow label="Assessment" value={releaseModal.assessment_title || `Assessment #${releaseModal.e_assessment_id}`} />
             <DetailRow label="Subject"    value={releaseModal.subject_name || "—"} />
             <DetailRow label="Mark"       value={`${releaseModal.score} / ${releaseModal.total_marks || 100}`} />
-            <DetailRow label="Grade"      value={computeGrade(releaseModal.score, releaseModal.total_marks)} />
+            <DetailRow label="Grade"      value={computeGrade(releaseModal.score, releaseModal.total_marks, gradingSystem)} />
           </div>
           <div style={sx.warningBox}>
             <IconAlert size={15} style={{ color: C.warning, flexShrink: 0 }} />
@@ -1869,6 +1983,166 @@ function NotifPill({ n, tone = "accent" }) {
     <span style={{ background: C[tone] || C.accent, color: C.bg, borderRadius: 99, fontSize: 10, fontWeight: 800, padding: "2px 7px", marginLeft: 4 }}>
       {n}
     </span>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GRADING SYSTEM TAB
+   Editor for the shared grading scale (see GradingSystem DB table
+   + hooks/useGradingSystem.js). Every report screen — Reports,
+   Teacher Reports, Student Report — reads whatever is saved here,
+   instead of each having its own hard-coded grade boundaries.
+═══════════════════════════════════════════════════════════ */
+function GradingSystemTab({
+  draft, setDraft, saving, dirty,
+  onUpdateGradeBand, onAddGradeBand, onRemoveGradeBand,
+  onUpdateOverallBand, onAddOverallBand, onRemoveOverallBand,
+  onReset, onSave,
+}) {
+  const C = useC();
+
+  if (!draft) {
+    return <EmptyState icon={<IconGraduationCap size={26} />} text="Loading grading system…" />;
+  }
+
+  const cellInput = {
+    width: "100%", padding: "7px 9px", borderRadius: 6,
+    border: `1px solid ${C.border}`, background: C.bgAlt, color: C.textPri,
+    fontSize: 13, outline: "none", boxSizing: "border-box",
+  };
+
+  const gradeBands = draft.gradeBands || [];
+  const overallBands = draft.overallBands || [];
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 800, color: C.textPri }}>Grading System</h2>
+          <p style={{ margin: 0, fontSize: 13, color: C.textMuted, maxWidth: 620 }}>
+            Set the grade bands and overall-result thresholds used everywhere a score is
+            turned into a grade — the printed report cards, Teacher Reports, and each
+            student's own result slip. Changes apply immediately across all of them.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {dirty && <MiniBtn onClick={onReset} disabled={saving}>Discard changes</MiniBtn>}
+          <ActionButton primary onClick={onSave} icon={<IconSave size={14} />}>
+            {saving ? "Saving…" : "Save Grading System"}
+          </ActionButton>
+        </div>
+      </div>
+
+      {/* System name + pass mark */}
+      <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 20, display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 240px" }}>
+          <FieldLabel>System Name</FieldLabel>
+          <input value={draft.systemName || ""} placeholder="e.g. KNEC Standard"
+            onChange={(e) => setDraft((d) => ({ ...d, systemName: e.target.value }))}
+            style={cellInput} />
+        </div>
+        <div style={{ flex: "0 1 160px" }}>
+          <FieldLabel>Pass Mark (%)</FieldLabel>
+          <input type="number" value={draft.passMark ?? ""} placeholder="40"
+            onChange={(e) => setDraft((d) => ({ ...d, passMark: e.target.value }))}
+            style={cellInput} />
+        </div>
+      </div>
+
+      {/* Grade bands */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.textPri }}>Subject / Score Grade Bands</h3>
+        <MiniBtn icon={<IconPlusCircle size={13} />} onClick={onAddGradeBand}>Add band</MiniBtn>
+      </div>
+      <p style={{ margin: "0 0 10px", fontSize: 12, color: C.textMuted }}>
+        A score is matched to the highest band whose minimum it meets or exceeds. List from highest to lowest — order doesn't have to be exact, it's re-sorted on save.
+      </p>
+      <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflowX: "auto", marginBottom: 24 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+          <thead>
+            <tr>
+              <Th>Min Score (%)</Th>
+              <Th>Grade</Th>
+              <Th>Label</Th>
+              <Th>Remark</Th>
+              <Th></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {gradeBands.map((band, idx) => (
+              <tr key={idx}>
+                <Td style={{ width: 120 }}>
+                  <input type="number" value={band.minScore} style={cellInput}
+                    onChange={(e) => onUpdateGradeBand(idx, "minScore", e.target.value)} />
+                </Td>
+                <Td style={{ width: 90 }}>
+                  <input value={band.grade || ""} placeholder="1" style={cellInput}
+                    onChange={(e) => onUpdateGradeBand(idx, "grade", e.target.value)} />
+                </Td>
+                <Td>
+                  <input value={band.label || ""} placeholder="Distinction" style={cellInput}
+                    onChange={(e) => onUpdateGradeBand(idx, "label", e.target.value)} />
+                </Td>
+                <Td>
+                  <input value={band.remark || ""} placeholder="Excellent Performance" style={cellInput}
+                    onChange={(e) => onUpdateGradeBand(idx, "remark", e.target.value)} />
+                </Td>
+                <Td style={{ width: 44 }}>
+                  <MiniBtn tone="danger" title="Remove band" onClick={() => onRemoveGradeBand(idx)}>
+                    <IconMinusCircle size={14} />
+                  </MiniBtn>
+                </Td>
+              </tr>
+            ))}
+            {gradeBands.length === 0 && (
+              <tr><Td style={{ color: C.textMuted, textAlign: "center" }} colSpan={5}>No grade bands yet — add one above.</Td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Overall result bands */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.textPri }}>Overall Result Bands</h3>
+        <MiniBtn icon={<IconPlusCircle size={13} />} onClick={onAddOverallBand}>Add band</MiniBtn>
+      </div>
+      <p style={{ margin: "0 0 10px", fontSize: 12, color: C.textMuted }}>
+        Used for the "Overall Result" shown on a student's average across all subjects (e.g. DISTINCTION / CREDIT / PASS / REFERRED).
+      </p>
+      <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 420 }}>
+          <thead>
+            <tr>
+              <Th>Min Average (%)</Th>
+              <Th>Result Label</Th>
+              <Th></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {overallBands.map((band, idx) => (
+              <tr key={idx}>
+                <Td style={{ width: 140 }}>
+                  <input type="number" value={band.minScore} style={cellInput}
+                    onChange={(e) => onUpdateOverallBand(idx, "minScore", e.target.value)} />
+                </Td>
+                <Td>
+                  <input value={band.label || ""} placeholder="DISTINCTION" style={cellInput}
+                    onChange={(e) => onUpdateOverallBand(idx, "label", e.target.value)} />
+                </Td>
+                <Td style={{ width: 44 }}>
+                  <MiniBtn tone="danger" title="Remove band" onClick={() => onRemoveOverallBand(idx)}>
+                    <IconMinusCircle size={14} />
+                  </MiniBtn>
+                </Td>
+              </tr>
+            ))}
+            {overallBands.length === 0 && (
+              <tr><Td style={{ color: C.textMuted, textAlign: "center" }} colSpan={3}>No overall-result bands yet — add one above.</Td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
