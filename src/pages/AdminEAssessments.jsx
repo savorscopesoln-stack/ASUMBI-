@@ -578,6 +578,45 @@ export default function AdminEAssessments() {
     }
   };
 
+  // Bulk version of Activate / Start / Stop — runs the same per-item logic
+  // as startAssessment/stopAssessment above, but across every selected
+  // assessment in one go, with a single summary toast at the end instead
+  // of one toast per row. "Activate" only approves (moves it out of
+  // pending review) without opening it to students yet; "Start" approves
+  // AND opens it; "Stop" just closes the window, same as the single-item
+  // action.
+  const bulkAssessmentAction = async (ids, action) => {
+    if (!ids.length) { showToast("Select at least one assessment", "error"); return; }
+    const targets = list.filter((a) => ids.includes(a.id));
+    const verb = { activate: "activated", start: "started", stop: "stopped" }[action] || "updated";
+    try {
+      setSaving(true);
+      let ok = 0, fail = 0;
+      for (const a of targets) {
+        try {
+          if (action === "activate" || action === "start") {
+            if (String(a.status || "").toLowerCase() !== "approved") {
+              await API.put(`/e-assessments/admin/${a.id}/review`, { status: "approved", admin_comment: "" });
+            }
+          }
+          if (action === "start" && a.active_status !== "Active") {
+            await API.put(`/e-assessments/admin/${a.id}/toggle-active`);
+          }
+          if (action === "stop" && a.active_status === "Active") {
+            await API.put(`/e-assessments/admin/${a.id}/toggle-active`);
+          }
+          ok++;
+        } catch { fail++; }
+      }
+      showToast(
+        fail ? `${ok} ${verb}, ${fail} failed` : `${ok} assessment${ok !== 1 ? "s" : ""} ${verb}`,
+        fail ? "error" : "success"
+      );
+      setSelAssessments([]);
+      loadAll();
+    } finally { setSaving(false); }
+  };
+
   const openQuickStats = async (item) => {
     setSelected(item);
     if (!item.student_name && item.id) {
@@ -893,6 +932,15 @@ export default function AdminEAssessments() {
 
   const lockedSessions = examSessions.filter((s) => s.status === "locked").length;
 
+  // Select-all state for the Assessments grid: "all" means every row
+  // currently visible under the search/status filters is selected, so
+  // toggling it re-checks against `filtered`, not the full unfiltered list.
+  const allFilteredSelected = filtered.length > 0 && filtered.every((a) => selAssessments.includes(a.id));
+  const someFilteredSelected = filtered.some((a) => selAssessments.includes(a.id));
+  const toggleSelectAllFiltered = () => {
+    setSelAssessments(allFilteredSelected ? [] : filtered.map((a) => a.id));
+  };
+
   const sx = s(C);
 
   /* ── Loading skeleton ── */
@@ -986,10 +1034,38 @@ export default function AdminEAssessments() {
               </button>
               {bulkMenu && (
                 <div style={sx.dropdown} onMouseLeave={() => setBulkMenu(false)}>
-                  <DropItem icon={<IconTrash size={14} />} onClick={() => { setBulkMenu(false); deleteAssessments(selAssessments); }}>
+                  <DropItem icon={<IconCheck size={14} />} onClick={() => { setBulkMenu(false); toggleSelectAllFiltered(); }}>
+                    {allFilteredSelected ? "Clear selection" : `Select all ${filtered.length} filtered`}
+                  </DropItem>
+                  <DropDivider />
+                  <DropItem
+                    icon={<IconCheck size={14} />}
+                    disabled={!selAssessments.length}
+                    onClick={() => { setBulkMenu(false); bulkAssessmentAction(selAssessments, "activate"); }}
+                  >
+                    Activate {selAssessments.length} assessment{selAssessments.length !== 1 ? "s" : ""}
+                  </DropItem>
+                  <DropItem
+                    tone="success"
+                    icon={<IconRocket size={14} />}
+                    disabled={!selAssessments.length}
+                    onClick={() => { setBulkMenu(false); bulkAssessmentAction(selAssessments, "start"); }}
+                  >
+                    Start {selAssessments.length} assessment{selAssessments.length !== 1 ? "s" : ""}
+                  </DropItem>
+                  <DropItem
+                    tone="danger"
+                    icon={<IconX size={14} />}
+                    disabled={!selAssessments.length}
+                    onClick={() => { setBulkMenu(false); bulkAssessmentAction(selAssessments, "stop"); }}
+                  >
+                    Stop {selAssessments.length} assessment{selAssessments.length !== 1 ? "s" : ""}
+                  </DropItem>
+                  <DropDivider />
+                  <DropItem icon={<IconTrash size={14} />} disabled={!selAssessments.length} onClick={() => { setBulkMenu(false); deleteAssessments(selAssessments); }}>
                     Delete {selAssessments.length} assessment{selAssessments.length !== 1 ? "s" : ""}
                   </DropItem>
-                  <DropItem icon={<IconTrash size={14} />} onClick={() => { setBulkMenu(false); deleteAssignments(selAssignments); }}>
+                  <DropItem icon={<IconTrash size={14} />} disabled={!selAssignments.length} onClick={() => { setBulkMenu(false); deleteAssignments(selAssignments); }}>
                     Remove {selAssignments.length} assignment{selAssignments.length !== 1 ? "s" : ""}
                   </DropItem>
                   <DropItem icon={<IconDownload size={14} />} onClick={() => { setBulkMenu(false); exportCSV(filtered, "filtered-assessments.csv"); }}>
@@ -1038,7 +1114,32 @@ export default function AdminEAssessments() {
             </div>
           )}
 
-          <SectionHeader title={`Assessments (${filtered.length})`} />
+          <SectionHeader
+            title={`Assessments (${filtered.length})`}
+            right={filtered.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: C.textMuted, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    ref={(el) => { if (el) el.indeterminate = !allFilteredSelected && someFilteredSelected; }}
+                    onChange={toggleSelectAllFiltered}
+                    style={{ accentColor: C.accent, cursor: "pointer", width: 14, height: 14 }}
+                  />
+                  Select all
+                </label>
+                {selAssessments.length > 0 && (
+                  <>
+                    <span style={{ fontSize: 12, color: C.textMuted }}>{selAssessments.length} selected</span>
+                    <MiniBtn icon={<IconCheck size={12} />} onClick={() => bulkAssessmentAction(selAssessments, "activate")}>Activate</MiniBtn>
+                    <MiniBtn tone="success" icon={<IconRocket size={12} />} onClick={() => bulkAssessmentAction(selAssessments, "start")}>Start</MiniBtn>
+                    <MiniBtn tone="danger" icon={<IconX size={12} />} onClick={() => bulkAssessmentAction(selAssessments, "stop")}>Stop</MiniBtn>
+                    <MiniBtn tone="danger" icon={<IconTrash size={12} />} onClick={() => deleteAssessments(selAssessments)}>Delete</MiniBtn>
+                  </>
+                )}
+              </div>
+            )}
+          />
           {filtered.length === 0 ? (
             <EmptyState icon={<IconInbox size={26} />} text="No assessments match your filters." />
           ) : (
@@ -1916,12 +2017,13 @@ function StatCard({ label, value, icon, tone }) {
   );
 }
 
-function SectionHeader({ title }) {
+function SectionHeader({ title, right }) {
   const C = useC();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "32px 0 14px" }}>
       <h2 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.1em" }}>{title}</h2>
       <div style={{ flex: 1, height: 1, background: C.border }} />
+      {right}
     </div>
   );
 }
@@ -2229,13 +2331,29 @@ function MiniBtn({ children, icon, onClick, tone, grow, full, neutral, title, st
   );
 }
 
-function DropItem({ children, icon, onClick }) {
+function DropItem({ children, icon, onClick, disabled, tone }) {
   const C = useC();
+  const toneColor = { success: C.success, danger: C.danger, warning: C.warning, accent: C.accent }[tone];
   return (
-    <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "12px 16px", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.textSec, textAlign: "left", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+    <button
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      style={{
+        width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "12px 16px",
+        background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`,
+        color: disabled ? C.textMuted : (toneColor || C.textSec), textAlign: "left",
+        cursor: disabled ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600,
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
       {icon}{children}
     </button>
   );
+}
+
+function DropDivider() {
+  const C = useC();
+  return <div style={{ height: 6, background: C.bgAlt, borderBottom: `1px solid ${C.border}` }} />;
 }
 
 function FieldLabel({ children }) {
