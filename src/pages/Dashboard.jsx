@@ -553,8 +553,18 @@ function Dashboard() {
     } finally { setUploading(false); }
   };
 
+  // The exact column sets /api/upload reads per type (server.js's three
+  // `if (type === ...)` blocks above) — kept in one place so the
+  // downloadable template can never drift from what the importer
+  // actually expects again.
+  const UPLOAD_TEMPLATE_COLUMNS = {
+    students: { name: "", admissionNo: "", studentClass: "", gender: "", yearOfStudy: "", phone: "", status: "", assessmentNumber: "" },
+    teachers: { name: "", staffId: "", subject: "", phone: "", email: "" },
+    users: { username: "", role: "", email: "", password: "" },
+  };
+
   const downloadTemplate = () => {
-    const template = [{ name:"", admissionNo:"", studentClass:"", gender:"", yearOfStudy:"", phone:"" }];
+    const template = [UPLOAD_TEMPLATE_COLUMNS[uploadType] || UPLOAD_TEMPLATE_COLUMNS.students];
     const ws = XLSX.utils.json_to_sheet(template);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Template");

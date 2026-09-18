@@ -1277,7 +1277,14 @@ function ReportsTab({ id, subjects, classes, showToast }) {
               value={subjectSel}
               onChange={(v) => { setSubjectSel(v); setData(null); }}
               placeholder="Select a subject…"
-              options={(subjects || []).map((s) => ({ value: String(s.id), label: s.subject }))}
+              options={(subjects || []).map((s) => ({
+                value: String(s.id),
+                label: s.class_name
+                  ? `${s.subject} — ${s.class_name}`
+                  : s.year_of_study
+                  ? `${s.subject} — Year ${s.year_of_study}`
+                  : s.subject,
+              }))}
             />
           </div>
         )}
@@ -1493,6 +1500,42 @@ function SummaryReportView({ data }) {
           { key: "lowest", label: "Lowest %", fmt: (v) => (v != null ? `${v}%` : "—") },
         ]}
       />
+
+      <SectionHeader title="Nominal Roll" />
+      <NominalRollTable data={data.nominal_roll} />
+    </div>
+  );
+}
+
+function NominalRollTable({ data }) {
+  const C = useC();
+  const nr = data || { subjects: [], rows: [] };
+  const subjects = nr.subjects || [];
+  const rows = nr.rows || [];
+  if (!rows.length) return <EmptyState icon={<FileText size={22} />} text="No registered candidates found for this examination." />;
+  return (
+    <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 10 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead><tr>
+          <Th>Position</Th><Th>Assessment No.</Th><Th>G</Th><Th>Name</Th>
+          {subjects.map((s) => <Th key={s.session_id}>{s.subject}</Th>)}
+          <Th>Average %</Th>
+        </tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.student_id}>
+              <Td>{r.class_position ?? "—"}</Td>
+              <Td>{r.admission_no || "—"}</Td>
+              <Td>{r.gender || "—"}</Td>
+              <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
+              {r.marks.map((m, i) => (
+                <Td key={i}>{m.not_registered || m.score == null ? "—" : m.score}</Td>
+              ))}
+              <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
