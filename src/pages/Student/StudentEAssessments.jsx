@@ -109,11 +109,11 @@ export default function StudentEAssessments() {
 
       const data = res.data?.assessments || res.data?.data || res.data || [];
 
-      const approved = data.filter(
-        (a) => String(a.status || "").toLowerCase() === "approved"
+      const active = data.filter(
+        (a) => String(a.status || "").toLowerCase() === "active"
       );
 
-      setAssessments(approved);
+      setAssessments(active);
     } catch (err) {
       console.log(err);
       setError(err?.response?.data?.message || "Failed to load assessments");
