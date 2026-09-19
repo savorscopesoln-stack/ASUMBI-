@@ -143,8 +143,8 @@ const NAV_GROUPS = [
     items: [
       { name: "Students", Icon: Users },
       { name: "Teachers", Icon: UserRound },
-      { name: "Marks", Icon: BarChart3 },
-      { name: "Assessments", Icon: FileText },
+      
+      
       { name: "E-Assessments", Icon: MonitorCheck },
       { name: "Practicum", Icon: FlaskConical },
     ],
@@ -171,7 +171,7 @@ const NAV_GROUPS = [
       // like any other sub-admin page, since editing site copy doesn't
       // need admin-only trust the way Notification Settings/Portal
       // Pages do.
-      { name: "Website", Icon: Globe },
+      
       // The school's own identity — name, address, phone/email, exam
       // centre code, number of classes, and the officials (Principal,
       // Dean, etc.) whose names appear on downloaded reports and

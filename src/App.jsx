@@ -21,7 +21,7 @@ import ProfileChangeRequests from "./pages/ProfileChangeRequests";
 import Reports from "./pages/reports";
 import Graduation from "./pages/Graduation";
 import RegistrationPage from "./pages/RegistrationPage";
-import AssessmentFeature from "./pages/AssessmentFeature";
+
 import MarksEntry from "./pages/teacher/MarksEntry";
 import LeaveOut from "./pages/LeaveOut";
 import PortalPages from "./pages/PortalPages";
@@ -473,17 +473,7 @@ export default function App() {
         }
       />
 
-      <Route
-        path="/Assessment"
-        element={
-          <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
-            page="Assessments"
-          >
-            <AssessmentFeature />
-          </ProtectedRoute>
-        }
-      />
+      
       <Route
         path="/Marks"
         element={
@@ -576,17 +566,8 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-       <Route
-        path="/assessment-feature"
-        element={
-          <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
-            page="Assessments"
-          >
-            <AssessmentFeature />
-          </ProtectedRoute>
-        }
-      />
+       
+      
        <Route
         path="/practicum"
         element={
@@ -751,17 +732,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/ASSESSMENTS"
-        element={
-          <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
-            page="Assessments"
-          >
-            <AssessmentFeature />
-          </ProtectedRoute>
-        }
-      />
+     
 
       {/* =====================================================
           TEACHER
