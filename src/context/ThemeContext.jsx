@@ -7,12 +7,12 @@ const VALID_THEMES = ["light", "dark"];
 
 /**
  * Reads the persisted theme from localStorage.
- * Falls back to "dark" if nothing valid is stored yet,
+ * Falls back to "light" if nothing valid is stored yet,
  * e.g. on a user's first visit. A theme the user has
  * already chosen (saved in localStorage) always wins.
  */
 function getInitialTheme() {
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "light";
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored && VALID_THEMES.includes(stored)) return stored;
@@ -20,15 +20,12 @@ function getInitialTheme() {
     // localStorage can throw in some environments (privacy mode, etc.)
     console.warn("ThemeContext: unable to read localStorage", err);
   }
-  return "dark";
+  return "light";
 }
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(getInitialTheme);
 
-  // Apply the theme to <html> so global/CSS-var-based styling
-  // (like the [data-theme='dark'] tokens in Dashboard.jsx) and any
-  // `.light` / `.dark` class-based CSS both work app-wide.
   useEffect(() => {
     const root = document.documentElement;
 
