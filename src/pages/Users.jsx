@@ -70,16 +70,16 @@ const injectDesignTokens = () => {
 };
 
 export default function Users() {
+  // Synchronous + idempotent (same as the other pages) so the very first
+  // paint is already themed — no flash of unstyled/white before an effect runs.
+  injectDesignTokens();
+
   const { theme, toggleTheme } = useTheme();
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    injectDesignTokens();
-  }, []);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -306,7 +306,7 @@ const styles = {
     borderRadius: "var(--radius)",
     border: "1px solid var(--border)",
     background: "var(--card)",
-    boxShadow: "var(--shadow-sm)",
+    boxShadow: "var(--shadow)",
     transition: "background 0.15s ease, box-shadow 0.15s ease",
   },
   userTop: {

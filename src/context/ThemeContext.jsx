@@ -7,11 +7,12 @@ const VALID_THEMES = ["light", "dark"];
 
 /**
  * Reads the persisted theme from localStorage.
- * Falls back to "light" (the required default) if nothing
- * valid is stored yet, e.g. on a user's first visit.
+ * Falls back to "dark" if nothing valid is stored yet,
+ * e.g. on a user's first visit. A theme the user has
+ * already chosen (saved in localStorage) always wins.
  */
 function getInitialTheme() {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark";
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored && VALID_THEMES.includes(stored)) return stored;
@@ -19,7 +20,7 @@ function getInitialTheme() {
     // localStorage can throw in some environments (privacy mode, etc.)
     console.warn("ThemeContext: unable to read localStorage", err);
   }
-  return "light";
+  return "dark";
 }
 
 export function ThemeProvider({ children }) {
