@@ -109,11 +109,16 @@ export default function StudentEAssessments() {
 
       const data = res.data?.assessments || res.data?.data || res.data || [];
 
-      const approved = data.filter(
-        (a) => String(a.status || "").toLowerCase() === "approved"
+      // Only exams that are approved AND currently switched on are shown.
+      // "status" is the review state; "active_status" is the Start/Stop
+      // switch the admin controls.
+      const active = data.filter(
+        (a) =>
+          String(a.status || "").toLowerCase() === "approved" &&
+          String(a.active_status || "").toLowerCase() === "active"
       );
 
-      setAssessments(approved);
+      setAssessments(active);
     } catch (err) {
       console.log(err);
       setError(err?.response?.data?.message || "Failed to load assessments");
@@ -163,7 +168,7 @@ export default function StudentEAssessments() {
                   <h2 style={D.cardTitle}>{a.title}</h2>
                   <p style={D.subject}>{a.subject}</p>
                 </div>
-                <span style={D.badge}>{a.status}</span>
+                <span style={D.badge}>Active</span>
               </div>
 
               {a.cover_page_url && !a.my_submission_id && (
