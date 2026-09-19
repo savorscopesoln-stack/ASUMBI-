@@ -84,11 +84,12 @@ export default function RegistrationPage() {
   const isValid = () => {
     if (type === "account") {
       if (!form.username || !form.role) return false;
-      // Admins get full access automatically; either sub-admin tier
-      // needs at least one page picked now, since there's no separate
-      // step to grant access later.
+      // Admins get full access automatically; any page-scoped tier
+      // (either sub-admin, or module_admin) needs at least one page
+      // picked now, since there's no separate step to grant access
+      // later.
       if (
-        (form.role === "sub_admin" || form.role === "sub_admin_2") &&
+        (form.role === "sub_admin" || form.role === "sub_admin_2" || form.role === "module_admin") &&
         form.permissions.length === 0
       )
         return false;
@@ -168,18 +169,18 @@ They'll be required to change it on first login.`);
       }
 
       if (type === "account") {
-        const isSubAdmin = form.role === "sub_admin" || form.role === "sub_admin_2";
+        const isPageScoped = form.role === "sub_admin" || form.role === "sub_admin_2" || form.role === "module_admin";
 
         const res = await API.post("/register/user", {
           username: form.username,
           role: form.role,
           email: form.email,
-          permissions: isSubAdmin ? form.permissions : [],
+          permissions: isPageScoped ? form.permissions : [],
         });
 
         const { username, password, role, permissions } = res.data.credentials;
         const accessLine =
-          role === "sub_admin" || role === "sub_admin_2"
+          role === "sub_admin" || role === "sub_admin_2" || role === "module_admin"
             ? `\nPages granted: ${(permissions || []).join(", ") || "none"}`
             : "";
         setMessage(`✅ Account created (${role})  
@@ -326,14 +327,23 @@ They'll be required to change it on first login — share it with them directly.
                   <select name="role" value={form.role} onChange={handleChange} style={styles.input}>
                     <option value="sub_admin">Sub Admin</option>
                     <option value="sub_admin_2">Sub Admin 2</option>
+                    <option value="module_admin">Module Admin (full admin privileges, limited pages)</option>
                     <option value="admin">Admin</option>
                   </select>
 
-                  {(form.role === "sub_admin" || form.role === "sub_admin_2") && (
+                  {(form.role === "sub_admin" || form.role === "sub_admin_2" || form.role === "module_admin") && (
                     <div style={styles.permBox}>
                       <p style={styles.permTitle}>
-                        Pages this sub-admin can access
+                        Pages this account can access
                       </p>
+                      {form.role === "module_admin" && (
+                        <p style={styles.permHint}>
+                          Module Admin has every admin privilege (user
+                          management, records, approvals — everything a
+                          full Admin can do) but can only navigate to the
+                          pages selected below.
+                        </p>
+                      )}
                       <div style={styles.permGrid}>
                         {PAGES.map((p) => (
                           <label key={p.key} style={styles.permItem}>

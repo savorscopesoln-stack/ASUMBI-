@@ -114,6 +114,13 @@ export default function Users() {
         return { bg: "var(--warning-tint)", fg: "var(--warning)" };
       case "sub_admin_2":
         return { bg: "var(--primary-tint)", fg: "var(--primary)" };
+      case "module_admin":
+        // Full admin privileges (destructive-tone text, same signal as
+        // "admin") but page-scoped like a sub-admin (warning-tone
+        // background) — no dedicated token exists for this tier, so this
+        // pairs the two rather than reusing "admin"'s tone outright,
+        // which would make them indistinguishable in the list at a glance.
+        return { bg: "var(--warning-tint)", fg: "var(--destructive)" };
       case "teacher":
         return { bg: "var(--info-tint)", fg: "var(--info)" };
       default:
@@ -197,8 +204,8 @@ export default function Users() {
                   <p style={styles.detailLine}>📧 {user.email || "No email"}</p>
                 </div>
 
-                {/* PAGE ACCESS (sub-admins only — admins have full access) */}
-                {(user.role === "sub_admin" || user.role === "sub_admin_2") && (
+                {/* PAGE ACCESS (page-scoped tiers only — plain admins have full access) */}
+                {(user.role === "sub_admin" || user.role === "sub_admin_2" || user.role === "module_admin") && (
                   <div style={styles.permWrap}>
                     {(Array.isArray(user.permissions) ? user.permissions : []).length > 0 ? (
                       user.permissions.map((p) => (

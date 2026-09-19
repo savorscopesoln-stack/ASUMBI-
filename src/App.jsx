@@ -116,6 +116,7 @@ const isLoggedIn = () => {
 
 const ROLES = {
   ADMIN: "admin",
+  MODULE_ADMIN: "module_admin",
   SUB_ADMIN: "sub_admin",
   SUB_ADMIN_2: "sub_admin_2",
   TEACHER: "teacher",
@@ -198,11 +199,11 @@ const ProtectedRoute = ({
     );
   }
 
-  // A sub_admin (either tier) only gets in if this page was granted
-  // at setup. "admin" is unaffected — hasPage() always returns true
-  // for it.
+  // A sub_admin (either tier) or module_admin only gets in if this
+  // page was granted at setup. "admin" is unaffected — hasPage()
+  // always returns true for it.
   if (
-    (role === ROLES.SUB_ADMIN || role === ROLES.SUB_ADMIN_2) &&
+    (role === ROLES.SUB_ADMIN || role === ROLES.SUB_ADMIN_2 || role === ROLES.MODULE_ADMIN) &&
     page &&
     !hasPage(user, page)
   ) {
@@ -411,7 +412,7 @@ export default function App() {
         path="/dashboard"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Dashboard"
           >
             <Dashboard />
@@ -423,7 +424,7 @@ export default function App() {
         path="/e-assessments"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
             <AdminEAssessments />
@@ -440,7 +441,7 @@ export default function App() {
         path="/main-exams"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
             <MainExaminations />
@@ -452,7 +453,7 @@ export default function App() {
         path="/main-exams/:id"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
             <MainExaminationDashboard />
@@ -464,7 +465,7 @@ export default function App() {
         path="/students"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Students"
           >
             <Students />
@@ -476,7 +477,7 @@ export default function App() {
         path="/Assessment"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Assessments"
           >
             <AssessmentFeature />
@@ -487,7 +488,7 @@ export default function App() {
         path="/Marks"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Marks"
           >
             <MarksEntry />
@@ -498,7 +499,7 @@ export default function App() {
         path="/teachers"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Teachers"
           >
             <Teachers />
@@ -510,7 +511,7 @@ export default function App() {
         path="/Users"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Users"
           >
             <Users />
@@ -522,7 +523,7 @@ export default function App() {
         path="/password-reset"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Password Reset"
           >
             <AdminPasswordReset />
@@ -534,7 +535,7 @@ export default function App() {
         path="/profile-change-requests"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Profile Change Requests"
           >
             <ProfileChangeRequests />
@@ -546,7 +547,7 @@ export default function App() {
         path="/reports"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Reports"
           >
             <Reports />
@@ -557,7 +558,7 @@ export default function App() {
         path="/graduation"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Graduation"
           >
             <Graduation />
@@ -568,7 +569,7 @@ export default function App() {
         path="/registration"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Registration"
           >
             <RegistrationPage />
@@ -579,7 +580,7 @@ export default function App() {
         path="/assessment-feature"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Assessments"
           >
             <AssessmentFeature />
@@ -590,7 +591,7 @@ export default function App() {
         path="/practicum"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Practicum"
           >
             <Practicum />
@@ -600,7 +601,7 @@ export default function App() {
         path="/leave-out"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Leave-out"
           >
             <LeaveOut />
@@ -610,7 +611,7 @@ export default function App() {
       <Route
         path="/portal-pages"
         element={
-          <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+          <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN]}>
             <PortalPages />
           </ProtectedRoute>
         }
@@ -619,7 +620,7 @@ export default function App() {
         path="/meals"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Meals"
           >
             <Meals />
@@ -630,7 +631,7 @@ export default function App() {
         path="/attendance-report"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="AttendanceReport"
           >
             <AttendanceReport />
@@ -641,7 +642,7 @@ export default function App() {
         path="/admin-e-assessments"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
             <AdminEAssessments />
@@ -659,7 +660,7 @@ export default function App() {
         path="/admin-e-assessments/:id/questions"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
             <AddQuestions />
@@ -671,7 +672,7 @@ export default function App() {
         path="/notifications"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Notifications"
           >
             <AdminNotifications />
@@ -683,7 +684,7 @@ export default function App() {
         path="/student-council"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Student Council"
           >
             <StudentCouncil />
@@ -695,7 +696,7 @@ export default function App() {
         path="/gate"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Gate"
           >
             <GatePage />
@@ -707,7 +708,7 @@ export default function App() {
         path="/kitchen"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Kitchen"
           >
             <KitchenPage />
@@ -719,7 +720,7 @@ export default function App() {
         path="/website"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Website"
           >
             <Website />
@@ -731,7 +732,7 @@ export default function App() {
         path="/school-settings"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="School Settings"
           >
             <SchoolSettings />
@@ -745,7 +746,7 @@ export default function App() {
       <Route
         path="/notification-settings"
         element={
-          <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+          <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN]}>
             <AdminNotificationSettings />
           </ProtectedRoute>
         }
@@ -754,7 +755,7 @@ export default function App() {
         path="/ASSESSMENTS"
         element={
           <ProtectedRoute
-            allowedRoles={[ROLES.ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="Assessments"
           >
             <AssessmentFeature />

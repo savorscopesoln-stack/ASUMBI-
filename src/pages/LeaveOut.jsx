@@ -147,7 +147,7 @@ export default function LeaveOutAdmin() {
 
   const user = getStoredUser();
   const role = String(user?.role || "").toLowerCase();
-  const isAdmin = role === "admin";
+  const isAdmin = role === "admin" || role === "module_admin";
   const isSubAdmin1 = role === "sub_admin";
 
   /* Sub-Admin 2 is an Emergency-only reviewer: it may never see any
@@ -263,15 +263,19 @@ export default function LeaveOutAdmin() {
   const leaveTypeLabel = (t) => LEAVE_TYPE_LABELS[t] || "Short Stay";
   const statusLabel = (s) => STATUS_LABELS[s] || s;
 
-  /* ================= PERMISSION HELPERS (mirrors backend rules) ================= */
+  /* ================= PERMISSION HELPERS (mirrors backend rules) =================
+     "module_admin" acts as a full admin throughout this page (same as
+     "admin") whenever they've been granted the Leave Out page at all —
+     they are NOT a third sub-admin workflow tier, so every "admin"-only
+     or "admin"-included check below also includes them. */
   const canAct = (l) => {
-    if (l.leave_type === "long") return l.status === "pending_admin" && role === "admin";
+    if (l.leave_type === "long") return l.status === "pending_admin" && (role === "admin" || role === "module_admin");
     if (l.leave_type === "emergency") {
-      if (l.status === "pending_subadmin2") return ["sub_admin_2", "admin"].includes(role);
-      if (l.status === "pending_final") return ["sub_admin", "admin"].includes(role);
+      if (l.status === "pending_subadmin2") return ["sub_admin_2", "admin", "module_admin"].includes(role);
+      if (l.status === "pending_final") return ["sub_admin", "admin", "module_admin"].includes(role);
       return false;
     }
-    return l.status === "pending" && ["admin", "sub_admin", "sub_admin_2"].includes(role);
+    return l.status === "pending" && ["admin", "sub_admin", "sub_admin_2", "module_admin"].includes(role);
   };
 
   const canRevoke = (l) => {

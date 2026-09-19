@@ -260,13 +260,21 @@ function Dashboard() {
   const location = useLocation();
 
   /* ─ sidebar nav, filtered to whatever this account was granted ─
-     "admin" passes hasPage() for everything; a sub_admin only sees
-     the pages selected when their account was set up. */
+     "admin" passes hasPage() for everything; a sub_admin/module_admin
+     only sees the pages selected when their account was set up.
+     "Portal Pages" and "Notification Settings" are platform-level
+     configuration surfaces, not in the grantable PAGES catalog at all
+     (permissions.js) — there's no per-account checkbox for either, so
+     they're gated by tier (admin + module_admin, the two full-
+     capability roles) rather than by an individual grant. */
+  const FULL_ADMIN_ONLY_NAV_ITEMS = ["Portal Pages", "Notification Settings"];
   const visibleNavGroups = NAV_GROUPS
     .map((group) => ({
       ...group,
       items: group.items.filter((item) =>
-        item.name === "Portal Pages" ? String(user?.role || "").toLowerCase() === "admin" : hasPage(user, item.name)
+        FULL_ADMIN_ONLY_NAV_ITEMS.includes(item.name)
+          ? ["admin", "module_admin"].includes(String(user?.role || "").toLowerCase())
+          : hasPage(user, item.name)
       ),
     }))
     .filter((group) => group.items.length > 0);
