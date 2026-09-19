@@ -15,6 +15,7 @@ import {
   X,
   ClipboardList,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 import API, { resolveFileUrl } from "../../api";
 
@@ -525,6 +526,13 @@ const submitQuestion = async () => {
           an optional <code style={S.code}>Marking guide: ...</code> line. Any diagrams/images in the document are
           picked up automatically. You'll get a chance to review everything before it's saved.
         </p>
+        <a
+          href="/templates/question-import-template.docx"
+          download="question-import-template.docx"
+          style={{ ...S.ghostBtnSm, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", marginBottom: 12, width: "fit-content" }}
+        >
+          <Download size={14} /> Download Template (.docx)
+        </a>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <input
             ref={docInputRef}
