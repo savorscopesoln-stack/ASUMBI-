@@ -1,8 +1,136 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  CircleDot,
+  PenLine,
+  Star,
+  Clock,
+  FileText,
+  Paperclip,
+  Plus,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  ClipboardList,
+  AlertTriangle,
+} from "lucide-react";
 import API, { resolveFileUrl } from "../../api";
 
+/* ─── shared design-token stylesheet — identical id/tokens to the
+   rest of the app (StudentProfile etc.); a no-op if already mounted
+   by the layout or another page. ─── */
+const injectStyles = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dash-spin { animation: spin 0.8s linear infinite; }
+
+    input:focus-visible, button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    .profile-btn:hover { filter: brightness(0.95); }
+
+    @media (max-width: 900px) {
+      .dash-main { padding: 20px 16px 48px !important; }
+    }
+    @media (max-width: 640px) {
+      .profile-two-col { grid-template-columns: 1fr !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── page-specific additions (separate id, same guard pattern) ─── */
+const injectAddQuestionStyles = () => {
+  if (document.getElementById("add-question-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "add-question-tokens";
+  el.textContent = `
+    textarea:focus-visible, select:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+    .aq-opt-row:focus-within { box-shadow: 0 0 0 3px var(--primary-tint); }
+    .aq-ghost:hover { background: var(--bg) !important; }
+    .aq-card-btn:hover { filter: brightness(0.96); }
+
+    @media (max-width: 1000px) {
+      .aq-layout { grid-template-columns: 1fr !important; }
+      .aq-form-card { position: static !important; }
+    }
+    @media (max-width: 520px) {
+      .aq-two-col { grid-template-columns: 1fr !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
 export default function AddQuestions() {
+  injectStyles();
+  injectAddQuestionStyles();
+
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -344,57 +472,57 @@ const submitQuestion = async () => {
      RENDER
   ========================================================= */
   return (
-    <div style={S.page}>
+    <main className="dash-main" style={S.page}>
 
       {/* ── TOP NAV ── */}
-      <div style={S.topNav}>
-        <button style={S.backBtn} onClick={() => navigate(-1)}>← Back</button>
+      <header style={S.topNav}>
+        <button className="aq-ghost" style={S.backBtn} onClick={() => navigate(-1)}>
+          <ArrowLeft size={15} /> Back
+        </button>
         <div style={S.topNavRight}>
           <span style={S.topNavStat}>
-            <span style={S.topNavStatIcon}>◉</span> {mcqCount} MCQ
+            <CircleDot size={14} color="var(--primary)" /> {mcqCount} MCQ
           </span>
           <span style={S.topNavStat}>
-            <span style={S.topNavStatIcon}>✍</span> {essayCount} Essay
+            <PenLine size={14} color="var(--info)" /> {essayCount} Essay
           </span>
-          <span style={{ ...S.topNavStat, color: "#fbbf24" }}>
-            <span style={S.topNavStatIcon}>★</span> {totalMarks} marks
+          <span style={{ ...S.topNavStat, color: "var(--warning)", background: "var(--warning-tint)" }}>
+            <Star size={14} /> {totalMarks} marks
           </span>
         </div>
-      </div>
+      </header>
 
       {deadline && (
         <div style={{
-          margin: "0 0 16px",
-          padding: "10px 16px",
-          borderRadius: 8,
-          fontSize: 13,
-          fontWeight: 600,
-          background: deadlinePassed ? "rgba(239,68,68,0.12)" : "rgba(99,102,241,0.10)",
-          border: `1px solid ${deadlinePassed ? "rgba(239,68,68,0.4)" : "rgba(99,102,241,0.3)"}`,
-          color: deadlinePassed ? "#f87171" : "#a5b4fc",
+          ...S.banner,
+          background: deadlinePassed ? "var(--destructive-tint)" : "var(--info-tint)",
+          border: `1px solid ${deadlinePassed ? "var(--destructive)" : "var(--info)"}`,
+          color: deadlinePassed ? "var(--destructive)" : "var(--info)",
         }}>
-          {deadlinePassed
-            ? `Deadline to add questions passed on ${deadline.toLocaleString()}. New questions can no longer be added — existing ones can still be viewed below.`
-            : `Deadline to add new questions: ${deadline.toLocaleString()}`}
+          {deadlinePassed && <AlertTriangle size={14} style={{ flexShrink: 0 }} />}
+          <span>
+            {deadlinePassed
+              ? `Deadline to add questions passed on ${deadline.toLocaleString()}. New questions can no longer be added — existing ones can still be viewed below.`
+              : `Deadline to add new questions: ${deadline.toLocaleString()}`}
+          </span>
         </div>
       )}
 
       {/* ══════════════════════════════════════
           IMPORT FROM WORD DOCUMENT
       ══════════════════════════════════════ */}
-      <div style={{
-        marginBottom: 20, padding: 18, borderRadius: 14,
-        background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.25)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <span style={{ fontSize: 20 }}>📄</span>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#e2e8f0" }}>Import Questions from a Word Document</h3>
+      <section style={{ ...S.panel, marginBottom: 20 }} aria-label="Import from Word document">
+        <div style={S.panelTitleRow}>
+          <div style={{ ...S.iconChip, background: "var(--success-tint)", color: "var(--success)" }}>
+            <FileText size={16} />
+          </div>
+          <h3 style={S.panelTitle}>Import Questions from a Word Document</h3>
         </div>
-        <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#94a3b8", lineHeight: 1.6 }}>
+        <p style={S.importText}>
           Instead of typing questions by hand, upload a .docx file. Start each question with{" "}
-          <code>Q1:</code>, list options as <code>A) ...</code>, <code>B) ...</code> etc., and mark the
-          correct one with <code>Answer: A</code>. Write <code>[Essay]</code> for an essay question and
-          an optional <code>Marking guide: ...</code> line. Any diagrams/images in the document are
+          <code style={S.code}>Q1:</code>, list options as <code style={S.code}>A) ...</code>, <code style={S.code}>B) ...</code> etc., and mark the
+          correct one with <code style={S.code}>Answer: A</code>. Write <code style={S.code}>[Essay]</code> for an essay question and
+          an optional <code style={S.code}>Marking guide: ...</code> line. Any diagrams/images in the document are
           picked up automatically. You'll get a chance to review everything before it's saved.
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -403,50 +531,53 @@ const submitQuestion = async () => {
             type="file"
             accept=".docx"
             onChange={handleDocFileChosen}
-            style={{ fontSize: 12.5, color: "#cbd5e1" }}
+            style={{ fontSize: 12.5, color: "var(--text-secondary)", fontFamily: "inherit" }}
           />
           <button
             type="button"
+            className="profile-btn"
             onClick={runDocImport}
             disabled={!docFile || docImporting || deadlinePassed}
             style={{
-              padding: "9px 16px", borderRadius: 10, fontSize: 12.5, fontWeight: 700,
-              background: "rgba(34,197,94,0.18)", border: "1px solid rgba(34,197,94,0.5)",
-              color: "#4ade80", cursor: (!docFile || docImporting || deadlinePassed) ? "not-allowed" : "pointer",
+              ...S.primaryBtnSm,
+              cursor: (!docFile || docImporting || deadlinePassed) ? "not-allowed" : "pointer",
               opacity: (!docFile || docImporting || deadlinePassed) ? 0.5 : 1,
             }}
           >
             {docImporting ? "Reading document…" : "Parse Document"}
           </button>
         </div>
-        {docError && <p style={{ color: "#f87171", fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{docError}</p>}
-      </div>
+        {docError && (
+          <div style={{ ...S.msg, color: "var(--destructive)" }}>
+            <AlertTriangle size={14} /> {docError}
+          </div>
+        )}
+      </section>
 
       {/* ══════════════════════════════════════
           PARSED QUESTIONS — REVIEW BEFORE IMPORT
       ══════════════════════════════════════ */}
       {Array.isArray(parsedQuestions) && (
-        <div style={{
-          marginBottom: 20, padding: 18, borderRadius: 14,
-          background: "rgba(15,23,42,0.6)", border: "1px solid rgba(148,163,184,0.25)",
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#e2e8f0" }}>
+        <section style={{ ...S.panel, marginBottom: 20 }} aria-label="Review imported questions">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <h3 style={S.panelTitle}>
               Review Imported Questions ({parsedQuestions.length})
             </h3>
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 type="button"
+                className="aq-ghost"
                 onClick={() => setParsedQuestions(null)}
-                style={{ padding: "8px 14px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, background: "transparent", border: "1px solid rgba(148,163,184,0.4)", color: "#cbd5e1", cursor: "pointer" }}
+                style={S.ghostBtnSm}
               >
                 Discard
               </button>
               <button
                 type="button"
+                className="profile-btn"
                 onClick={confirmImport}
                 disabled={savingImport || !parsedQuestions.length}
-                style={{ padding: "8px 16px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.6)", color: "#a5b4fc", cursor: "pointer", opacity: savingImport ? 0.6 : 1 }}
+                style={{ ...S.primaryBtnSm, opacity: savingImport ? 0.6 : 1 }}
               >
                 {savingImport ? "Importing…" : `Import ${parsedQuestions.length} Question${parsedQuestions.length !== 1 ? "s" : ""}`}
               </button>
@@ -455,13 +586,22 @@ const submitQuestion = async () => {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {parsedQuestions.map((q, i) => (
-              <div key={i} style={{ padding: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: q.needs_review ? "1px solid rgba(245,158,11,0.5)" : "1px solid rgba(255,255,255,0.08)" }}>
+              <div key={i} style={{
+                padding: 14, borderRadius: "var(--radius-sm)", background: "var(--bg)",
+                border: q.needs_review ? "1px solid var(--warning)" : "1px solid var(--border)",
+              }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8" }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "var(--text-secondary)" }}>
                     Q{i + 1} · {q.question_type === "mcq" ? "MCQ" : "Essay"}
-                    {q.needs_review && !q.correct_answer && <span style={{ color: "#fbbf24", marginLeft: 8 }}>⚠ No answer detected — please set one</span>}
+                    {q.needs_review && !q.correct_answer && (
+                      <span style={{ color: "var(--warning)", marginLeft: 8 }}>⚠ No answer detected — please set one</span>
+                    )}
                   </span>
-                  <button type="button" onClick={() => removeParsedQuestion(i)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  <button
+                    type="button"
+                    onClick={() => removeParsedQuestion(i)}
+                    style={{ background: "none", border: "none", color: "var(--destructive)", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}
+                  >
                     Remove
                   </button>
                 </div>
@@ -470,17 +610,17 @@ const submitQuestion = async () => {
                   value={q.question_text}
                   onChange={(e) => updateParsedQuestion(i, { question_text: e.target.value })}
                   rows={2}
-                  style={{ width: "100%", padding: 10, borderRadius: 8, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", fontSize: 13.5, marginBottom: 8, resize: "vertical" }}
+                  style={{ ...S.textareaSm, marginBottom: 8 }}
                 />
 
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-                  <label style={{ fontSize: 12, color: "#94a3b8" }}>Marks:</label>
+                  <label style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>Marks:</label>
                   <input
                     type="number"
                     min={1}
                     value={q.marks}
                     onChange={(e) => updateParsedQuestion(i, { marks: Number(e.target.value) })}
-                    style={{ width: 70, padding: 6, borderRadius: 6, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", fontSize: 13 }}
+                    style={{ ...S.inputSm, width: 70 }}
                   />
                 </div>
 
@@ -492,11 +632,11 @@ const submitQuestion = async () => {
                           onClick={() => updateParsedQuestion(i, { correct_answer: opt.label })}
                           title="Mark as correct"
                           style={{
-                            width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                            width: 26, height: 26, minWidth: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
                             fontSize: 11, fontWeight: 800, cursor: "pointer",
-                            background: q.correct_answer === opt.label ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.08)",
-                            color: q.correct_answer === opt.label ? "#4ade80" : "#94a3b8",
-                            border: `1px solid ${q.correct_answer === opt.label ? "#4ade80" : "rgba(255,255,255,0.2)"}`,
+                            background: q.correct_answer === opt.label ? "var(--success-tint)" : "var(--card)",
+                            color: q.correct_answer === opt.label ? "var(--success)" : "var(--text-muted)",
+                            border: `1px solid ${q.correct_answer === opt.label ? "var(--success)" : "var(--border)"}`,
                           }}
                         >
                           {opt.label}
@@ -504,7 +644,7 @@ const submitQuestion = async () => {
                         <input
                           value={opt.text}
                           onChange={(e) => updateParsedOption(i, oi, e.target.value)}
-                          style={{ flex: 1, padding: 6, borderRadius: 6, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", fontSize: 13 }}
+                          style={{ ...S.inputSm, flex: 1 }}
                         />
                       </div>
                     ))}
@@ -515,7 +655,7 @@ const submitQuestion = async () => {
                     onChange={(e) => updateParsedQuestion(i, { marking_guide: e.target.value })}
                     rows={2}
                     placeholder="Marking guide (optional)"
-                    style={{ width: "100%", padding: 10, borderRadius: 8, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(168,85,247,0.3)", color: "#e2e8f0", fontSize: 13, resize: "vertical" }}
+                    style={{ ...S.textareaSm, borderColor: "var(--info)" }}
                   />
                 )}
 
@@ -526,14 +666,15 @@ const submitQuestion = async () => {
                         <img
                           src={resolveFileUrl(imgUrl)}
                           alt="Detected diagram"
-                          style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)" }}
+                          style={{ ...S.thumb, width: 72, height: 72 }}
                         />
                         <button
                           type="button"
                           onClick={() => removeParsedImage(i, ii)}
-                          style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#ef4444", color: "#fff", border: "none", fontSize: 10, cursor: "pointer" }}
+                          aria-label="Remove image"
+                          style={{ ...S.thumbRemove, width: 18, height: 18 }}
                         >
-                          ✕
+                          <X size={10} />
                         </button>
                       </div>
                     ))}
@@ -542,27 +683,25 @@ const submitQuestion = async () => {
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      <div style={S.layout}>
+      <div className="aq-layout" style={S.layout}>
 
         {/* ══════════════════════════════════════
             LEFT — FORM
         ══════════════════════════════════════ */}
         <div style={S.formCol}>
-          <div style={S.formCard}>
+          <section className="aq-form-card" style={S.formCard} aria-label="Question form">
 
             {/* Header */}
             <div style={S.formHeader}>
               <div style={{
                 ...S.formHeaderIcon,
-                background: editingId
-                  ? "rgba(245,158,11,0.15)"
-                  : "rgba(99,102,241,0.15)",
-                border: `1px solid ${editingId ? "rgba(245,158,11,0.4)" : "rgba(99,102,241,0.4)"}`,
+                background: editingId ? "var(--warning-tint)" : "var(--primary-tint)",
+                color: editingId ? "var(--warning)" : "var(--primary)",
               }}>
-                {editingId ? "✏️" : "➕"}
+                {editingId ? <Pencil size={18} /> : <Plus size={20} />}
               </div>
               <div>
                 <h2 style={S.formTitle}>
@@ -582,16 +721,16 @@ const submitQuestion = async () => {
                 style={{ ...S.typeBtn, ...(questionType === "mcq" ? S.typeBtnActive : {}) }}
                 onClick={() => setQuestionType("mcq")}
               >
-                <span>◉</span> Multiple Choice
+                <CircleDot size={15} /> Multiple Choice
               </button>
               <button
                 style={{
                   ...S.typeBtn,
-                  ...(questionType === "essay" ? { ...S.typeBtnActive, background: "rgba(168,85,247,0.18)", border: "1.5px solid rgba(168,85,247,0.5)", color: "#c084fc" } : {}),
+                  ...(questionType === "essay" ? { ...S.typeBtnActive, background: "var(--info-tint)", border: "1.5px solid var(--info)", color: "var(--info)" } : {}),
                 }}
                 onClick={() => setQuestionType("essay")}
               >
-                <span>✍</span> Essay / Written
+                <PenLine size={15} /> Essay / Written
               </button>
             </div>
 
@@ -607,7 +746,7 @@ const submitQuestion = async () => {
             </Field>
 
             {/* Marks + Time in row */}
-            <div style={S.twoCol}>
+            <div className="aq-two-col" style={S.twoCol}>
               <Field label="Marks" hint="Points for this question">
                 <input
                   type="number"
@@ -641,6 +780,7 @@ const submitQuestion = async () => {
                   {options.map((opt, i) => (
                     <div
                       key={opt.label}
+                      className="aq-opt-row"
                       style={{
                         ...S.optionInputRow,
                         ...(correctAnswer === opt.label ? S.optionInputRowCorrect : {}),
@@ -675,10 +815,13 @@ const submitQuestion = async () => {
 
                 {correctAnswer && (
                   <div style={S.correctAnswerBadge}>
-                    ✓ Correct answer: <strong>Option {correctAnswer}</strong>
-                    {options.find(o => o.label === correctAnswer)?.text
-                      ? ` — "${options.find(o => o.label === correctAnswer).text}"`
-                      : ""}
+                    <Check size={14} style={{ flexShrink: 0 }} />
+                    <span>
+                      Correct answer: <strong>Option {correctAnswer}</strong>
+                      {options.find(o => o.label === correctAnswer)?.text
+                        ? ` — "${options.find(o => o.label === correctAnswer).text}"`
+                        : ""}
+                    </span>
                   </div>
                 )}
               </div>
@@ -687,7 +830,7 @@ const submitQuestion = async () => {
             {questionType === "essay" && (
   <div style={S.essaySection}>
     <div style={S.essayHeader}>
-      <span style={S.essaySectionTitle}>✍ Marking Guide</span>
+      <span style={S.essaySectionTitle}>Marking Guide</span>
       <span style={S.essaySectionHint}>
         Optional — helps markers grade consistently
       </span>
@@ -699,7 +842,6 @@ const submitQuestion = async () => {
       onChange={(e) => setEssayAnswer(e.target.value)}
       style={{
         ...S.textarea,
-        borderColor: "rgba(168,85,247,0.4)",
         minHeight: 120,
       }}
       rows={5}
@@ -709,9 +851,11 @@ const submitQuestion = async () => {
 
             {/* ── DIAGRAMS / IMAGES ── */}
             <div style={{ marginBottom: 18 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: "#e2e8f0" }}>📎 Diagrams / Images</span>
-                <span style={{ fontSize: 11.5, color: "#94a3b8" }}>Optional — attach a diagram or photo for this question</span>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>
+                  <Paperclip size={14} color="var(--text-secondary)" /> Diagrams / Images
+                </span>
+                <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Optional — attach a diagram or photo for this question</span>
               </div>
 
               <input
@@ -724,14 +868,11 @@ const submitQuestion = async () => {
               />
               <button
                 type="button"
+                className="aq-ghost"
                 onClick={() => imageInputRef.current?.click()}
-                style={{
-                  padding: "9px 14px", borderRadius: 10, fontSize: 12.5, fontWeight: 700,
-                  background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.35)",
-                  color: "#a5b4fc", cursor: "pointer",
-                }}
+                style={S.addImageBtn}
               >
-                + Add Image
+                <Plus size={14} /> Add Image
               </button>
 
               {(existingImages.length > 0 || pendingImageFiles.length > 0) && (
@@ -741,19 +882,16 @@ const submitQuestion = async () => {
                       <img
                         src={resolveFileUrl(img.image_url)}
                         alt="Question diagram"
-                        style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)" }}
+                        style={{ ...S.thumb, width: 84, height: 84 }}
                       />
                       <button
                         type="button"
                         onClick={() => deleteExistingImage(img.id)}
                         title="Remove image"
-                        style={{
-                          position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%",
-                          background: "#ef4444", color: "#fff", border: "none", fontSize: 11, cursor: "pointer",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }}
+                        aria-label="Remove image"
+                        style={S.thumbRemove}
                       >
-                        ✕
+                        <X size={11} />
                       </button>
                     </div>
                   ))}
@@ -762,30 +900,28 @@ const submitQuestion = async () => {
                       <img
                         src={URL.createObjectURL(file)}
                         alt="Pending upload"
-                        style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: "1px dashed rgba(99,102,241,0.6)" }}
+                        style={{ ...S.thumb, width: 84, height: 84, border: "1px dashed var(--primary)" }}
                       />
                       <button
                         type="button"
                         onClick={() => removePendingImage(i)}
                         title="Remove"
-                        style={{
-                          position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%",
-                          background: "#ef4444", color: "#fff", border: "none", fontSize: 11, cursor: "pointer",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }}
+                        aria-label="Remove image"
+                        style={S.thumbRemove}
                       >
-                        ✕
+                        <X size={11} />
                       </button>
                     </div>
                   ))}
                 </div>
               )}
-              {uploadingImages && <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>Uploading images…</p>}
+              {uploadingImages && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>Uploading images…</p>}
             </div>
 
             {/* Actions */}
             <div style={S.formActions}>
               <button
+                className="profile-btn"
                 style={{ ...S.saveBtn, opacity: (loading || (deadlinePassed && !editingId)) ? 0.5 : 1, cursor: (deadlinePassed && !editingId) ? "not-allowed" : "pointer" }}
                 disabled={loading || (deadlinePassed && !editingId)}
                 onClick={submitQuestion}
@@ -793,12 +929,12 @@ const submitQuestion = async () => {
                 {loading ? "Saving…" : (deadlinePassed && !editingId) ? "Deadline passed" : editingId ? "Update Question" : "Add Question"}
               </button>
               {editingId && (
-                <button style={S.cancelBtn} onClick={resetForm}>
+                <button className="aq-ghost" style={S.cancelBtn} onClick={resetForm}>
                   Cancel
                 </button>
               )}
             </div>
-          </div>
+          </section>
         </div>
 
         {/* ══════════════════════════════════════
@@ -812,7 +948,7 @@ const submitQuestion = async () => {
 
           {questions.length === 0 ? (
             <div style={S.emptyList}>
-              <span style={S.emptyIcon}>📋</span>
+              <ClipboardList size={32} color="var(--text-muted)" />
               <p style={S.emptyText}>No questions yet. Add your first one on the left.</p>
             </div>
           ) : (
@@ -820,7 +956,7 @@ const submitQuestion = async () => {
               {questions.map((q, index) => {
                 const isMcq = (q.question_type || "mcq") === "mcq";
                 return (
-                  <div
+                  <article
                     key={q.id}
                     style={{
                       ...S.qCard,
@@ -832,23 +968,23 @@ const submitQuestion = async () => {
                       <div style={S.qCardHeaderLeft}>
                         <span style={{
                           ...S.qIndexBadge,
-                          background: isMcq ? "rgba(99,102,241,0.18)" : "rgba(168,85,247,0.18)",
-                          border: `1px solid ${isMcq ? "rgba(99,102,241,0.4)" : "rgba(168,85,247,0.4)"}`,
-                          color: isMcq ? "#818cf8" : "#c084fc",
+                          background: isMcq ? "var(--primary-tint)" : "var(--info-tint)",
+                          color: isMcq ? "var(--primary)" : "var(--info)",
                         }}>
                           Q{index + 1}
                         </span>
                         <span style={{
                           ...S.qTypePill,
-                          background: isMcq ? "rgba(99,102,241,0.1)" : "rgba(168,85,247,0.1)",
-                          color: isMcq ? "#6366f1" : "#a855f7",
+                          color: isMcq ? "var(--primary)" : "var(--info)",
+                          border: `1px solid ${isMcq ? "var(--primary)" : "var(--info)"}`,
                         }}>
-                          {isMcq ? "◉ MCQ" : "✍ Essay"}
+                          {isMcq ? <CircleDot size={12} /> : <PenLine size={12} />}
+                          {isMcq ? "MCQ" : "Essay"}
                         </span>
                       </div>
                       <div style={S.qCardHeaderRight}>
-                        <span style={S.marksPill}>★ {q.marks} {Number(q.marks) === 1 ? "mark" : "marks"}</span>
-                        <span style={S.timePill}>⏱ {q.time_limit || 60}s</span>
+                        <span style={S.marksPill}><Star size={12} /> {q.marks} {Number(q.marks) === 1 ? "mark" : "marks"}</span>
+                        <span style={S.timePill}><Clock size={12} /> {q.time_limit || 60}s</span>
                       </div>
                     </div>
 
@@ -863,7 +999,7 @@ const submitQuestion = async () => {
                             key={img.id}
                             src={resolveFileUrl(img.image_url)}
                             alt="Question diagram"
-                            style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)" }}
+                            style={{ ...S.thumb, width: 72, height: 72 }}
                           />
                         ))}
                       </div>
@@ -893,7 +1029,7 @@ const submitQuestion = async () => {
                                 {opt.text || opt.option_text || "—"}
                               </span>
                               {isCorrect && (
-                                <span style={S.qOptCorrectMark}>✓ Correct</span>
+                                <span style={S.qOptCorrectMark}><Check size={12} /> Correct</span>
                               )}
                             </div>
                           );
@@ -905,27 +1041,27 @@ const submitQuestion = async () => {
 {/* Essay Answer / Marking Guide */}
 {!isMcq && (
   <div style={{
-    background: "rgba(168,85,247,0.06)",
-    border: "1px solid rgba(168,85,247,0.25)",
-    borderRadius: 14,
+    background: "var(--info-tint)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)",
     padding: 14,
     marginBottom: 16,
   }}>
     <div style={{
-      fontSize: 13,
+      fontSize: 12.5,
       fontWeight: 800,
-      color: "#c084fc",
+      color: "var(--info)",
       marginBottom: 6,
       display: "flex",
       alignItems: "center",
       gap: 8,
     }}>
-      ✍ Expected Answer / Marking Guide
+      <PenLine size={14} /> Expected Answer / Marking Guide
     </div>
 
     <div style={{
-      fontSize: 14,
-      color: "#e2e8f0",
+      fontSize: 13.5,
+      color: "var(--text)",
       lineHeight: 1.6,
       whiteSpace: "pre-wrap",
     }}>
@@ -938,21 +1074,21 @@ const submitQuestion = async () => {
 
                     {/* Card actions */}
                     <div style={S.qCardActions}>
-                      <button style={S.editBtn} onClick={() => editQuestion(q)}>
-                        ✏️ Edit
+                      <button className="aq-card-btn" style={S.editBtn} onClick={() => editQuestion(q)}>
+                        <Pencil size={14} /> Edit
                       </button>
-                      <button style={S.deleteBtn} onClick={() => deleteQuestion(q.id)}>
-                        🗑 Delete
+                      <button className="aq-card-btn" style={S.deleteBtn} onClick={() => deleteQuestion(q.id)}>
+                        <Trash2 size={14} /> Delete
                       </button>
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </div>
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -960,10 +1096,10 @@ const submitQuestion = async () => {
 function Field({ label, hint, required, children }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
         <label style={S.fieldLabel}>
           {label}
-          {required && <span style={{ color: "#f87171", marginLeft: 4 }}>*</span>}
+          {required && <span style={{ color: "var(--destructive)", marginLeft: 4 }}>*</span>}
         </label>
         {hint && <span style={S.fieldHint}>{hint}</span>}
       </div>
@@ -973,15 +1109,17 @@ function Field({ label, hint, required, children }) {
 }
 
 /* =========================================================
-   STYLES
+   STYLES — built on the shared design tokens (var(--…)) so
+   light and dark themes both work, matching StudentProfile.
 ========================================================= */
 const S = {
   page: {
     minHeight: "100vh",
-    background: "linear-gradient(160deg,#020617 0%,#0c0f1e 50%,#0f172a 100%)",
-    padding: "24px 28px 60px",
-    color: "#f1f5f9",
-    fontFamily: "'Inter','Segoe UI',sans-serif",
+    background: "var(--bg)",
+    padding: "24px 32px 56px",
+    color: "var(--text)",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    boxSizing: "border-box",
   },
 
   /* Top nav */
@@ -989,35 +1127,145 @@ const S = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 28,
+    marginBottom: 22,
     flexWrap: "wrap",
     gap: 12,
   },
   backBtn: {
-    padding: "9px 16px",
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.1)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#94a3b8",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "8px 14px",
+    borderRadius: 20,
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text-secondary)",
     cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 600,
+    fontSize: 13,
+    fontWeight: 700,
+    fontFamily: "inherit",
+    boxShadow: "var(--shadow-sm)",
   },
-  topNavRight: { display: "flex", gap: 14, alignItems: "center" },
+  topNavRight: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
   topNavStat: {
     display: "flex", alignItems: "center", gap: 6,
-    fontSize: 14, fontWeight: 700, color: "#94a3b8",
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    padding: "7px 14px", borderRadius: 20,
+    fontSize: 13, fontWeight: 700, color: "var(--text-secondary)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    padding: "6px 12px", borderRadius: 20,
+    boxShadow: "var(--shadow-sm)",
   },
-  topNavStatIcon: { opacity: 0.7 },
+
+  /* Deadline banner */
+  banner: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    margin: "0 0 16px",
+    padding: "10px 14px",
+    borderRadius: "var(--radius-sm)",
+    fontSize: 13,
+    fontWeight: 600,
+    lineHeight: 1.5,
+  },
+
+  /* Generic panel (import / review) */
+  panel: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: "20px 22px",
+    boxShadow: "var(--shadow-sm)",
+  },
+  panelTitleRow: { display: "flex", alignItems: "center", gap: 10, marginBottom: 8 },
+  panelTitle: { margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" },
+  iconChip: {
+    width: 32, height: 32, borderRadius: 9,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    flexShrink: 0,
+  },
+  importText: {
+    margin: "0 0 14px", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.7,
+  },
+  code: {
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: 5,
+    padding: "1px 5px",
+    fontSize: 11.5,
+    color: "var(--text)",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  },
+  msg: {
+    display: "flex", alignItems: "center", gap: 6,
+    marginTop: 12, fontSize: 12.5, fontWeight: 600,
+  },
+
+  /* Compact buttons/inputs used in import + review panels */
+  primaryBtnSm: {
+    padding: "9px 16px",
+    borderRadius: "var(--radius-sm)",
+    border: "none",
+    background: "var(--primary)",
+    color: "#fff",
+    fontSize: 12.5,
+    fontWeight: 700,
+    fontFamily: "inherit",
+    cursor: "pointer",
+  },
+  ghostBtnSm: {
+    padding: "9px 14px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text-secondary)",
+    fontSize: 12.5,
+    fontWeight: 700,
+    fontFamily: "inherit",
+    cursor: "pointer",
+  },
+  inputSm: {
+    padding: "7px 10px",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text)",
+    fontSize: 13,
+    fontFamily: "inherit",
+    boxSizing: "border-box",
+  },
+  textareaSm: {
+    width: "100%",
+    padding: 10,
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text)",
+    fontSize: 13.5,
+    fontFamily: "inherit",
+    resize: "vertical",
+    boxSizing: "border-box",
+  },
+
+  /* Thumbnails */
+  thumb: {
+    objectFit: "cover",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    display: "block",
+  },
+  thumbRemove: {
+    position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%",
+    background: "var(--destructive)", color: "#fff", border: "2px solid var(--card)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: "pointer", padding: 0,
+  },
 
   /* Two-column layout */
   layout: {
     display: "grid",
     gridTemplateColumns: "minmax(360px,480px) 1fr",
-    gap: 28,
+    gap: 20,
     alignItems: "flex-start",
   },
   formCol: {},
@@ -1025,260 +1273,273 @@ const S = {
 
   /* Form card */
   formCard: {
-    background: "rgba(15,23,42,0.8)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 24,
-    padding: 30,
-    backdropFilter: "blur(14px)",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: "22px 24px",
+    boxShadow: "var(--shadow-sm)",
     position: "sticky",
     top: 20,
   },
   formHeader: {
     display: "flex", alignItems: "center", gap: 14,
-    marginBottom: 24,
-    paddingBottom: 20,
-    borderBottom: "1px solid rgba(255,255,255,0.07)",
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottom: "1px solid var(--border)",
   },
   formHeaderIcon: {
-    width: 48, height: 48, borderRadius: 14,
+    width: 42, height: 42, borderRadius: 12,
     display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: 22, flexShrink: 0,
+    flexShrink: 0,
   },
-  formTitle: { margin: 0, fontSize: 20, fontWeight: 800 },
-  formSubtitle: { margin: "4px 0 0", fontSize: 13, color: "#64748b" },
+  formTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
+  formSubtitle: { margin: "3px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
 
   /* Type toggle */
   typeToggle: {
-    display: "flex", gap: 10, marginBottom: 22,
+    display: "flex", gap: 10, marginBottom: 20,
   },
   typeBtn: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-    gap: 8, padding: "11px 16px",
-    borderRadius: 12,
-    border: "1.5px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.04)",
-    color: "#64748b", cursor: "pointer",
-    fontSize: 14, fontWeight: 700, transition: "all 0.2s",
+    gap: 8, padding: "10px 14px",
+    borderRadius: "var(--radius-sm)",
+    border: "1.5px solid var(--border)",
+    background: "var(--bg)",
+    color: "var(--text-muted)", cursor: "pointer",
+    fontSize: 13.5, fontWeight: 700, transition: "all 0.2s",
+    fontFamily: "inherit",
   },
   typeBtnActive: {
-    background: "rgba(99,102,241,0.18)",
-    border: "1.5px solid rgba(99,102,241,0.5)",
-    color: "#a5b4fc",
+    background: "var(--primary-tint)",
+    border: "1.5px solid var(--primary)",
+    color: "var(--primary)",
   },
 
   /* Fields */
-  fieldLabel: { fontSize: 13, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" },
-  fieldHint: { fontSize: 12, color: "#475569" },
+  fieldLabel: {
+    fontSize: 11, fontWeight: 700, color: "var(--text-secondary)",
+    textTransform: "uppercase", letterSpacing: "0.04em",
+  },
+  fieldHint: { fontSize: 11.5, color: "var(--text-muted)" },
   textarea: {
-    width: "100%", padding: "14px 16px",
-    borderRadius: 14,
-    border: "1.5px solid rgba(255,255,255,0.08)",
-    background: "rgba(30,41,59,0.7)",
-    color: "#f1f5f9", fontSize: 15, lineHeight: 1.7,
-    resize: "vertical", outline: "none",
-    fontFamily: "'Inter',sans-serif",
+    width: "100%", padding: "11px 13px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--bg)",
+    color: "var(--text)", fontSize: 14, lineHeight: 1.6,
+    resize: "vertical",
+    fontFamily: "inherit",
     boxSizing: "border-box",
   },
   input: {
-    width: "100%", padding: "13px 16px",
-    borderRadius: 14,
-    border: "1.5px solid rgba(255,255,255,0.08)",
-    background: "rgba(30,41,59,0.7)",
-    color: "#f1f5f9", fontSize: 15, outline: "none",
-    fontFamily: "'Inter',sans-serif",
+    width: "100%", padding: "10px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--bg)",
+    color: "var(--text)", fontSize: 13.5,
+    fontFamily: "inherit",
     boxSizing: "border-box",
   },
   twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
 
   /* MCQ section */
   mcqSection: {
-    background: "rgba(99,102,241,0.06)",
-    border: "1px solid rgba(99,102,241,0.2)",
-    borderRadius: 18, padding: 20, marginBottom: 18,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)", padding: 16, marginBottom: 18,
   },
-  mcqSectionHeader: { marginBottom: 14 },
-  mcqSectionTitle: { fontSize: 14, fontWeight: 800, color: "#a5b4fc" },
-  mcqSectionHint: { display: "block", fontSize: 12, color: "#475569", marginTop: 4 },
-  optionsGrid: { display: "flex", flexDirection: "column", gap: 10 },
+  mcqSectionHeader: { marginBottom: 12 },
+  mcqSectionTitle: { fontSize: 13.5, fontWeight: 800, color: "var(--text)" },
+  mcqSectionHint: { display: "block", fontSize: 12, color: "var(--text-muted)", marginTop: 3 },
+  optionsGrid: { display: "flex", flexDirection: "column", gap: 8 },
   optionInputRow: {
     display: "flex", alignItems: "center", gap: 10,
-    padding: "10px 14px", borderRadius: 12,
-    background: "rgba(30,41,59,0.6)",
-    border: "1.5px solid rgba(255,255,255,0.07)",
-    transition: "border 0.2s",
+    padding: "8px 10px", borderRadius: "var(--radius-sm)",
+    background: "var(--card)",
+    border: "1.5px solid var(--border)",
+    transition: "border 0.2s, box-shadow 0.2s",
   },
   optionInputRowCorrect: {
-    border: "1.5px solid rgba(34,197,94,0.5)",
-    background: "rgba(34,197,94,0.06)",
+    border: "1.5px solid var(--success)",
+    background: "var(--success-tint)",
   },
   optLabelBubble: {
-    width: 34, height: 34, minWidth: 34, borderRadius: 9,
+    width: 30, height: 30, minWidth: 30, borderRadius: 8,
     display: "flex", alignItems: "center", justifyContent: "center",
-    background: "rgba(255,255,255,0.07)",
-    fontWeight: 800, fontSize: 14, color: "#94a3b8",
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    fontWeight: 800, fontSize: 13, color: "var(--text-secondary)",
   },
-  optLabelBubbleCorrect: { background: "#22c55e", color: "#fff" },
+  optLabelBubbleCorrect: { background: "var(--success)", border: "1px solid var(--success)", color: "var(--card)" },
   optInput: {
-    flex: 1, background: "transparent", border: "none",
-    outline: "none", color: "#f1f5f9", fontSize: 15,
-    fontFamily: "'Inter',sans-serif",
+    flex: 1, minWidth: 0, background: "transparent", border: "none",
+    outline: "none", color: "var(--text)", fontSize: 14,
+    fontFamily: "inherit",
   },
   markCorrectBtn: {
-    width: 32, height: 32, borderRadius: 8, border: "1.5px solid rgba(255,255,255,0.12)",
-    background: "transparent", color: "#475569",
-    cursor: "pointer", fontSize: 16, fontWeight: 800,
+    width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--border)",
+    background: "transparent", color: "var(--text-muted)",
+    cursor: "pointer", fontSize: 15, fontWeight: 800,
     display: "flex", alignItems: "center", justifyContent: "center",
-    flexShrink: 0,
+    flexShrink: 0, fontFamily: "inherit",
   },
-  markCorrectBtnActive: { border: "1.5px solid #22c55e", color: "#22c55e", background: "rgba(34,197,94,0.12)" },
+  markCorrectBtnActive: { border: "1.5px solid var(--success)", color: "var(--success)", background: "var(--success-tint)" },
   correctAnswerBadge: {
-    marginTop: 12, padding: "9px 14px", borderRadius: 10,
-    background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)",
-    color: "#4ade80", fontSize: 13, fontWeight: 600,
+    display: "flex", alignItems: "flex-start", gap: 8,
+    marginTop: 12, padding: "9px 12px", borderRadius: "var(--radius-sm)",
+    background: "var(--success-tint)", border: "1px solid var(--success)",
+    color: "var(--success)", fontSize: 12.5, fontWeight: 600, lineHeight: 1.5,
   },
 
   /* Essay section */
   essaySection: {
-    background: "rgba(168,85,247,0.06)",
-    border: "1px solid rgba(168,85,247,0.2)",
-    borderRadius: 18, padding: 20, marginBottom: 18,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)", padding: 16, marginBottom: 18,
   },
-  essayHeader: { marginBottom: 14 },
-  essaySectionTitle: { fontSize: 14, fontWeight: 800, color: "#c084fc" },
-  essaySectionHint: { display: "block", fontSize: 12, color: "#475569", marginTop: 4 },
+  essayHeader: { marginBottom: 12 },
+  essaySectionTitle: { fontSize: 13.5, fontWeight: 800, color: "var(--info)" },
+  essaySectionHint: { display: "block", fontSize: 12, color: "var(--text-muted)", marginTop: 3 },
+
+  /* Add image button */
+  addImageBtn: {
+    display: "inline-flex", alignItems: "center", gap: 6,
+    padding: "8px 14px", borderRadius: "var(--radius-sm)",
+    background: "var(--card)", border: "1px solid var(--border)",
+    color: "var(--text-secondary)", cursor: "pointer",
+    fontSize: 12.5, fontWeight: 700, fontFamily: "inherit",
+    boxShadow: "var(--shadow-sm)",
+  },
 
   /* Form actions */
   formActions: { display: "flex", gap: 10, marginTop: 6 },
   saveBtn: {
-    flex: 1, padding: "14px",
-    borderRadius: 14, border: "none",
-    background: "linear-gradient(135deg,#4f46e5,#6366f1)",
-    color: "#fff", fontWeight: 800, fontSize: 15,
-    cursor: "pointer", boxShadow: "0 6px 20px rgba(99,102,241,0.3)",
+    flex: 1, padding: "11px 16px",
+    borderRadius: "var(--radius-sm)", border: "none",
+    background: "var(--primary)",
+    color: "#fff", fontWeight: 700, fontSize: 13.5,
+    cursor: "pointer", fontFamily: "inherit",
   },
   cancelBtn: {
-    padding: "14px 20px", borderRadius: 14, border: "none",
-    background: "rgba(255,255,255,0.07)",
-    color: "#94a3b8", cursor: "pointer", fontWeight: 700, fontSize: 15,
+    padding: "11px 18px", borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text-secondary)", cursor: "pointer", fontWeight: 700, fontSize: 13.5,
+    fontFamily: "inherit",
   },
 
   /* List column */
   listHeader: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 18,
+    marginBottom: 16,
   },
-  listTitle: { margin: 0, fontSize: 20, fontWeight: 800 },
+  listTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
   listCount: {
-    fontSize: 13, color: "#64748b", fontWeight: 700,
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    fontSize: 12.5, color: "var(--text-secondary)", fontWeight: 700,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
     padding: "5px 12px", borderRadius: 20,
   },
-  questionList: { display: "flex", flexDirection: "column", gap: 16 },
+  questionList: { display: "flex", flexDirection: "column", gap: 14 },
   emptyList: {
     display: "flex", flexDirection: "column",
     alignItems: "center", justifyContent: "center",
-    padding: "60px 20px", gap: 14,
-    background: "rgba(15,23,42,0.5)",
-    border: "1px dashed rgba(255,255,255,0.1)",
-    borderRadius: 20, textAlign: "center",
+    padding: "56px 20px", gap: 12,
+    background: "var(--card)",
+    border: "1px dashed var(--border)",
+    borderRadius: "var(--radius)", textAlign: "center",
   },
-  emptyIcon: { fontSize: 36 },
-  emptyText: { margin: 0, color: "#475569", fontSize: 15 },
+  emptyText: { margin: 0, color: "var(--text-muted)", fontSize: 14, fontWeight: 500 },
 
   /* Question card */
   qCard: {
-    background: "rgba(15,23,42,0.8)",
-    border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: 20, padding: 22,
-    backdropFilter: "blur(12px)",
-    boxShadow: "0 8px 30px rgba(0,0,0,0.3)",
-    transition: "border 0.2s",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)", padding: "18px 20px",
+    boxShadow: "var(--shadow-sm)",
+    transition: "border 0.2s, box-shadow 0.2s",
   },
   qCardEditing: {
-    border: "1.5px solid rgba(245,158,11,0.5)",
-    boxShadow: "0 0 0 3px rgba(245,158,11,0.08)",
+    border: "1.5px solid var(--warning)",
+    boxShadow: "0 0 0 3px var(--warning-tint)",
   },
   qCardHeader: {
     display: "flex", alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14, flexWrap: "wrap", gap: 10,
+    marginBottom: 12, flexWrap: "wrap", gap: 10,
   },
-  qCardHeaderLeft: { display: "flex", alignItems: "center", gap: 10 },
-  qCardHeaderRight: { display: "flex", alignItems: "center", gap: 8 },
+  qCardHeaderLeft: { display: "flex", alignItems: "center", gap: 8 },
+  qCardHeaderRight: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
   qIndexBadge: {
-    padding: "4px 12px", borderRadius: 8,
-    fontSize: 13, fontWeight: 800,
+    padding: "4px 11px", borderRadius: 8,
+    fontSize: 12.5, fontWeight: 800,
   },
   qTypePill: {
-    padding: "4px 10px", borderRadius: 20,
-    fontSize: 12, fontWeight: 700,
+    display: "inline-flex", alignItems: "center", gap: 5,
+    padding: "3px 10px", borderRadius: 20,
+    fontSize: 11.5, fontWeight: 700,
+    background: "transparent",
   },
   marksPill: {
-    padding: "4px 10px", borderRadius: 20,
-    background: "rgba(251,191,36,0.1)",
-    border: "1px solid rgba(251,191,36,0.3)",
-    color: "#fbbf24", fontSize: 12, fontWeight: 700,
+    display: "inline-flex", alignItems: "center", gap: 5,
+    padding: "3px 10px", borderRadius: 20,
+    background: "var(--warning-tint)",
+    color: "var(--warning)", fontSize: 11.5, fontWeight: 700,
   },
   timePill: {
-    padding: "4px 10px", borderRadius: 20,
-    background: "rgba(100,116,139,0.12)",
-    border: "1px solid rgba(100,116,139,0.25)",
-    color: "#64748b", fontSize: 12, fontWeight: 700,
+    display: "inline-flex", alignItems: "center", gap: 5,
+    padding: "3px 10px", borderRadius: 20,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)", fontSize: 11.5, fontWeight: 700,
   },
 
-  qText: { fontSize: 16, lineHeight: 1.7, color: "#e2e8f0", margin: "0 0 16px", fontWeight: 600 },
+  qText: { fontSize: 15, lineHeight: 1.6, color: "var(--text)", margin: "0 0 14px", fontWeight: 600 },
 
   /* Options in card */
-  qOptions: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 },
+  qOptions: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 },
   qOption: {
     display: "flex", alignItems: "center", gap: 12,
-    padding: "10px 14px", borderRadius: 12,
-    background: "rgba(30,41,59,0.6)",
-    border: "1.5px solid rgba(255,255,255,0.06)",
+    padding: "8px 12px", borderRadius: "var(--radius-sm)",
+    background: "var(--bg)",
+    border: "1.5px solid var(--border)",
   },
   qOptionCorrect: {
-    background: "rgba(34,197,94,0.08)",
-    border: "1.5px solid rgba(34,197,94,0.4)",
+    background: "var(--success-tint)",
+    border: "1.5px solid var(--success)",
   },
   qOptLabel: {
-    width: 30, height: 30, minWidth: 30, borderRadius: 8,
-    background: "rgba(255,255,255,0.07)",
+    width: 28, height: 28, minWidth: 28, borderRadius: 8,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
     display: "flex", alignItems: "center", justifyContent: "center",
-    fontWeight: 800, fontSize: 13, color: "#64748b",
+    fontWeight: 800, fontSize: 12.5, color: "var(--text-secondary)",
   },
-  qOptLabelCorrect: { background: "#22c55e", color: "#fff" },
-  qOptText: { flex: 1, fontSize: 14, color: "#cbd5e1" },
+  qOptLabelCorrect: { background: "var(--success)", border: "1px solid var(--success)", color: "var(--card)" },
+  qOptText: { flex: 1, fontSize: 13.5, color: "var(--text-secondary)", fontWeight: 500 },
   qOptCorrectMark: {
-    fontSize: 12, fontWeight: 700, color: "#4ade80",
-    background: "rgba(34,197,94,0.12)",
-    padding: "3px 10px", borderRadius: 20,
-    border: "1px solid rgba(34,197,94,0.3)",
+    display: "inline-flex", alignItems: "center", gap: 4,
+    fontSize: 11.5, fontWeight: 700, color: "var(--success)",
+    padding: "2px 9px", borderRadius: 20,
+    border: "1px solid var(--success)",
   },
-
-  /* Essay note */
-  essayNote: {
-    display: "flex", alignItems: "flex-start", gap: 10,
-    padding: "12px 14px", borderRadius: 12,
-    background: "rgba(168,85,247,0.07)",
-    border: "1px solid rgba(168,85,247,0.2)",
-    color: "#c084fc", fontSize: 13, marginBottom: 16,
-  },
-  essayNoteIcon: { fontSize: 16, flexShrink: 0 },
 
   /* Card actions */
   qCardActions: { display: "flex", gap: 10, paddingTop: 4 },
   editBtn: {
-    flex: 1, padding: "10px", borderRadius: 11, border: "none",
-    background: "rgba(245,158,11,0.15)",
-    border: "1px solid rgba(245,158,11,0.3)",
-    color: "#fbbf24", cursor: "pointer", fontWeight: 700, fontSize: 14,
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    padding: "9px", borderRadius: "var(--radius-sm)",
+    background: "var(--warning-tint)",
+    border: "1px solid var(--warning)",
+    color: "var(--warning)", cursor: "pointer", fontWeight: 700, fontSize: 13,
+    fontFamily: "inherit",
   },
   deleteBtn: {
-    flex: 1, padding: "10px", borderRadius: 11,
-    border: "1px solid rgba(239,68,68,0.3)",
-    background: "rgba(239,68,68,0.1)",
-    color: "#f87171", cursor: "pointer", fontWeight: 700, fontSize: 14,
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    padding: "9px", borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--destructive)",
+    background: "var(--destructive-tint)",
+    color: "var(--destructive)", cursor: "pointer", fontWeight: 700, fontSize: 13,
+    fontFamily: "inherit",
   },
 };

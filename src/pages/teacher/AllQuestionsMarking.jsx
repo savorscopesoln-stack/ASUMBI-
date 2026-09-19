@@ -1,6 +1,15 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import API from "../../api";
+import {
+  ClipboardCheck,
+  AlertTriangle,
+  Flag,
+  Pencil,
+  BookOpen,
+  Loader2,
+  CheckCircle2,
+} from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -35,120 +44,193 @@ function initials(name) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GLOBAL STYLES — design tokens, fonts, keyframes, responsive
-   layout rules (media queries can't live in inline style objects)
+   GLOBAL STYLES
+   1. The shared design-token stylesheet — byte-for-byte the same id
+      and tokens as TeacherProfile / StudentProfile, so it is a no-op
+      when the layout or another page has already mounted it.
+   2. Marking-specific rules (media queries, keyframes, pseudo
+      elements) — all colours come from the shared tokens, so the
+      page follows the app's light / dark theme automatically.
 ═══════════════════════════════════════════════════════════ */
+function injectMarkingStyles() {
+  if (typeof document === "undefined") return;
+
+  /* ─── shared tokens (identical to the Profile pages) ─── */
+  if (!document.getElementById("dash-tokens")) {
+    const el = document.createElement("style");
+    el.id = "dash-tokens";
+    el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    body { background: var(--bg); transition: background-color .2s ease; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dash-spin { animation: spin 0.8s linear infinite; }
+
+    input:focus-visible, button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    .profile-btn:hover { filter: brightness(0.95); }
+
+    @media (max-width: 900px) {
+      .dash-main { padding: 20px 16px 48px !important; }
+    }
+    @media (max-width: 640px) {
+      .profile-two-col { grid-template-columns: 1fr !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+    document.head.appendChild(el);
+  }
+
+  /* drop the previous dark-only stylesheet if it is still mounted (HMR) */
+  const legacy = document.getElementById("mkp-style-block-v2");
+  if (legacy) legacy.remove();
+
+  if (document.getElementById("mkp-style-block-v3")) return;
+  const style = document.createElement("style");
+  style.id = "mkp-style-block-v3";
+  style.textContent = `
+    @keyframes mkp-spin { to { transform: rotate(360deg); } }
+    @keyframes mkp-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes mkp-toast-in { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes mkp-pop { 0% { background-color: rgba(251,191,36,.7); transform: scale(1.03); } 100% { background-color: rgba(251,191,36,.32); transform: scale(1); } }
+    @keyframes mkp-shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+    @keyframes mkp-pulse-ring { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,.5); } 50% { box-shadow: 0 0 0 6px rgba(251,191,36,0); } }
+    @keyframes mkp-ring-in { from { stroke-dashoffset: 999; } }
+    @keyframes mkp-stamp-in { from { opacity: 0; transform: scale(1.4) rotate(-14deg); } to { opacity: 1; transform: scale(1) rotate(-8deg); } }
+
+    .mkp-root, .mkp-root * { box-sizing: border-box; }
+
+    /* Page fills the whole area and the content column is 95% of its width
+       (2.5% breathing room each side). */
+    .mkp-root {
+      width: 100%;
+      min-height: 100vh;
+      padding: 24px 2.5% 110px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    @media (max-width: 720px) { .mkp-root { padding: 16px 2.5% 100px; } }
+
+    .mkp-card { animation: mkp-fade-up .28s cubic-bezier(.2,.8,.3,1) both; }
+
+    .mkp-topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+    @media (max-width: 560px) { .mkp-topbar { flex-direction: column; align-items: stretch; } .mkp-topbar > button, .mkp-topbar-actions { width: 100%; } }
+
+    .mkp-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    @media (max-width: 560px) { .mkp-stats-row { grid-template-columns: 1fr 1fr; } .mkp-stats-row > :last-child { grid-column: span 2; } }
+
+    .mkp-essay-readonly { user-select: text; caret-color: transparent; outline: none; }
+    .mkp-essay-readonly:focus { outline: none; }
+    .hl-mark { color: inherit; background: rgba(251,191,36,.32); border-bottom: 2px solid var(--warning); border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
+    .hl-mark:hover { background: rgba(251,191,36,.55); }
+    .hl-mark::after { content: "+" attr(data-mark); position: absolute; top: -9px; right: -6px; background: var(--warning); color: #fff; font-size: 9px; font-weight: 800; border-radius: 5px; padding: 0 4px; line-height: 13px; pointer-events: none; }
+
+    .mkp-btn { transition: transform .15s ease, box-shadow .2s ease, background .2s ease, opacity .2s ease, filter .2s ease; cursor: pointer; font-family: inherit; }
+    .mkp-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(0.95); box-shadow: var(--shadow); }
+    .mkp-btn:active:not(:disabled) { transform: translateY(0); }
+    .mkp-btn:disabled { cursor: not-allowed; }
+
+    .mkp-dot { transition: all .2s ease; }
+    .mkp-dot.mkp-dot-flagged { box-shadow: 0 0 0 2px var(--warning) inset; }
+    .mkp-dot.mkp-dot-current { animation: mkp-pulse-ring 1.7s ease infinite; }
+
+    .mkp-progress-track { position: relative; overflow: hidden; }
+    .mkp-progress-fill { position: relative; overflow: hidden; background: var(--primary); }
+    .mkp-progress-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); background-size: 200px 100%; animation: mkp-shimmer 1.7s linear infinite; }
+
+    .mkp-toast { animation: mkp-toast-in .28s cubic-bezier(.2,.9,.3,1.15); }
+    .mkp-stepper-btn { transition: background .15s ease, opacity .15s ease; }
+    .mkp-stepper-btn:hover:not(:disabled) { background: var(--primary-tint); }
+    .mkp-stepper-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .mkp-flag-btn.active { background: var(--warning-tint) !important; border-color: var(--warning) !important; color: var(--warning) !important; }
+
+    .mkp-rail-wrap { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 14px; margin-bottom: 4px; }
+    .mkp-rail-wrap::-webkit-scrollbar { height: 6px; }
+    .mkp-rail-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+    .mkp-rail-chip { transition: transform .18s ease, filter .18s ease; cursor: pointer; }
+    .mkp-rail-chip:hover { transform: translateY(-2px); filter: brightness(0.95); }
+    .mkp-rail-chip.current { animation: mkp-pulse-ring 1.9s ease infinite; border-radius: 50%; }
+    .mkp-rail-ring circle.mkp-ring-fill { animation: mkp-ring-in .5s ease-out; }
+
+    .mkp-qcard-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+    .mkp-qcard-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .mkp-navrow { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
+    @media (max-width: 560px) { .mkp-navrow { flex-direction: column; align-items: stretch; } .mkp-navrow-side { display: flex; gap: 10px; justify-content: space-between; } .mkp-navrow-side > button { flex: 1; } .mkp-nav-counter { order: 3; text-align: center; } }
+
+    .mkp-rich-wrap:focus-within { border-color: var(--primary) !important; }
+    .mkp-rich-btn:hover { background: var(--primary-tint) !important; color: var(--primary) !important; }
+    .mkp-rich-area:empty::before { content: attr(data-placeholder); color: var(--text-muted); pointer-events: none; }
+
+    .mkp-stamp { display: inline-flex; align-items: center; gap: 8px; border: 2.5px dashed var(--success); background: var(--success-tint); color: var(--success); border-radius: 12px; padding: 10px 22px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; font-size: 13px; transform: rotate(-8deg); animation: mkp-stamp-in .4s cubic-bezier(.2,.9,.3,1.2) both; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mkp-progress-fill::after, .mkp-dot.mkp-dot-current, .mkp-rail-chip.current { animation: none; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 function useGlobalMarkingStyles() {
-  useEffect(() => {
-    const linkId = "mkp-font-link";
-    if (!document.getElementById(linkId)) {
-      const link = document.createElement("link");
-      link.id = linkId;
-      link.rel = "stylesheet";
-      link.href =
-        "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap";
-      document.head.appendChild(link);
-    }
-    const styleId = "mkp-style-block-v2";
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement("style");
-      style.id = styleId;
-      style.textContent = `
-        :root {
-          --mk-ink: #0a0d12;
-          --mk-surface: #121821;
-          --mk-surface-2: #161d27;
-          --mk-surface-3: #1b2330;
-          --mk-border: #232c3a;
-          --mk-border-soft: #1a2230;
-          --mk-text: #eef1f6;
-          --mk-text-dim: #8b96a8;
-          --mk-text-faint: #56617a;
-          --mk-amber: #f2b544;
-          --mk-amber-soft: rgba(242,181,68,.16);
-          --mk-blue: #5b8def;
-          --mk-violet: #8b7bff;
-          --mk-green: #34d399;
-          --mk-red: #f87171;
-        }
-
-        @keyframes mkp-spin { to { transform: rotate(360deg); } }
-        @keyframes mkp-fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes mkp-toast-in { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes mkp-pop { 0% { background-color: rgba(242,181,68,.62); transform: scale(1.03); } 100% { background-color: rgba(242,181,68,.2); transform: scale(1); } }
-        @keyframes mkp-shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
-        @keyframes mkp-pulse-ring { 0%,100% { box-shadow: 0 0 0 0 rgba(242,181,68,.4); } 50% { box-shadow: 0 0 0 6px rgba(242,181,68,0); } }
-        @keyframes mkp-ring-in { from { stroke-dashoffset: 999; } }
-        @keyframes mkp-stamp-in { from { opacity: 0; transform: scale(1.4) rotate(-14deg); } to { opacity: 1; transform: scale(1) rotate(-8deg); } }
-
-        * { box-sizing: border-box; }
-
-        .mkp-root { min-height: 100%; background:
-            radial-gradient(1100px 560px at 18% -8%, rgba(91,141,239,.09) 0%, transparent 55%),
-            radial-gradient(900px 500px at 85% 0%, rgba(242,181,68,.06) 0%, transparent 50%),
-            var(--mk-ink);
-          padding: 36px 32px 110px; color: var(--mk-text);
-          font-family: 'Inter', system-ui, -apple-system, sans-serif;
-          max-width: 880px; margin: 0 auto;
-        }
-        @media (max-width: 720px) { .mkp-root { padding: 20px 14px 100px; } }
-
-        .mkp-card { animation: mkp-fade-up .32s cubic-bezier(.2,.8,.3,1) both; }
-        .mkp-heading-gradient { background: linear-gradient(120deg, #f3f6fb 15%, #a9c4ff 55%, #f2b544 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
-
-        .mkp-topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
-        @media (max-width: 560px) { .mkp-topbar { flex-direction: column; align-items: stretch; } .mkp-topbar > button, .mkp-topbar-actions { width: 100%; } }
-
-        .mkp-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
-        @media (max-width: 560px) { .mkp-stats-row { grid-template-columns: 1fr 1fr; } .mkp-stats-row > :last-child { grid-column: span 2; } }
-
-        .mkp-essay-readonly { user-select: text; caret-color: transparent; outline: none; }
-        .mkp-essay-readonly:focus { outline: none; }
-        .hl-mark { background: rgba(242,181,68,.2); border-bottom: 2px solid var(--mk-amber); border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
-        .hl-mark:hover { background: rgba(242,181,68,.4); }
-        .hl-mark::after { content: "+" attr(data-mark); position: absolute; top: -9px; right: -6px; background: var(--mk-amber); color: #221806; font-size: 9px; font-weight: 800; border-radius: 5px; padding: 0 3px; line-height: 13px; font-family: 'JetBrains Mono', monospace; pointer-events: none; }
-
-        .mkp-btn { transition: transform .15s ease, box-shadow .2s ease, background .2s ease, opacity .2s ease, filter .2s ease; cursor: pointer; font-family: inherit; }
-        .mkp-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.07); box-shadow: 0 8px 20px rgba(91,141,239,.2); }
-        .mkp-btn:active:not(:disabled) { transform: translateY(0); }
-        .mkp-btn:focus-visible { outline: 2px solid var(--mk-blue); outline-offset: 2px; }
-        .mkp-btn:disabled { cursor: not-allowed; }
-
-        .mkp-dot { transition: all .2s ease; }
-        .mkp-dot.mkp-dot-flagged { box-shadow: 0 0 0 2px var(--mk-amber) inset; }
-        .mkp-dot.mkp-dot-current { animation: mkp-pulse-ring 1.7s ease infinite; }
-        .mkp-dot:focus-visible { outline: 2px solid var(--mk-blue); outline-offset: 2px; }
-
-        .mkp-progress-track { position: relative; overflow: hidden; }
-        .mkp-progress-fill { position: relative; overflow: hidden; background: linear-gradient(90deg,var(--mk-blue),var(--mk-violet),var(--mk-amber)); background-size: 200% 100%; }
-        .mkp-progress-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent); background-size: 200px 100%; animation: mkp-shimmer 1.7s linear infinite; }
-
-        .mkp-toast { animation: mkp-toast-in .28s cubic-bezier(.2,.9,.3,1.15); }
-        .mkp-stepper-btn { transition: background .15s ease, opacity .15s ease; }
-        .mkp-stepper-btn:hover:not(:disabled) { background: var(--mk-surface-3); }
-        .mkp-flag-btn.active { background: rgba(242,181,68,.15) !important; border-color: var(--mk-amber) !important; color: var(--mk-amber) !important; }
-
-        .mkp-rail-wrap { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 14px; margin-bottom: 4px; }
-        .mkp-rail-wrap::-webkit-scrollbar { height: 6px; }
-        .mkp-rail-wrap::-webkit-scrollbar-thumb { background: var(--mk-surface-3); border-radius: 8px; }
-        .mkp-rail-chip { transition: transform .18s ease, filter .18s ease; cursor: pointer; }
-        .mkp-rail-chip:hover { transform: translateY(-2px); filter: brightness(1.1); }
-        .mkp-rail-chip.current { animation: mkp-pulse-ring 1.9s ease infinite; }
-        .mkp-rail-ring circle.mkp-ring-fill { animation: mkp-ring-in .5s ease-out; }
-
-        .mkp-qcard-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
-        .mkp-qcard-badges { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-
-        .mkp-navrow { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--mk-border); flex-wrap: wrap; gap: 12px; }
-        @media (max-width: 560px) { .mkp-navrow { flex-direction: column; align-items: stretch; } .mkp-navrow-side { display: flex; gap: 10px; justify-content: space-between; } .mkp-navrow-side > button { flex: 1; } .mkp-nav-counter { order: 3; text-align: center; } }
-
-        .mkp-rich-btn:hover { background: var(--mk-surface-3) !important; color: #eef2f8 !important; }
-
-        .mkp-stamp { display: inline-flex; align-items: center; gap: 8px; border: 2.5px dashed var(--mk-green); color: var(--mk-green); border-radius: 12px; padding: 10px 22px; font-family: 'JetBrains Mono', monospace; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; font-size: 13px; transform: rotate(-8deg); animation: mkp-stamp-in .4s cubic-bezier(.2,.9,.3,1.2) both; }
-      `;
-      document.head.appendChild(style);
-    }
-  }, []);
+  // Idempotent + synchronous (same pattern as the Profile pages) so the
+  // first paint is already themed.
+  injectMarkingStyles();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -156,31 +238,32 @@ function useGlobalMarkingStyles() {
 ═══════════════════════════════════════════════════════════ */
 function Toast({ toast, onDismiss }) {
   if (!toast) return null;
-  const palette = {
-    success: { bg: "#0f2a1e", border: "#1f6f4a", text: "#5eead4" },
-    error: { bg: "#2a0f10", border: "#7f1d1d", text: "#fca5a5" },
-    info: { bg: "#101722", border: "#263242", text: "#cbd5e1" },
+  const accent = {
+    success: "var(--success)",
+    error: "var(--destructive)",
+    info: "var(--info)",
   }[toast.type || "info"];
   return (
     <div
       className="mkp-toast"
       style={{
         position: "fixed", bottom: 20, right: 20, left: 20, zIndex: 1000, margin: "0 auto", maxWidth: 380,
-        background: palette.bg, border: `1px solid ${palette.border}`, color: palette.text,
-        padding: "12px 16px", borderRadius: 10, boxShadow: "0 12px 30px rgba(0,0,0,.45)",
-        display: "flex", alignItems: "center", gap: 14, fontSize: 13.5,
+        background: "var(--card-elevated)", border: "1px solid var(--border)", borderLeft: `4px solid ${accent}`,
+        color: "var(--text)", padding: "12px 16px", borderRadius: "var(--radius-sm)",
+        boxShadow: "0 12px 30px rgba(16,24,40,.22)",
+        display: "flex", alignItems: "center", gap: 14, fontSize: 13.5, fontWeight: 600,
       }}
     >
       <span style={{ flex: 1 }}>{toast.message}</span>
       {toast.action && (
         <button
           onClick={() => { toast.action.onClick(); onDismiss(); }}
-          style={{ background: "none", border: "none", color: "var(--mk-amber)", fontWeight: 700, cursor: "pointer", fontSize: 13, padding: 0 }}
+          style={{ background: "none", border: "none", color: "var(--primary)", fontWeight: 800, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: "inherit" }}
         >
           {toast.action.label}
         </button>
       )}
-      <button onClick={onDismiss} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1 }}>
+      <button onClick={onDismiss} aria-label="Dismiss" style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1 }}>
         ×
       </button>
     </div>
@@ -197,20 +280,14 @@ function ScoreGauge({ value, max, size = 56 }) {
   const offset = c - (pct / 100) * c;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--mk-surface-3)" strokeWidth="6" fill="none" />
+      <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--border)" strokeWidth="6" fill="none" />
       <circle
-        cx={size / 2} cy={size / 2} r={r} stroke="url(#mkpGaugeGrad)" strokeWidth="6" fill="none"
+        cx={size / 2} cy={size / 2} r={r} stroke="var(--primary)" strokeWidth="6" fill="none"
         strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
         style={{ transition: "stroke-dashoffset .6s cubic-bezier(.4,0,.2,1)" }}
       />
-      <defs>
-        <linearGradient id="mkpGaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#5b8def" />
-          <stop offset="100%" stopColor="#f2b544" />
-        </linearGradient>
-      </defs>
-      <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill="#eef1f6" fontSize={size * 0.24} fontWeight="700" fontFamily="'JetBrains Mono', monospace">
+      <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill="var(--text)" fontSize={size * 0.24} fontWeight="800" fontFamily="'Inter', system-ui, sans-serif">
         {max > 0 ? `${Math.round(pct)}%` : "–"}
       </text>
     </svg>
@@ -242,21 +319,15 @@ function StudentRail({ stats, currentSubmissionId, onJump }) {
             style={s.railChip}
           >
             <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mkp-rail-ring">
-              <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--mk-surface-3)" strokeWidth="3.5" fill="none" />
+              <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--border)" strokeWidth="3.5" fill="none" />
               <circle
                 className="mkp-ring-fill" cx={size / 2} cy={size / 2} r={r}
-                stroke={isComplete ? "var(--mk-green)" : "url(#mkpRailGrad)"} strokeWidth="3.5" fill="none"
+                stroke={isComplete ? "var(--success)" : "var(--primary)"} strokeWidth="3.5" fill="none"
                 strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
                 transform={`rotate(-90 ${size / 2} ${size / 2})`}
                 style={{ transition: "stroke-dashoffset .5s ease" }}
               />
-              <defs>
-                <linearGradient id="mkpRailGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#5b8def" />
-                  <stop offset="100%" stopColor="#f2b544" />
-                </linearGradient>
-              </defs>
-              <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill={isCurrent ? "var(--mk-amber)" : "#cbd5e1"} fontSize={12} fontWeight="700" fontFamily="'JetBrains Mono', monospace">
+              <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill={isCurrent ? "var(--primary)" : "var(--text-secondary)"} fontSize={12} fontWeight="800" fontFamily="'Inter', system-ui, sans-serif">
                 {initials(st.studentId != null ? `S${st.studentId}` : "?")}
               </text>
             </svg>
@@ -288,7 +359,7 @@ function RichEditor({ value, onChange, placeholder }) {
   };
 
   return (
-    <div style={s.richWrap}>
+    <div className="mkp-rich-wrap" style={s.richWrap}>
       <div style={s.richToolbar}>
         {[
           { label: "B", cmd: "bold", title: "Bold", w: 700 },
@@ -313,13 +384,14 @@ function RichEditor({ value, onChange, placeholder }) {
           className="mkp-rich-btn"
           onMouseDown={(e) => { e.preventDefault(); if (ref.current) ref.current.innerHTML = ""; onChange(""); }}
           title="Clear"
-          style={{ ...s.richBtn, color: "var(--mk-red)" }}
+          style={{ ...s.richBtn, color: "var(--destructive)" }}
         >
           Clear
         </button>
       </div>
       <div
         ref={ref}
+        className="mkp-rich-area"
         contentEditable
         suppressContentEditableWarning
         data-placeholder={placeholder || "Add a note for this student…"}
@@ -431,13 +503,13 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
     <div style={s.essayOuter}>
       <div style={s.essayHeaderRow}>
         <div style={s.essayHint}>
-          <span style={s.hintIcon}>🖊️</span>
+          <Pencil size={13} color="var(--primary)" />
           Select the parts of the answer worth credit — a highlight is added automatically. Tap a highlight to remove it.
         </div>
         {maxMarks != null && (
           <div style={s.markMeter}>
             <div style={s.markMeterBar}>
-              <div style={{ ...s.markMeterFill, width: `${pct}%`, background: pct >= 100 ? "var(--mk-green)" : "linear-gradient(90deg,var(--mk-blue),var(--mk-amber))" }} />
+              <div style={{ ...s.markMeterFill, width: `${pct}%`, background: pct >= 100 ? "var(--success)" : "var(--primary)" }} />
             </div>
             <span style={s.markMeterLabel}>{totalMarks} / {maxMarks}</span>
           </div>
@@ -453,7 +525,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         onMouseUp={handleMouseUp}
         onClick={handleContainerClick}
         style={s.essayText}
-        dangerouslySetInnerHTML={{ __html: html || '<em style="color:#5b6472">No answer was submitted for this question.</em>' }}
+        dangerouslySetInnerHTML={{ __html: html || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
       />
 
       {highlights.length > 0 && (
@@ -839,7 +911,7 @@ export default function Marking() {
       <div className="mkp-root">
         <div style={s.centered}>
           <div style={s.spinner} />
-          <p style={{ color: "var(--mk-text-dim)", marginTop: 20, fontSize: 14 }}>Gathering the submissions…</p>
+          <p style={{ color: "var(--text-secondary)", marginTop: 20, fontSize: 13.5, fontWeight: 600 }}>Gathering the submissions…</p>
         </div>
       </div>
     );
@@ -848,7 +920,7 @@ export default function Marking() {
     return (
       <div className="mkp-root">
         <div style={s.errorBanner}>
-          <span style={{ fontSize: 22 }}>⚠️</span>
+          <AlertTriangle size={20} style={{ flexShrink: 0 }} />
           <span>{error}</span>
         </div>
       </div>
@@ -861,9 +933,12 @@ export default function Marking() {
         <Toast toast={toast} onDismiss={dismissToast} />
 
         <div className="mkp-topbar">
-          <div>
-            <h2 style={s.heading} className="mkp-heading-gradient">Marking complete</h2>
-            <p style={s.subheading}>Every essay question in this batch has been marked.</p>
+          <div style={s.headingRow}>
+            <ClipboardCheck size={20} color="var(--primary)" />
+            <div>
+              <h2 style={s.heading}>Marking complete</h2>
+              <p style={s.subheading}>Every essay question in this batch has been marked.</p>
+            </div>
           </div>
           <SaveBtn saving={saving} saved={saved} onClick={saveMarking} />
         </div>
@@ -875,8 +950,8 @@ export default function Marking() {
             <span style={s.statLabel}>Total score</span>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
               <ScoreGauge value={totalScore} max={maxPossible} size={40} />
-              <span style={{ ...s.statValue, color: "var(--mk-amber)" }}>
-                {totalScore}{maxPossible > 0 && <span style={{ color: "#64748b", fontSize: 14 }}> / {maxPossible}</span>}
+              <span style={{ ...s.statValue, color: "var(--primary)" }}>
+                {totalScore}{maxPossible > 0 && <span style={{ color: "var(--text-muted)", fontSize: 14, fontWeight: 700 }}> / {maxPossible}</span>}
               </span>
             </div>
           </div>
@@ -884,7 +959,10 @@ export default function Marking() {
 
         {flaggedAnswers.length > 0 && (
           <div style={s.flagCard}>
-            <p style={s.flagCardTitle}>🚩 {flaggedAnswers.length} question{flaggedAnswers.length !== 1 ? "s" : ""} flagged for a second look</p>
+            <p style={s.flagCardTitle}>
+              <Flag size={14} />
+              {flaggedAnswers.length} question{flaggedAnswers.length !== 1 ? "s" : ""} flagged for a second look
+            </p>
             {flaggedAnswers.map((a) => (
               <div key={a.id} style={s.flagRow}>
                 <span style={s.flagRowText}>
@@ -897,14 +975,14 @@ export default function Marking() {
         )}
 
         <div style={s.doneCard} className="mkp-card">
-          <span className="mkp-stamp">✓ Graded</span>
+          <span className="mkp-stamp"><CheckCircle2 size={16} /> Graded</span>
           <p style={s.doneTitle}>Nice work — that's everyone marked</p>
           <p style={s.doneSub}>Save to lock in the scores for this batch.</p>
           <button
             onClick={saveMarking}
             disabled={saving}
             className="mkp-btn"
-            style={{ ...s.primaryBtn, marginTop: 26, padding: "14px 40px", fontSize: 15, opacity: saving ? 0.6 : 1 }}
+            style={{ ...s.primaryBtn, ...(saved ? s.savedBtn : null), marginTop: 26, padding: "13px 40px", fontSize: 14.5, opacity: saving ? 0.6 : 1 }}
           >
             {saving ? "Saving…" : saved ? "✓ Marks saved" : "Save & finish"}
           </button>
@@ -918,15 +996,18 @@ export default function Marking() {
       <Toast toast={toast} onDismiss={dismissToast} />
 
       <div className="mkp-topbar">
-        <div>
-          <h2 style={s.heading} className="mkp-heading-gradient">Marking panel</h2>
-          <p style={s.subheading}>
-            <span style={s.accentText}>{remaining.length}</span> question{remaining.length !== 1 ? "s" : ""} left to mark
-            {" · "}
-            <span style={s.accentText}>{submissions.length}</span> submission{submissions.length !== 1 ? "s" : ""}
-            {flaggedAnswers.length > 0 && <span style={{ color: "var(--mk-amber)" }}> · {flaggedAnswers.length} flagged</span>}
-            {!saved && queue.length > 0 && <span style={{ color: "var(--mk-text-faint)" }}> · unsaved changes</span>}
-          </p>
+        <div style={s.headingRow}>
+          <ClipboardCheck size={20} color="var(--primary)" />
+          <div>
+            <h2 style={s.heading}>Marking panel</h2>
+            <p style={s.subheading}>
+              <span style={s.accentText}>{remaining.length}</span> question{remaining.length !== 1 ? "s" : ""} left to mark
+              {" · "}
+              <span style={s.accentText}>{submissions.length}</span> submission{submissions.length !== 1 ? "s" : ""}
+              {flaggedAnswers.length > 0 && <span style={{ color: "var(--warning)" }}> · {flaggedAnswers.length} flagged</span>}
+              {!saved && queue.length > 0 && <span style={{ color: "var(--text-muted)" }}> · unsaved changes</span>}
+            </p>
+          </div>
         </div>
         <SaveBtn saving={saving} saved={saved} onClick={saveMarking} />
       </div>
@@ -944,7 +1025,7 @@ export default function Marking() {
           <span style={s.statLabel}>Score awarded</span>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
             <ScoreGauge value={totalScore} max={maxPossible} size={38} />
-            <span style={{ ...s.statValue, color: "var(--mk-amber)" }}>{totalScore}</span>
+            <span style={{ ...s.statValue, color: "var(--primary)" }}>{totalScore}</span>
           </div>
         </div>
       </div>
@@ -961,8 +1042,8 @@ export default function Marking() {
               className={`mkp-dot${i === currentIdx ? " mkp-dot-current" : ""}${flags[a.id] ? " mkp-dot-flagged" : ""}`}
               style={{
                 ...s.dot,
-                background: i === currentIdx ? "var(--mk-blue)" : scores[a.id] != null ? "var(--mk-green)" : "var(--mk-surface-3)",
-                border: `2px solid ${i === currentIdx ? "#49505c" : "transparent"}`,
+                background: i === currentIdx ? "var(--primary)" : scores[a.id] != null ? "var(--success)" : "var(--border)",
+                border: `2px solid ${i === currentIdx ? "var(--primary-tint)" : "transparent"}`,
                 transform: i === currentIdx ? "scale(1.25)" : "scale(1)",
               }}
             />
@@ -995,7 +1076,7 @@ export default function Marking() {
                 style={s.flagToggle}
                 title="Flag for a second look (F)"
               >
-                🚩 {flags[current.id] ? "Flagged" : "Flag"}
+                <Flag size={12} /> {flags[current.id] ? "Flagged" : "Flag"}
               </button>
             </div>
           </div>
@@ -1005,7 +1086,7 @@ export default function Marking() {
 
           <FieldLabel>Marking guide</FieldLabel>
           <div style={s.guideBox}>
-            <div style={s.guideEyebrow}>📘 What a full-marks answer looks like</div>
+            <div style={s.guideEyebrow}><BookOpen size={13} /> What a full-marks answer looks like</div>
             <div style={s.guideBody}>{current.marking_guide || "No marking guide was set for this question."}</div>
           </div>
 
@@ -1039,16 +1120,16 @@ export default function Marking() {
           <RichEditor value={remarks[current.id] || ""} onChange={(html) => handleRemarkChange(current.id, html)} />
 
           <div className="mkp-navrow">
-            <button onClick={goPrev} disabled={currentIdx === 0} className="mkp-btn" style={{ ...s.navBtn, opacity: currentIdx === 0 ? 0.3 : 1 }}>
+            <button onClick={goPrev} disabled={currentIdx === 0} className="mkp-btn" style={{ ...s.navBtn, opacity: currentIdx === 0 ? 0.4 : 1 }}>
               ← Previous
             </button>
 
             <span className="mkp-nav-counter" style={s.navCounter}>
-              {currentIdx + 1} of {remaining.length} <span style={{ opacity: 0.7 }}>· ← → to move, Enter to mark, F to flag</span>
+              {currentIdx + 1} of {remaining.length} <span style={{ opacity: 0.8 }}>· ← → to move, Enter to mark, F to flag</span>
             </span>
 
             <div className="mkp-navrow-side" style={{ display: "flex", gap: 10 }}>
-              <button onClick={goNext} disabled={currentIdx >= remaining.length - 1} className="mkp-btn" style={{ ...s.navBtn, opacity: currentIdx >= remaining.length - 1 ? 0.3 : 1 }}>
+              <button onClick={goNext} disabled={currentIdx >= remaining.length - 1} className="mkp-btn" style={{ ...s.navBtn, opacity: currentIdx >= remaining.length - 1 ? 0.4 : 1 }}>
                 Skip →
               </button>
               <button onClick={markAndAdvance} className="mkp-btn" style={s.markDoneBtn}>
@@ -1061,9 +1142,9 @@ export default function Marking() {
 
       {queue.length > 0 && (
         <div style={s.footer}>
-          <span style={{ color: "#94a3b8", fontSize: 14 }}>
-            Score so far: <strong style={{ color: "#fff" }}>{totalScore}</strong>
-            {maxPossible > 0 && <span style={{ color: "#64748b" }}> / {maxPossible}</span>}
+          <span style={{ color: "var(--text-secondary)", fontSize: 13.5, fontWeight: 600 }}>
+            Score so far: <strong style={{ color: "var(--text)", fontWeight: 800 }}>{totalScore}</strong>
+            {maxPossible > 0 && <span style={{ color: "var(--text-muted)" }}> / {maxPossible}</span>}
           </span>
           <SaveBtn saving={saving} saved={saved} onClick={saveMarking} small />
         </div>
@@ -1083,13 +1164,23 @@ function SaveBtn({ saving, saved, onClick, small }) {
       className="mkp-btn"
       style={{
         ...s.primaryBtn,
-        background: saved ? "#1f6f4a" : "linear-gradient(135deg,#5b8def,#8b7bff)",
+        ...(saved ? s.savedBtn : null),
         opacity: saving ? 0.6 : 1,
-        fontSize: small ? 13 : 14,
+        fontSize: small ? 12.5 : 13.5,
         padding: small ? "8px 16px" : "10px 22px",
       }}
     >
-      {saving ? "Saving…" : saved ? "✓ Saved" : "Save marks"}
+      {saving ? (
+        <>
+          <Loader2 size={14} className="dash-spin" /> Saving…
+        </>
+      ) : saved ? (
+        <>
+          <CheckCircle2 size={14} /> Saved
+        </>
+      ) : (
+        "Save marks"
+      )}
     </button>
   );
 }
@@ -1098,7 +1189,7 @@ function StatCard({ label, value, accent }) {
   return (
     <div style={s.statCard}>
       <span style={s.statLabel}>{label}</span>
-      <span style={{ ...s.statValue, color: accent ? "#a78bfa" : "#f1f5f9" }}>{value}</span>
+      <span style={{ ...s.statValue, color: accent ? "var(--primary)" : "var(--text)" }}>{value}</span>
     </div>
   );
 }
@@ -1108,95 +1199,97 @@ function FieldLabel({ children }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   STYLES (dynamic / state-dependent bits only — layout & responsive
-   rules live in the injected stylesheet above)
+   STYLES — every colour is a shared design token (same set the
+   Profile pages use), so light / dark switching is automatic.
+   Layout & responsive rules live in the injected stylesheet.
 ═══════════════════════════════════════════════════════════ */
 const s = {
   centered: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh" },
-  spinner: { width: 36, height: 36, border: "3px solid var(--mk-surface-3)", borderTop: "3px solid var(--mk-blue)", borderRadius: "50%", animation: "mkp-spin 0.8s linear infinite" },
+  spinner: { width: 36, height: 36, border: "3px solid var(--border)", borderTop: "3px solid var(--primary)", borderRadius: "50%", animation: "mkp-spin 0.8s linear infinite" },
 
-  heading: { margin: 0, fontSize: "clamp(22px, 4vw, 28px)", fontWeight: 700, fontFamily: "'Fraunces', serif", letterSpacing: "-0.01em" },
-  subheading: { margin: "6px 0 0", fontSize: 14, color: "var(--mk-text-dim)" },
-  accentText: { color: "#a9c4ff", fontWeight: 700 },
+  headingRow: { display: "flex", alignItems: "center", gap: 8 },
+  heading: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
+  subheading: { margin: "3px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
+  accentText: { color: "var(--primary)", fontWeight: 800 },
 
-  progressTrack: { height: 6, borderRadius: 4, background: "var(--mk-surface-2)", marginBottom: 18, border: "1px solid var(--mk-border-soft)" },
+  progressTrack: { height: 6, borderRadius: 4, background: "var(--border)", marginBottom: 18 },
   progressFill: { height: "100%", borderRadius: 4, transition: "width .4s cubic-bezier(.4,0,.2,1)" },
 
-  statCard: { background: "linear-gradient(160deg,var(--mk-surface) 0%,var(--mk-surface-2) 100%)", border: "1px solid var(--mk-border-soft)", borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
-  statLabel: { fontSize: 11, color: "var(--mk-text-faint)", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600 },
-  statValue: { fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace" },
+  statCard: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0, boxShadow: "var(--shadow-sm)" },
+  statLabel: { fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 },
+  statValue: { fontSize: 22, fontWeight: 800, fontVariantNumeric: "tabular-nums" },
 
-  railChip: { background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 },
-  railLabel: { fontSize: 10, color: "#8b96a8", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 },
+  railChip: { background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0, padding: 0, fontFamily: "inherit" },
+  railLabel: { fontSize: 10.5, color: "var(--text-muted)", fontWeight: 700, fontVariantNumeric: "tabular-nums" },
 
   dotRow: { display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 20 },
   dot: { width: 12, height: 12, borderRadius: "50%", cursor: "pointer", padding: 0 },
 
-  qCard: { background: "linear-gradient(160deg,var(--mk-surface-2) 0%,var(--mk-surface) 100%)", border: "1px solid var(--mk-border-soft)", borderRadius: 14, padding: "24px 26px", boxShadow: "0 20px 50px rgba(0,0,0,.35)" },
+  qCard: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "22px 24px", boxShadow: "var(--shadow)" },
 
-  badge: { background: "var(--mk-surface-2)", color: "#7fb0ff", border: "1px solid var(--mk-border)", borderRadius: 6, padding: "4px 12px", fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" },
-  essayPill: { background: "#241a3d", color: "#c4b5fd", border: "1px solid #6d28d944", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" },
-  studentPill: { background: "#0c1a2e", color: "#7dd3fc", border: "1px solid #0369a144", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 },
-  maxMarksBadge: { fontSize: 12, color: "var(--mk-text-dim)", background: "var(--mk-surface-2)", border: "1px solid var(--mk-border-soft)", borderRadius: 6, padding: "3px 9px" },
-  awardedBadge: { background: "#1a1a2e", border: "1px solid #7c3aed44", color: "#a78bfa", padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 },
-  remainingBadge: { background: "var(--mk-surface-2)", border: "1px solid var(--mk-border)", color: "#94a3b8", padding: "3px 10px", borderRadius: 6, fontSize: 12 },
-  flagToggle: { background: "var(--mk-surface-2)", border: "1px solid var(--mk-border)", color: "#8b98ab", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600 },
+  badge: { background: "var(--primary-tint)", color: "var(--primary)", borderRadius: 6, padding: "4px 12px", fontSize: 13.5, fontWeight: 800 },
+  essayPill: { background: "var(--info-tint)", color: "var(--info)", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700, letterSpacing: "0.03em" },
+  studentPill: { background: "var(--bg)", color: "var(--text-secondary)", border: "1px solid var(--border)", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 },
+  maxMarksBadge: { fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 9px" },
+  awardedBadge: { background: "var(--success-tint)", color: "var(--success)", padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 },
+  remainingBadge: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-secondary)", padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600 },
+  flagToggle: { display: "inline-flex", alignItems: "center", gap: 6, background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: "var(--radius-sm)", padding: "5px 12px", fontSize: 12, fontWeight: 700 },
 
-  questionBox: { background: "#050510", border: "1px solid #1e293b", borderLeft: "3px solid var(--mk-blue)", padding: "14px 16px", borderRadius: 8, fontSize: 15, lineHeight: 1.65, color: "#cbd5e1" },
+  questionBox: { background: "var(--bg)", border: "1px solid var(--border)", borderLeft: "3px solid var(--primary)", padding: "14px 16px", borderRadius: "var(--radius-sm)", fontSize: 15, lineHeight: 1.65, color: "var(--text)" },
 
-  guideBox: { background: "rgba(139,123,255,0.07)", border: "1px solid rgba(139,123,255,0.25)", borderRadius: 10, padding: "14px 16px", marginBottom: 4 },
-  guideEyebrow: { fontSize: 11, fontWeight: 800, color: "#c4b5fd", textTransform: "uppercase", textAlign: "center", letterSpacing: "0.08em", marginBottom: 8 },
-  guideBody: { fontSize: 14, color: "#e2e8f0", lineHeight: 1.7, whiteSpace: "pre-wrap" },
+  guideBox: { background: "var(--info-tint)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "14px 16px", marginBottom: 4 },
+  guideEyebrow: { display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800, color: "var(--info)", letterSpacing: "0.02em", marginBottom: 8 },
+  guideBody: { fontSize: 14, color: "var(--text)", lineHeight: 1.7, whiteSpace: "pre-wrap" },
 
   essayOuter: { marginTop: 4 },
   essayHeaderRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" },
-  essayHint: { fontSize: 12, color: "#8b96a8", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  hintIcon: { fontSize: 13 },
+  essayHint: { fontSize: 12, color: "var(--text-secondary)", fontWeight: 500, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
   markMeter: { display: "flex", alignItems: "center", gap: 8 },
-  markMeterBar: { width: 80, height: 6, background: "var(--mk-surface-3)", borderRadius: 99, overflow: "hidden" },
+  markMeterBar: { width: 80, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" },
   markMeterFill: { height: "100%", borderRadius: 99, transition: "width 0.3s ease" },
-  markMeterLabel: { fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" },
+  markMeterLabel: { fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", fontWeight: 700, fontVariantNumeric: "tabular-nums" },
 
-  essayText: { background: "#06060f", border: "1px solid #1e293b", borderLeft: "3px solid var(--mk-violet)", padding: "16px 18px", borderRadius: 8, fontSize: 15, lineHeight: 1.9, color: "#e2e8f0", cursor: "text", minHeight: 140 },
+  essayText: { background: "var(--bg)", border: "1px solid var(--border)", borderLeft: "3px solid var(--primary)", padding: "16px 18px", borderRadius: "var(--radius-sm)", fontSize: 15, lineHeight: 1.9, color: "var(--text)", cursor: "text", minHeight: 140 },
 
   hlList: { marginTop: 12, display: "flex", flexDirection: "column", gap: 6 },
-  hlListTitle: { fontSize: 11, color: "var(--mk-text-faint)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" },
-  hlItem: { background: "var(--mk-surface-2)", border: "1px solid #7c5cff33", borderRadius: 8, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, flexWrap: "wrap" },
-  hlItemDot: { width: 7, height: 7, borderRadius: "50%", background: "var(--mk-amber)", flexShrink: 0 },
-  hlItemText: { flex: 1, color: "#94a3b8", fontStyle: "italic", minWidth: 120 },
-  stepper: { display: "flex", alignItems: "center", gap: 6, background: "var(--mk-surface-3)", border: "1px solid var(--mk-border)", borderRadius: 6, padding: "2px 4px" },
-  stepperBtn: { background: "none", border: "none", color: "#e2e8f0", width: 20, height: 20, borderRadius: 4, cursor: "pointer", fontSize: 14, lineHeight: 1 },
-  stepperVal: { color: "var(--mk-amber)", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, minWidth: 24, textAlign: "center" },
-  hlItemRemove: { background: "none", border: "1px solid #7f1d1d55", color: "#f87171", borderRadius: 5, padding: "2px 8px", cursor: "pointer", fontSize: 11 },
+  hlListTitle: { fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 6px" },
+  hlItem: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, flexWrap: "wrap" },
+  hlItemDot: { width: 7, height: 7, borderRadius: "50%", background: "var(--warning)", flexShrink: 0 },
+  hlItemText: { flex: 1, color: "var(--text-secondary)", fontStyle: "italic", minWidth: 120 },
+  stepper: { display: "flex", alignItems: "center", gap: 6, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 4px" },
+  stepperBtn: { background: "none", border: "none", color: "var(--text)", width: 22, height: 22, borderRadius: 4, cursor: "pointer", fontSize: 14, lineHeight: 1, fontFamily: "inherit" },
+  stepperVal: { color: "var(--warning)", fontWeight: 800, fontSize: 12, minWidth: 24, textAlign: "center", fontVariantNumeric: "tabular-nums" },
+  hlItemRemove: { background: "var(--destructive-tint)", border: "1px solid transparent", color: "var(--destructive)", borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontSize: 11.5, fontWeight: 700, fontFamily: "inherit" },
 
-  richWrap: { border: "1px solid #1e293b", borderRadius: 8, overflow: "hidden", background: "#06060f" },
-  richToolbar: { display: "flex", alignItems: "center", gap: 2, padding: "6px 10px", background: "#0d0d1a", borderBottom: "1px solid #1e293b", flexWrap: "wrap" },
-  richBtn: { background: "none", border: "1px solid transparent", color: "#94a3b8", cursor: "pointer", fontSize: 13, padding: "4px 10px", borderRadius: 5, fontFamily: "inherit" },
-  richDivider: { width: 1, height: 18, background: "#1e293b", margin: "0 6px" },
-  richArea: { minHeight: 90, padding: "14px 16px", color: "#e2e8f0", fontSize: 14, lineHeight: 1.8, outline: "none", fontFamily: "inherit" },
+  richWrap: { border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflow: "hidden", background: "var(--bg)" },
+  richToolbar: { display: "flex", alignItems: "center", gap: 2, padding: "6px 10px", background: "var(--card)", borderBottom: "1px solid var(--border)", flexWrap: "wrap" },
+  richBtn: { background: "none", border: "1px solid transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "4px 10px", borderRadius: 6, fontFamily: "inherit" },
+  richDivider: { width: 1, height: 18, background: "var(--border)", margin: "0 6px" },
+  richArea: { minHeight: 90, padding: "14px 16px", color: "var(--text)", fontSize: 14, lineHeight: 1.8, outline: "none", fontFamily: "inherit" },
 
-  input: { width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#06060f", color: "#f1f5f9", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "'JetBrains Mono', monospace" },
+  input: { width: "100%", padding: "10px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, boxSizing: "border-box", fontFamily: "inherit", fontVariantNumeric: "tabular-nums" },
 
-  fieldLabel: { fontSize: 11, color: "var(--mk-text-faint)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: "18px 0 6px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  editorSubtitle: { fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "#3a4456", fontSize: 11 },
+  fieldLabel: { fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", margin: "18px 0 6px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  editorSubtitle: { fontWeight: 500, textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontSize: 11.5 },
 
-  navCounter: { fontSize: 13, color: "#3a4456" },
-  navBtn: { background: "var(--mk-surface-2)", color: "#64748b", border: "1px solid #1e293b", padding: "9px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600 },
-  markDoneBtn: { background: "linear-gradient(135deg,#8b7bff,#5b8def)", color: "#fff", border: "none", padding: "10px 24px", borderRadius: 8, fontSize: 14, fontWeight: 700, letterSpacing: "0.02em" },
+  navCounter: { fontSize: 12.5, color: "var(--text-muted)", fontWeight: 500 },
+  navBtn: { background: "var(--card)", color: "var(--text-secondary)", border: "1px solid var(--border)", padding: "9px 18px", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 700 },
+  markDoneBtn: { background: "var(--primary)", color: "#fff", border: "none", padding: "10px 22px", borderRadius: "var(--radius-sm)", fontSize: 13.5, fontWeight: 700 },
 
-  primaryBtn: { color: "#000000", border: "none", borderRadius: 8, fontWeight: 700, whiteSpace: "nowrap" },
+  primaryBtn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--primary)", color: "#fff", border: "1px solid transparent", borderRadius: "var(--radius-sm)", fontWeight: 700, whiteSpace: "nowrap" },
+  savedBtn: { background: "var(--success-tint)", color: "var(--success)", border: "1px solid var(--success)" },
 
-  footer: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, padding: "14px 20px", background: "#0d0d1a", borderRadius: 10, border: "1px solid #1e293b", flexWrap: "wrap", gap: 10 },
-  emptyCard: { background: "#0d0d1a", padding: "40px 24px", borderRadius: 12, textAlign: "center", color: "#3a4456", border: "1px solid #1e293b" },
-  errorBanner: { background: "#0d0106", border: "1px solid #7f1d1d55", padding: "18px 22px", borderRadius: 10, display: "flex", gap: 12, alignItems: "center", color: "#fca5a5" },
+  footer: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, padding: "14px 20px", background: "var(--card)", borderRadius: "var(--radius)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)", flexWrap: "wrap", gap: 10 },
+  emptyCard: { background: "var(--card)", padding: "40px 24px", borderRadius: "var(--radius)", textAlign: "center", color: "var(--text-muted)", fontWeight: 600, border: "1px solid var(--border)" },
+  errorBanner: { background: "var(--destructive-tint)", border: "1px solid var(--destructive)", padding: "16px 20px", borderRadius: "var(--radius)", display: "flex", gap: 12, alignItems: "center", color: "var(--destructive)", fontSize: 13.5, fontWeight: 600 },
 
-  doneCard: { textAlign: "center", padding: "64px 24px", background: "#0d0d1a", borderRadius: 14, border: "1px solid #1e293b", marginTop: 24 },
-  doneTitle: { fontSize: 22, fontWeight: 700, color: "#f8fafc", margin: "22px 0 8px", fontFamily: "'Fraunces', serif" },
-  doneSub: { fontSize: 15, color: "var(--mk-text-faint)", margin: 0 },
+  doneCard: { textAlign: "center", padding: "64px 24px", background: "var(--card)", borderRadius: "var(--radius)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)", marginTop: 24 },
+  doneTitle: { fontSize: 22, fontWeight: 800, color: "var(--text)", margin: "22px 0 8px", letterSpacing: "-0.01em" },
+  doneSub: { fontSize: 14, color: "var(--text-secondary)", fontWeight: 500, margin: 0 },
 
-  flagCard: { background: "#161009", border: "1px solid #f5b54444", borderRadius: 12, padding: "16px 20px", marginBottom: 16 },
-  flagCardTitle: { margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: "var(--mk-amber)" },
-  flagRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid #241a0f", flexWrap: "wrap" },
-  flagRowText: { fontSize: 13, color: "#cbd5e1", flex: 1, minWidth: 160 },
-  reopenBtn: { background: "var(--mk-surface-2)", border: "1px solid var(--mk-border)", color: "#7fb0ff", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontWeight: 600 },
+  flagCard: { background: "var(--warning-tint)", border: "1px solid var(--border)", borderLeft: "3px solid var(--warning)", borderRadius: "var(--radius)", padding: "16px 20px", marginBottom: 16 },
+  flagCardTitle: { display: "flex", alignItems: "center", gap: 8, margin: "0 0 10px", fontSize: 14, fontWeight: 800, color: "var(--warning)" },
+  flagRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid var(--border)", flexWrap: "wrap" },
+  flagRowText: { fontSize: 13, color: "var(--text)", fontWeight: 500, flex: 1, minWidth: 160 },
+  reopenBtn: { background: "var(--card)", border: "1px solid var(--border)", color: "var(--primary)", borderRadius: "var(--radius-sm)", padding: "5px 12px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
 };

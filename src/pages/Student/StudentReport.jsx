@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import API from "../../api";
+import API, { resolveFileUrl } from "../../api";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import QRCode from "react-qr-code";
@@ -10,12 +10,13 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  CartesianGrid,
 } from "recharts";
 import { useTheme } from "../../context/ThemeContext";
 import ThemeToggle from "../../components/ThemeToggle";
 import useSchoolSettings from "../../hooks/useSchoolSettings";
 import useGradingSystem from "../../hooks/useGradingSystem";
-import { getGradeForScore, getOverallResultForScore } from "../../utils/grading";
+import { getGradeForScore, getOverallResultForScore, getRemarkForScore } from "../../utils/grading";
 
 /* ================= GRADING =================
    Sourced from Admin → E-Assessments → Grading System (see
@@ -77,6 +78,7 @@ function useReportGlobalStyles() {
           --primary-dark: #6F1725;
           --primary-tint: #FBEAEC;
           --success: #15803D;
+          --danger: #B91C1C;
           --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
           --shadow: 0 1px 3px rgba(16,24,40,0.06);
           --radius: 14px;
@@ -93,6 +95,7 @@ function useReportGlobalStyles() {
           --primary-dark: #F3C0C6;
           --primary-tint: rgba(139,30,45,0.28);
           --success: #4ADE80;
+          --danger: #F87171;
           --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
           --shadow: 0 1px 3px rgba(0,0,0,0.4);
         }
@@ -104,6 +107,7 @@ function useReportGlobalStyles() {
         .sr-btn { transition: transform .15s ease, box-shadow .2s ease, background .2s ease, filter .2s ease, border-color .2s ease; }
         .sr-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
         .sr-btn:active { transform: translateY(0); }
+        .sr-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
         .sr-btn:focus-visible, .theme-toggle-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
         .sr-btn-outline:hover { background: var(--bg) !important; }
@@ -131,6 +135,13 @@ function useReportGlobalStyles() {
           html, body { background: #ffffff !important; }
           .sr-page-chrome { background: #ffffff !important; padding: 0 !important; }
           .no-print { display: none !important; }
+
+          /* PDF export (html2canvas) captures live screen DOM, not
+             print media, so @media print above doesn't hide
+             .no-print elements (e.g. the screen-only chart) on its
+             own — this class is toggled on the sheet only while
+             exporting to get the same effect for the PDF. */
+          .sr-exporting .no-print { display: none !important; }
           .sr-stage { padding: 0 !important; overflow: visible !important; display: block !important; }
           .sr-scale-box { width: 210mm !important; height: 297mm !important; }
           .sr-sheet {
@@ -150,8 +161,7 @@ function useReportGlobalStyles() {
 }
 
 /* ================= ICONS =================
-   Thin single-stroke set, one family — replaces the previous
-   emoji glyphs (🎓 🖨 📥) with a consistent, premium mark. */
+   Thin single-stroke set, one family. */
 const Icon = ({ children, size = 16, style }) => (
   <svg
     width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -187,19 +197,32 @@ const IconScan = (p) => (
     <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" />
   </Icon>
 );
-
-/* ================= SUB-COMPONENTS (unchanged props/behaviour) ================= */
-const Card = ({ label, value, accent }) => (
-  <div style={{ ...styles.summaryCard, borderTop: `3px solid ${accent || "#7f1d1d"}` }}>
-    <p style={styles.summaryLabel}>{label}</p>
-    <h2 style={styles.summaryValue}>{value}</h2>
-  </div>
+const IconAlert = (p) => (
+  <Icon {...p}>
+    <path d="M12 8.5v5" />
+    <circle cx="12" cy="16.3" r="0.4" fill="currentColor" stroke="none" />
+    <path d="M10.6 3.6 2.9 17.4a1.7 1.7 0 0 0 1.5 2.5h15.2a1.7 1.7 0 0 0 1.5-2.5L13.4 3.6a1.7 1.7 0 0 0-2.8 0Z" />
+  </Icon>
+);
+const IconDocEmpty = (p) => (
+  <Icon {...p}>
+    <path d="M7 3.5h7L19 8v12.5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+    <path d="M14 3.5V8h5" />
+    <path d="M9 13h6M9 16.5h6" />
+  </Icon>
+);
+const IconRefresh = (p) => (
+  <Icon {...p}>
+    <path d="M20 11.5A8 8 0 1 0 18.3 16" />
+    <path d="M20 5.5v6h-6" />
+  </Icon>
 );
 
+/* ================= SUB-COMPONENTS ================= */
 const InfoItem = ({ label, value }) => (
-  <div style={styles.infoItem}>
-    <div style={styles.infoLabel}>{label}</div>
-    <div style={styles.infoValue}>{value ?? "—"}</div>
+  <div style={styles.plainInfoItem}>
+    <span style={styles.plainInfoLabel}>{label}:</span>{" "}
+    <span style={styles.plainInfoValue}>{value ?? "—"}</span>
   </div>
 );
 
@@ -226,10 +249,20 @@ const getScoreBadgeStyle = (score, gradingSystem) => {
   return { ...colors, text: sorted[idx]?.label || "—" };
 };
 
+/* ================= SCREEN-CHROME STATES (loading / error / empty) ================= */
+const ScreenState = ({ icon, title, text, action }) => (
+  <div style={styles.stateWrap} className="sr-card">
+    <div style={styles.stateIconCircle}>{icon}</div>
+    <h3 style={styles.stateTitle}>{title}</h3>
+    <p style={styles.stateText}>{text}</p>
+    {action}
+  </div>
+);
+
 /* ================= MAIN COMPONENT ================= */
 export default function StudentReport() {
   useReportGlobalStyles();
-  const { theme } = useTheme();
+  useTheme();
   const { settings: school, getOfficial, signatory } = useSchoolSettings();
   const { gradingSystem } = useGradingSystem();
   const dean = getOfficial("dean");
@@ -242,27 +275,44 @@ export default function StudentReport() {
   const [subjects, setSubjects] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   const reportRef = useRef();
 
-  /* ================= LOAD (unchanged) ================= */
+  /* ================= LOAD =================
+     Same three existing endpoints as before. The only change is a
+     real error state: a failed request used to leave the page stuck
+     showing zeroed-out data with no explanation — now it shows a
+     dedicated "Unable to load" screen with a retry action instead of
+     a raw Axios error or a silently broken report. */
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
+      setLoading(true);
+      setLoadError(false);
       try {
         const [m, s, st] = await Promise.all([
           API.get("/student/marks", { params: { studentId: admissionNo } }),
           API.get("/subjects"),
           API.get("/students"),
         ]);
+        if (cancelled) return;
         setMarks(m.data || []);
         setSubjects(s.data || []);
         setStudents(st.data || []);
+      } catch (err) {
+        console.error("STUDENT REPORT LOAD ERROR:", err);
+        if (!cancelled) setLoadError(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     load();
-  }, [admissionNo]);
+    return () => { cancelled = true; };
+  }, [admissionNo, reloadToken]);
+
+  const retry = () => setReloadToken((n) => n + 1);
 
   /* ================= SCREEN SCALE =================
      Displays the A4 sheet at ~95% of the viewport on screen.
@@ -287,16 +337,15 @@ export default function StudentReport() {
 
   const effectiveScale = isExporting ? 1 : screenScale;
 
-  /* ================= STUDENT (unchanged) ================= */
+  /* ================= STUDENT (unchanged lookup) ================= */
   const student = useMemo(() => {
     return students.find((s) => s.id === admissionNo) || {};
   }, [students, admissionNo]);
 
-  const studentClass = student?.class || student?.className || "NOT ASSIGNED";
+  const studentClass = student?.class || student?.className || student?.studentClass || "Not assigned";
   const yearOfStudy = Number(student?.yearOfStudy || 0);
-  const programmeLabel = yearOfStudy === 1 ? "DTE 1" : yearOfStudy === 2 ? "DTE 2" : "DTE";
 
-  /* ================= POSITION (unchanged) ================= */
+  /* ================= POSITION (unchanged ranking logic) ================= */
   const position = useMemo(() => {
     if (!students.length) return "-";
     const ranked = students
@@ -310,16 +359,23 @@ export default function StudentReport() {
     return ranked.findIndex((r) => r.id === admissionNo) + 1;
   }, [students, marks, admissionNo]);
 
-  /* ================= ANALYTICS (unchanged) ================= */
+  /* ================= ANALYTICS =================
+     `avg` (and everything derived from it — grade, overall result,
+     the AVERAGE row, the summary cards) is a genuine mean of this
+     student's subject percentages. The old "Total Marks" card summed
+     raw percentages across subjects (e.g. 5 subjects could show
+     "350"), which reads as a real total but isn't one on a
+     percentage scale — dropped in favour of metrics that are
+     actually meaningful on their own: average, highest, lowest, and
+     how many learning areas were assessed. */
   const analytics = useMemo(() => {
     const scores = marks.map((m) => Number(m.percentage)).filter((v) => !isNaN(v));
-    const total = scores.reduce((a, b) => a + b, 0);
-    const avg = scores.length > 0 ? total / scores.length : 0;
+    const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     return {
-      total,
       avg: Math.round(avg),
-      highest: scores.length ? Math.max(...scores) : 0,
-      lowest: scores.length ? Math.min(...scores) : 0,
+      highest: scores.length ? Math.max(...scores) : null,
+      lowest: scores.length ? Math.min(...scores) : null,
+      assessedCount: scores.length,
       grade: getGradeForScore(avg, gradingSystem),
       result: getOverallResultForScore(avg, gradingSystem),
     };
@@ -332,94 +388,221 @@ export default function StudentReport() {
     return subjects.map((s) => ({ subject: s.name, code: s.code, score: map[s.name] ?? null }));
   }, [marks, subjects]);
 
-  const chartData = subjectMap.map((s) => ({ subject: s.subject, score: s.score ?? 0 }));
+  const chartData = useMemo(
+    () => subjectMap.filter((s) => s.score !== null).map((s) => ({ subject: s.subject, score: s.score })),
+    [subjectMap]
+  );
 
   const highestSubject = useMemo(() => {
     const valid = subjectMap.filter((s) => s.score !== null);
-    return valid.reduce((max, cur) => (cur.score > (max?.score || 0) ? cur : max), null);
+    return valid.reduce((max, cur) => (max === null || cur.score > max.score ? cur : max), null);
   }, [subjectMap]);
 
   const lowestSubject = useMemo(() => {
     const valid = subjectMap.filter((s) => s.score !== null);
-    return valid.reduce((min, cur) => (cur.score < (min?.score || 999) ? cur : min), null);
+    return valid.reduce((min, cur) => (min === null || cur.score < min.score ? cur : min), null);
   }, [subjectMap]);
 
+  // A neutral "needs attention" read-out: any subject below the
+  // configured pass mark, driven entirely by the admin's own grading
+  // configuration — never a hard-coded threshold.
+  const passMark = Number(gradingSystem?.passMark ?? 40);
+  const attentionSubjects = useMemo(
+    () => subjectMap.filter((s) => s.score !== null && s.score < passMark),
+    [subjectMap, passMark]
+  );
+
+  /* ================= EXAM NAME =================
+     Report cards need to say WHICH exam/term this is for. Marks
+     records commonly carry this on each row (examName / exam /
+     term), so pick it up from there first; school-level settings
+     as a second source; and only fall back to a generic label if
+     neither is present, rather than showing nothing.
+
+     NOTE: this must run before the early loading/error/empty
+     returns below — every hook in this component has to run on
+     every render, in the same order, or React throws the "change
+     in the order of Hooks" error. */
+  const examName = useMemo(() => {
+    const fromMarks = marks.find((m) => m.examName || m.exam || m.term)?.examName
+      || marks.find((m) => m.exam)?.exam
+      || marks.find((m) => m.term)?.term;
+    return fromMarks || school?.examName || school?.currentExam || school?.currentTerm || "End of Term Examination";
+  }, [marks, school]);
+
+  const hasResults = marks.length > 0;
+
   /* ================= PDF DOWNLOAD =================
-     Same algorithm as before (capture → single A4 image → paginate
-     if content overflows one page). Screen display now runs at a
-     scaled-down size for readability, so export first flips the
-     sheet back to true scale(1), waits two animation frames for
-     layout to settle, captures, then restores the screen scale. */
+     Always exactly one PDF page. The report card is an A4 document,
+     so the target is 210mm × 297mm; if the captured content is
+     slightly taller than 297mm (extra subjects, longer remarks,
+     etc.) it's scaled down to fit the page in full rather than
+     spilling onto a second page — a single-page document is more
+     useful here than a second page holding a sliver of content.
+     The on-screen-only chart is hidden for this capture (see
+     ".sr-exporting .no-print" above) so it never eats into that
+     page budget in the first place.
+
+     Screen display runs at a scaled-down size for readability, so
+     export first flips the sheet back to true scale(1), waits for
+     web fonts to finish loading and two animation frames for layout
+     to settle, captures, then restores scale.
+
+     Previously this only waited two rAF ticks with no font check —
+     if the Google Fonts (Playfair Display / Inter) hadn't finished
+     loading yet, html2canvas would rasterize with the fallback
+     system font mid-swap, which is what produced the thin/"washed
+     out" look in the exported PDF versus the on-screen preview. */
   const downloadPDF = async () => {
     setIsExporting(true);
+
+    if (document.fonts && document.fonts.ready) {
+      try {
+        await document.fonts.ready;
+      } catch (e) {
+        // Font loading API not fully supported — fall through and
+        // rely on the animation-frame + timeout delay below.
+      }
+    }
     await new Promise((r) => requestAnimationFrame(r));
     await new Promise((r) => requestAnimationFrame(r));
+    // Small extra settle time after switching back to scale(1) and
+    // hiding the .no-print chart, so layout has fully reflowed.
+    await new Promise((r) => setTimeout(r, 80));
 
     const input = reportRef.current;
+
+    // html2canvas builds an actual <canvas> at (content size × scale).
+    // A fixed scale of 3 is fine for a short report, but once the sheet
+    // is tall (many subjects, no longer clipped — see the comment above)
+    // that canvas can cross a browser's internal size ceiling (mobile
+    // Safari in particular tops out around ~16 million total pixels).
+    // Past that ceiling the browser hands back a blank white canvas with
+    // no error at all — which is exactly what "downloads a blank PDF"
+    // looks like. Scale down automatically for tall content so this
+    // never happens, while still using 3x for the common case.
+    const MAX_CANVAS_DIMENSION = 14000; // stay under ~16k browser edge limits
+    const MAX_CANVAS_AREA = 16000000; // stay under the ~16MP iOS Safari ceiling
+    const contentWidth = input.scrollWidth || input.offsetWidth || 1;
+    const contentHeight = input.scrollHeight || input.offsetHeight || 1;
+    let captureScale = 3;
+    captureScale = Math.min(captureScale, MAX_CANVAS_DIMENSION / Math.max(contentWidth, contentHeight));
+    captureScale = Math.min(captureScale, Math.sqrt(MAX_CANVAS_AREA / (contentWidth * contentHeight)));
+    captureScale = Math.max(1, Math.min(captureScale, 3));
+
     const canvas = await html2canvas(input, {
-      scale: 2,
+      scale: captureScale,
       useCORS: true,
       backgroundColor: "#ffffff",
       windowWidth: input.scrollWidth,
       windowHeight: input.scrollHeight,
       scrollY: -window.scrollY,
+      logging: false,
+      imageTimeout: 15000,
     });
     const imgData = canvas.toDataURL("image/png");
     const pdf = new jsPDF("p", "mm", "a4");
     const pdfWidth = 210;
     const pdfHeight = 297;
-    const imgWidth = pdfWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    let heightLeft = imgHeight;
-    let position = 0;
-    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, "", "FAST");
-    heightLeft -= pdfHeight;
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, "", "FAST");
-      heightLeft -= pdfHeight;
-    }
-    pdf.save(`${user.name}_${school?.shortName || "RESULT"}_RESULT_SLIP.pdf`);
+    const naturalWidth = pdfWidth;
+    const naturalHeight = (canvas.height * naturalWidth) / canvas.width;
+
+    // Fit-to-page: only shrink (never stretch) when the natural
+    // height overruns one A4 page. Width scales down to match so
+    // the image never distorts, and stays centred horizontally.
+    const fitScale = naturalHeight > pdfHeight ? pdfHeight / naturalHeight : 1;
+    const renderWidth = naturalWidth * fitScale;
+    const renderHeight = naturalHeight * fitScale;
+    const xOffset = (pdfWidth - renderWidth) / 2;
+
+    pdf.addImage(imgData, "PNG", xOffset, 0, renderWidth, renderHeight, "", "FAST");
+
+    // Dynamic, professional filename — never leaves a literal
+    // "undefined" in the saved file name if the student's name is
+    // missing for some reason.
+    const safeName = String(user.name || "Student").trim().replace(/\s+/g, "_").replace(/[^\w-]/g, "");
+    pdf.save(`${safeName}_ReportCard.pdf`);
 
     setIsExporting(false);
   };
 
   /* ================= PRINT (unchanged) ================= */
-  const printSlip = () => { window.print(); };
+  const printReportCard = () => { window.print(); };
 
   /* ================= LOADING ================= */
-  if (loading)
+  if (loading) {
     return (
       <div style={styles.loadingWrap}>
         <div style={styles.loadingSpinner} />
-        <p style={styles.loadingText}>Loading result slip…</p>
+        <p style={styles.loadingText}>Preparing your report card…</p>
       </div>
     );
+  }
+
+  /* ================= ERROR ================= */
+  if (loadError) {
+    return (
+      <div style={styles.page} className="sr-page-chrome">
+        <ScreenState
+          icon={<IconAlert size={26} style={{ color: "var(--danger)" }} />}
+          title="Unable to load your report card"
+          text="Something went wrong while fetching your academic results. Please check your connection and try again."
+          action={
+            <button onClick={retry} className="sr-btn sr-btn-primary" style={styles.downloadBtn}>
+              <IconRefresh size={15} /> Try again
+            </button>
+          }
+        />
+      </div>
+    );
+  }
+
+  /* ================= EMPTY ================= */
+  if (!hasResults) {
+    return (
+      <div style={styles.page} className="sr-page-chrome">
+        <ScreenState
+          icon={<IconDocEmpty size={26} style={{ color: "var(--text-muted)" }} />}
+          title="Report card unavailable"
+          text="Your academic results have not yet been published. Please check back once your subjects have been assessed."
+          action={
+            <button onClick={retry} className="sr-btn sr-btn-outline" style={styles.printBtn}>
+              <IconRefresh size={15} /> Refresh
+            </button>
+          }
+        />
+      </div>
+    );
+  }
 
   /* ================= UI ================= */
+  const logoSrc = resolveFileUrl(school?.logoUrl);
+  const contactLine = [school?.address, school?.phone && `Tel: ${school.phone}`, school?.email]
+    .filter(Boolean)
+    .join(" | ");
+
   return (
     <div style={styles.page} className="sr-page-chrome">
 
       {/* ── TOP BAR (screen only) ── */}
       <div style={styles.topBar} className="no-print">
         <div>
-          <h2 style={styles.portalTitle}>DORAVO CORE</h2>
-          <p style={styles.portalSub}>Official Academic Result Slip Portal</p>
+          <h2 style={styles.portalTitle}>Student Report Card</h2>
+          <p style={styles.portalSub}>Official academic performance report</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button onClick={printSlip} className="sr-btn sr-btn-outline" style={styles.printBtn}>
-            <IconPrinter size={15} /> Print Slip
+          <button onClick={printReportCard} className="sr-btn sr-btn-outline" style={styles.printBtn}>
+            <IconPrinter size={15} /> Print Report Card
           </button>
           <button onClick={downloadPDF} className="sr-btn sr-btn-primary" style={styles.downloadBtn}>
-            <IconDownload size={15} /> Export PDF
+            <IconDownload size={15} /> Download PDF
           </button>
           <ThemeToggle />
         </div>
       </div>
 
       <p style={styles.scrollHint} className="no-print sr-scroll-hint">
-        ↔ Scroll to view the full A4 slip
+        ↔ Scroll to view the full report card
       </p>
 
       {/* ── A4 STAGE ── */}
@@ -431,7 +614,7 @@ export default function StudentReport() {
           <div
             ref={reportRef}
             style={{ ...styles.reportCard, transform: `scale(${effectiveScale})`, transformOrigin: "top left", position: "absolute", top: 0, left: 0 }}
-            className="sr-sheet sr-card"
+            className={`sr-sheet sr-card${isExporting ? " sr-exporting" : ""}`}
           >
 
             {/* Faint diagonal authenticity watermark */}
@@ -444,25 +627,19 @@ export default function StudentReport() {
               <div style={styles.headerBandInner}>
                 {/* Crest / Logo */}
                 <div style={styles.crestBox}>
-                  <IconCap size={28} style={{ color: "#fff" }} />
+                  {logoSrc
+                    ? <img src={logoSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: "50%" }} />
+                    : <IconCap size={34} style={{ color: "#fff" }} />}
                 </div>
 
                 {/* Centre text */}
                 <div style={{ flex: 1, textAlign: "center" }}>
-                  <p style={styles.collegeTagline}>REPUBLIC OF KENYA</p>
-                  <h1 style={styles.collegeName}>{school?.schoolName || "Asumbi Teachers Training College"}</h1>
-                  <p style={styles.collegeAddress}>
-                    {[school?.address, school?.phone && `Tel: ${school.phone}`, school?.email]
-                      .filter(Boolean)
-                      .join(" | ") || "P.O. Box 22 – 40305, Asumbi | Tel: 059-22001 | knec@asumbi.ac.ke"}
-                  </p>
+                  {school?.motto && <p style={styles.collegeTagline}>{school.motto}</p>}
+                  <h1 style={styles.collegeName}>{school?.schoolName || "—"}</h1>
+                  <p style={styles.collegeAddress}>{contactLine || "—"}</p>
                   <div style={styles.slipTitleBox}>
-                    <p style={styles.slipTitle}>
-                      PROVISIONAL RESULTS SLIP — TERM 1, NOVEMBER 2025
-                    </p>
-                    <p style={styles.slipSubtitle}>
-                      Internal Formative Assessments (IFA) · Diploma in Teacher Education ({programmeLabel})
-                    </p>
+                    <p style={styles.slipTitle}>Student Academic Report Card</p>
+                    <p style={styles.slipSubtitle}>{examName}</p>
                   </div>
                 </div>
 
@@ -470,7 +647,7 @@ export default function StudentReport() {
                 <div style={styles.headerMeta}>
                   <div style={styles.metaRow}><span style={styles.metaKey}>Date</span><span style={styles.metaVal}>{new Date().toLocaleDateString("en-KE", { day: "2-digit", month: "short", year: "numeric" })}</span></div>
                   <div style={styles.metaRow}><span style={styles.metaKey}>Class</span><span style={styles.metaVal}>{studentClass}</span></div>
-                  <div style={styles.metaRow}><span style={styles.metaKey}>Year</span><span style={styles.metaVal}>{yearOfStudy || "N/A"}</span></div>
+                  <div style={styles.metaRow}><span style={styles.metaKey}>Year</span><span style={styles.metaVal}>{yearOfStudy || "—"}</span></div>
                   <div style={{ ...styles.metaRow, marginTop: 4 }}>
                     <span style={styles.positionCircle}>#{position}</span>
                   </div>
@@ -485,30 +662,43 @@ export default function StudentReport() {
             ══════════════════════════════════════════════ */}
             <div style={styles.section}>
               <div style={styles.sectionLabelBar}>
-                <span style={styles.sectionLabel}>CANDIDATE INFORMATION</span>
+                <span style={styles.sectionLabel}>Student Information</span>
               </div>
-              <div style={styles.infoGrid}>
-                <InfoItem label="Centre Code" value={school?.centreCode || "ASB-214"} />
+              <div style={styles.plainInfoGrid}>
+                <InfoItem label="Student Name" value={user.name} />
                 <InfoItem label="Admission Number" value={admissionNo} />
                 <InfoItem label="Class / Stream" value={studentClass} />
-                <InfoItem label="Gender" value={user.gender || "N/A"} />
-                <InfoItem label="Student Name" value={user.name} />
-                <InfoItem label="Assessment Reference" value="IFA-2025-0012" />
+                <InfoItem label="Year of Study" value={yearOfStudy || null} />
+                <InfoItem label="Gender" value={user.gender || student?.gender} />
+                <InfoItem label="Centre Code" value={school?.centreCode} />
               </div>
             </div>
 
             {/* ══════════════════════════════════════════════
-                PERFORMANCE SUMMARY CARDS
+                PERFORMANCE SUMMARY
             ══════════════════════════════════════════════ */}
             <div style={styles.section}>
               <div style={styles.sectionLabelBar}>
-                <span style={styles.sectionLabel}>PERFORMANCE SUMMARY</span>
+                <span style={styles.sectionLabel}>Performance Summary</span>
               </div>
-              <div style={styles.summaryGrid}>
-                <Card label="Total Marks" value={analytics.total || 0} accent="#7f1d1d" />
-                <Card label="Average Score" value={`${analytics.avg}%`} accent="#1d4ed8" />
-                <Card label="Overall Result" value={analytics.result} accent="#15803d" />
-                <Card label="Class Position" value={`#${position}`} accent="#b45309" />
+              <div style={styles.summaryRow}>
+                {[
+                  { label: "Average Score", value: `${analytics.avg}%`, color: "#1d4ed8" },
+                  { label: "Overall Grade", value: analytics.grade.label || "—", color: "#7f1d1d" },
+                  { label: "Overall Result", value: analytics.result || "—", color: "#15803d" },
+                  { label: "Class Position", value: `#${position}`, color: "#b45309" },
+                  { label: "Learning Areas", value: analytics.assessedCount, color: "#0f766e" },
+                  { label: "Highest Score", value: analytics.highest != null ? `${analytics.highest}%` : "—", color: "#15803d" },
+                  { label: "Lowest Score", value: analytics.lowest != null ? `${analytics.lowest}%` : "—", color: "#b91c1c" },
+                ].map((m, i, arr) => (
+                  <div
+                    key={m.label}
+                    style={{ ...styles.summaryItem, borderRight: i === arr.length - 1 ? "none" : "1px solid #e2e8f0" }}
+                  >
+                    <p style={styles.summaryLabel}>{m.label}</p>
+                    <p style={{ ...styles.summaryValue, color: m.color }}>{m.value}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -517,22 +707,23 @@ export default function StudentReport() {
             ══════════════════════════════════════════════ */}
             <div style={styles.section}>
               <div style={styles.sectionLabelBar}>
-                <span style={styles.sectionLabel}>EXAMINATION RESULTS BREAKDOWN</span>
+                <span style={styles.sectionLabel}>Academic Performance</span>
               </div>
               <table style={styles.table}>
                 <thead>
                   <tr style={styles.theadRow}>
-                    <th style={{ ...styles.th, width: "5%" }}>Code</th>
-                    <th style={{ ...styles.th, textAlign: "left", width: "38%" }}>Learning Area</th>
-                    <th style={{ ...styles.th, width: "5%" }}>Score (%)</th>
-                    <th style={{ ...styles.th, width: "5%" }}>Out Of</th>
-                    <th style={{ ...styles.th, width: "5%" }}>Grade</th>
+                    <th style={{ ...styles.th, width: "8%" }}>Code</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "34%" }}>Learning Area / Subject</th>
+                    <th style={{ ...styles.th, width: "12%" }}>Score</th>
+                    <th style={{ ...styles.th, width: "14%" }}>Grade</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "32%" }}>Remarks</th>
                   </tr>
                 </thead>
                 <tbody>
                   {subjectMap.map((s, i) => {
                     const valid = s.score !== null && s.score !== undefined;
                     const badge = valid ? getScoreBadgeStyle(s.score, gradingSystem) : null;
+                    const remark = valid ? getRemarkForScore(s.score, gradingSystem) : "";
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
                         <td style={{ ...styles.td, color: "#64748b", fontSize: 8 }}>{s.code || `L/A-${i + 1}`}</td>
@@ -546,7 +737,6 @@ export default function StudentReport() {
                             }}>{s.score}%</span>
                           ) : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
-                        <td style={{ ...styles.td, textAlign: "center", color: "#64748b" }}>100</td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
                           {valid ? (
                             <span style={{
@@ -561,15 +751,16 @@ export default function StudentReport() {
                             }}>{badge.text}</span>
                           ) : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
+                        <td style={{ ...styles.td, textAlign: "left", color: "#64748b" }}>{remark || "—"}</td>
                       </tr>
                     );
                   })}
 
-                  {/* TOTAL ROW */}
+                  {/* AVERAGE ROW — a mean of percentages, correctly
+                      labelled (this used to be a mis-labelled sum). */}
                   <tr style={styles.totalRow}>
-                    <td style={styles.td} colSpan={2}>AGGREGATE TOTAL / MEAN</td>
-                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{analytics.total}%</td>
-                    <td style={{ ...styles.td, textAlign: "center" }}>{subjectMap.length * 100}</td>
+                    <td style={styles.td} colSpan={2}>AVERAGE</td>
+                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{analytics.avg}%</td>
                     <td style={{ ...styles.td, textAlign: "center" }}>
                       <span style={{
                         background: "#dbeafe",
@@ -579,30 +770,90 @@ export default function StudentReport() {
                         fontWeight: 700,
                         fontSize: 8,
                         display: "inline-block",
-                      }}>{analytics.grade.label}</span>
+                      }}>{analytics.grade.label || "—"}</span>
                     </td>
+                    <td style={styles.td}></td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
             {/* ══════════════════════════════════════════════
+                PERFORMANCE ANALYSIS
+            ══════════════════════════════════════════════ */}
+            {(highestSubject || lowestSubject) && (
+              <div style={styles.section}>
+                <div style={styles.sectionLabelBar}>
+                  <span style={styles.sectionLabel}>Performance Analysis</span>
+                </div>
+                <div style={styles.authGrid}>
+                  <div style={styles.authCard}>
+                    <p style={styles.authCardTitle}>Highest Performing Area</p>
+                    {highestSubject ? (
+                      <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                        {highestSubject.subject} — {highestSubject.score}%
+                      </p>
+                    ) : <p style={{ margin: "4px 0 0", fontSize: 12, color: "#94a3b8" }}>Not enough data</p>}
+                  </div>
+                  <div style={styles.authCard}>
+                    <p style={styles.authCardTitle}>Area Requiring Attention</p>
+                    {lowestSubject ? (
+                      <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                        {lowestSubject.subject} — {lowestSubject.score}%
+                      </p>
+                    ) : <p style={{ margin: "4px 0 0", fontSize: 12, color: "#94a3b8" }}>Not enough data</p>}
+                  </div>
+                </div>
+                <p style={{ margin: "8px 2px 0", fontSize: 9.5, color: "#64748b" }}>
+                  {analytics.assessedCount} learning area{analytics.assessedCount === 1 ? "" : "s"} assessed, average {analytics.avg}%.
+                  {attentionSubjects.length > 0
+                    ? ` ${attentionSubjects.length} learning area${attentionSubjects.length === 1 ? "" : "s"} fell below the ${passMark}% pass mark.`
+                    : " All assessed learning areas met the configured pass mark."}
+                </p>
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════════
+                PERFORMANCE CHART (screen only — kept off the
+                printed/exported sheet so the document stays a
+                clean, predictable single page)
+            ══════════════════════════════════════════════ */}
+            {chartData.length > 0 && (
+              <div style={styles.section} className="no-print">
+                <div style={styles.sectionLabelBar}>
+                  <span style={styles.sectionLabel}>Score Overview (screen only)</span>
+                </div>
+                <div style={styles.chartWrap}>
+                  <ResponsiveContainer width="100%" height={Math.max(80, chartData.length * 26)}>
+                    <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                      <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9 }} stroke="#94a3b8" />
+                      <YAxis type="category" dataKey="subject" width={110} tick={{ fontSize: 9 }} stroke="#94a3b8" />
+                      <Tooltip formatter={(v) => [`${v}%`, "Score"]} />
+                      <Bar dataKey="score" fill="#7f1d1d" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════════
                 REMARKS & APPROVAL
             ══════════════════════════════════════════════ */}
             <div style={styles.section}>
               <div style={styles.sectionLabelBar}>
-                <span style={styles.sectionLabel}>OFFICIAL AUTHORISATION</span>
+                <span style={styles.sectionLabel}>Official Authorisation</span>
               </div>
               <div style={styles.authGrid}>
 
-                {/* Lecturer Remarks */}
+                {/* Comments */}
                 <div style={styles.authCard}>
-                  <p style={styles.authCardTitle}>Lecturer Remarks</p>
+                  <p style={styles.authCardTitle}>Class Teacher / Lecturer's Remarks</p>
                   <div style={styles.remarksBox}>
-                    <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>Class Lecturer's CBE Remarks</p>
+                    <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
                   </div>
                   <div style={styles.sigGrid}>
-                    <div style={styles.sigItem}><p style={styles.sigLabel}>Lecturer Name</p><div style={styles.sigLine} /></div>
+                    <div style={styles.sigItem}><p style={styles.sigLabel}>Name</p><div style={styles.sigLine} /></div>
                     <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
                     <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
                   </div>
@@ -612,9 +863,8 @@ export default function StudentReport() {
                 <div style={styles.authCard}>
                   <p style={styles.authCardTitle}>Approved By</p>
                   <div style={{ padding: "4px 0" }}>
-                    <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{dean?.name || "—"}</p>
-                    <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{dean?.title || "Dean of Curriculum"}</p>
-                    <p style={{ margin: "0 0 10px", fontSize: 12, color: "#334155" }}>For: {principal?.title || signatory?.title || "Chief Principal"}</p>
+                    <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{dean?.name || principal?.name || signatory?.name || "—"}</p>
+                    <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{dean?.title || principal?.title || signatory?.title || "—"}</p>
                   </div>
                   <div style={styles.sigGrid}>
                     <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
@@ -648,17 +898,17 @@ export default function StudentReport() {
               </div>
               <div style={styles.footerCenter}>
                 <p style={styles.footerDisclaimer}>
-                  This is a provisional result slip and is subject to confirmation by the Kenya National Examinations Council (KNEC).
-                  It is computer-generated and valid without a handwritten signature unless otherwise indicated.
+                  This report card is computer-generated and reflects the results on record at the time of printing.
+                  It is valid without a handwritten signature unless otherwise indicated by the institution.
                 </p>
                 <p style={styles.footerCredits}>
-                  Designed by: Jobunga, G.B — Assessments Officer | For: Chief Principal, Asumbi TTC
+                  Generated via the Doravo Core Student Portal
                 </p>
               </div>
               <div style={styles.footerRight}>
                 <div style={styles.resultRibbon}>
                   <p style={styles.ribbonLabel}>Overall Result</p>
-                  <p style={styles.ribbonValue}>{analytics.result}</p>
+                  <p style={styles.ribbonValue}>{analytics.result || "—"}</p>
                 </div>
               </div>
             </div>
@@ -673,11 +923,11 @@ export default function StudentReport() {
 /* ═══════════════════════════════════════════════════════════
    STYLES
    Screen-chrome styles (page, topBar, buttons, loading state)
-   now use the app's shared CSS variable tokens so they follow
+   use the app's shared CSS variable tokens so they follow
    light/dark mode. The printed A4 sheet ("reportCard" and all
-   its children below) intentionally keeps its original fixed
-   maroon/blue/green/amber palette — see the comment on
-   useReportGlobalStyles for why.
+   its children below) intentionally keeps its own fixed
+   maroon/blue/green/amber palette — it's an official document
+   that gets printed and exported to PDF, not a themed UI.
 ═══════════════════════════════════════════════════════════ */
 const styles = {
   /* ── Page shell (screen chrome only, stripped for print) ── */
@@ -706,7 +956,7 @@ const styles = {
     fontSize: 19,
     fontWeight: 800,
     color: "var(--text)",
-    letterSpacing: "0.04em",
+    letterSpacing: "0.01em",
   },
   portalSub: {
     marginTop: 4,
@@ -761,10 +1011,12 @@ const styles = {
     width: "210mm",
     minHeight: "297mm",
     flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
     background: "#ffffff",
     color: "#0f172a",
     borderRadius: 3,
-    overflow: "hidden",
+    overflow: "visible",
     boxSizing: "border-box",
     boxShadow: "0 20px 50px rgba(0,0,0,0.45)",
     border: "1px solid #e5e0d8",
@@ -802,20 +1054,21 @@ const styles = {
     background: "#b45309",
   },
   crestBox: {
-    width: 50,
-    height: 30,
-    minWidth: 50,
-    borderRadius: "100%",
+    width: 66,
+    height: 66,
+    minWidth: 66,
+    borderRadius: "50%",
     background: "rgba(255,255,255,0.14)",
-    border: "2px solid rgba(255,255,255,0.32)",
+    border: "2px solid rgba(255,255,255,0.4)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   collegeTagline: {
     margin: "0 0 2px",
     fontSize: 9.5,
-    letterSpacing: "0.18em",
+    letterSpacing: "0.1em",
     color: "#fecaca",
     fontWeight: 600,
     textTransform: "uppercase",
@@ -850,8 +1103,11 @@ const styles = {
   },
   slipSubtitle: {
     margin: "2px 0 0",
-    fontSize: 10.5,
-    color: "#fca5a5",
+    fontSize: 11,
+    color: "#ffffff",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
   },
   headerMeta: {
     minWidth: 50,
@@ -898,13 +1154,13 @@ const styles = {
   section: {
     position: "relative",
     zIndex: 1,
-    padding: "0 14mm 10px",
+    padding: "0 12mm 8px",
     marginTop: 1,
   },
   sectionLabelBar: {
     borderLeft: "4px solid #7f1d1d",
     paddingLeft: 9,
-    marginBottom: 1,
+    marginBottom: 8,
   },
   sectionLabel: {
     fontSize: 9.5,
@@ -914,69 +1170,70 @@ const styles = {
     textTransform: "uppercase",
   },
 
-  /* ── Info grid ── */
-  infoGrid: {
+  /* ── Student info: plain professional text, no boxes ──
+     A single quiet rule under the whole block does the work a
+     bordered card used to do, at a fraction of the vertical space. */
+  plainInfoGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 2,
-  },
-  infoItem: {
-    border: "1px solid #e2e8f0",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  infoLabel: {
-    background: "#f8fafc",
-    padding: "1px 4px",
-    fontSize: 9.5,
-    fontWeight: 700,
-    color: "#64748b",
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
+    rowGap: 7,
+    columnGap: 16,
+    paddingBottom: 8,
     borderBottom: "1px solid #e2e8f0",
   },
-  infoValue: {
-    padding: "1px 4px",
-    fontSize: 10,
+  plainInfoItem: {
+    fontSize: 10.5,
+  },
+  plainInfoLabel: {
+    fontWeight: 700,
+    color: "#64748b",
+    fontSize: 9,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  },
+  plainInfoValue: {
     fontWeight: 600,
     color: "#0f172a",
   },
 
-  /* ── Summary cards ── */
-  summaryGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: 2,
+  /* ── Performance summary: a single thin-divided stat line
+     instead of seven separate boxed cards — same figures, far
+     less vertical real estate, and reads like a printed ledger
+     rather than a dashboard. ── */
+  summaryRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    borderTop: "1px solid #e2e8f0",
+    borderBottom: "1px solid #e2e8f0",
+    padding: "8px 0",
   },
-  summaryCard: {
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    borderRadius: 10,
-    padding: "1px 1.2px",
+  summaryItem: {
+    flex: "1 1 0",
+    minWidth: 84,
     textAlign: "center",
+    padding: "0 6px",
   },
   summaryLabel: {
-    margin: "0 0 5px",
-    fontSize: 8,
+    margin: "0 0 4px",
+    fontSize: 7.5,
     fontWeight: 700,
     color: "#64748b",
     textTransform: "uppercase",
-    letterSpacing: "0.07em",
+    letterSpacing: "0.06em",
   },
   summaryValue: {
     margin: 0,
-    fontSize: 8,
+    fontSize: 12.5,
     fontWeight: 800,
-    color: "#0f172a",
-    lineHeight: 0.5,
+    lineHeight: 1.3,
   },
 
-  /* ── Chart (kept for potential reuse; section removed from markup) ── */
+  /* ── Chart ── */
   chartWrap: {
     background: "#f8fafc",
     border: "1px solid #e2e8f0",
     borderRadius: 10,
-    padding: "1px 1.2px 1px",
+    padding: "6px 8px",
   },
 
   /* ── Table ── */
@@ -990,7 +1247,7 @@ const styles = {
     background: "#0f172a",
   },
   th: {
-    padding: "1px 3px",
+    padding: "7px 6px",
     fontSize: 9.5,
     fontWeight: 700,
     color: "#94a3b8",
@@ -1000,7 +1257,7 @@ const styles = {
     borderBottom: "2px solid #1e293b",
   },
   td: {
-    padding: "6px 11px",
+    padding: "5px 10px",
     borderBottom: "1px solid #f1f5f9",
     color: "#334155",
     fontSize: 8,
@@ -1026,12 +1283,12 @@ const styles = {
   authGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: 2,
+    gap: 6,
   },
   authCard: {
     border: "1px solid #e2e8f0",
     borderRadius: 10,
-    padding: "10px 14px",
+    padding: "8px 12px",
   },
   authCardTitle: {
     margin: "0 0 9px",
@@ -1044,8 +1301,8 @@ const styles = {
   remarksBox: {
     border: "1px dashed #cbd5e1",
     borderRadius: 8,
-    minHeight: 30,
-    padding: 10,
+    minHeight: 22,
+    padding: 8,
     background: "#f8fafc",
     display: "flex",
     alignItems: "center",
@@ -1053,8 +1310,8 @@ const styles = {
   sigGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 2,
-    marginTop: 2,
+    gap: 6,
+    marginTop: 6,
   },
   sigItem: { textAlign: "center" },
   sigLabel: {
@@ -1082,10 +1339,10 @@ const styles = {
     zIndex: 1,
     display: "flex",
     alignItems: "flex-start",
-    gap: 2,
-    padding: "12px 14mm 12mm",
+    gap: 12,
+    padding: "10px 12mm 10mm",
     borderTop: "2px solid #7f1d1d",
-    marginTop: 1,
+    marginTop: "auto",
   },
   footerLeft: {
     display: "flex",
@@ -1162,5 +1419,41 @@ const styles = {
     color: "var(--text-secondary)",
     fontSize: 14,
     fontFamily: "Inter, sans-serif",
+  },
+
+  /* ── Error / empty state ── */
+  stateWrap: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    minHeight: "50vh",
+    gap: 10,
+    maxWidth: 420,
+    margin: "0 auto",
+  },
+  stateIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: "50%",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  stateTitle: {
+    margin: 0,
+    fontSize: 17,
+    fontWeight: 800,
+    color: "var(--text)",
+  },
+  stateText: {
+    margin: "0 0 8px",
+    fontSize: 13.5,
+    color: "var(--text-secondary)",
+    lineHeight: 1.5,
   },
 };

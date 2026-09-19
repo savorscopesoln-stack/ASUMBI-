@@ -4,11 +4,11 @@ import API from "../../api";
 import jsPDF from "jspdf";
 
 /* ─────────────────────────────────────────────
-   Design tokens — strict black & white system,
-   available as a light and a dark theme. Every
-   value below is a CSS custom property so the
-   whole page repaints instantly on toggle with
-   no re-render of the tree itself.
+   Design tokens — now shares the same palette as
+   TeacherProfile / TeacherEAssessments (maroon
+   primary, warm neutrals, Inter type). Every value
+   below is a CSS custom property so the whole page
+   repaints instantly on toggle with no re-render.
 ───────────────────────────────────────────── */
 const C = {
   bg:         "var(--bg)",
@@ -18,7 +18,7 @@ const C = {
   elevated:   "var(--elevated)",
   border:     "var(--border)",
   borderHi:   "var(--border-hi)",
-  white:      "var(--invert)",       // the "bright" accent — white in dark, black in light
+  white:      "var(--invert)",       // the accent — maroon primary in both themes
   invertText: "var(--invert-text)",  // text drawn on top of the accent
   textPri:    "var(--text-pri)",
   textSec:    "var(--text-sec)",
@@ -407,7 +407,7 @@ export default function TeacherSubmissions() {
       {remarkModal && (
         <div style={s.modalBackdrop} onClick={() => setRemarkModal(null)}>
           <div style={s.modalBox} onClick={e => e.stopPropagation()}>
-            <h2 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 600, color: C.textPri, letterSpacing: "-0.01em" }}>
+            <h2 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: C.textPri, letterSpacing: "-0.01em" }}>
               Request remark
             </h2>
             <p style={{ margin: "0 0 20px", fontSize: 13, color: C.textSec }}>
@@ -425,11 +425,11 @@ export default function TeacherSubmissions() {
               placeholder="Explain why this submission should be re-marked…"
               value={remarkReason}
               onChange={e => { setRemarkReason(e.target.value); setRemarkReasonErr(""); }}
-              style={{ ...s.textarea, borderColor: remarkReasonErr ? C.textPri : C.border }}
+              style={{ ...s.textarea, borderColor: remarkReasonErr ? "var(--destructive)" : C.border }}
               className="tv-textarea"
             />
             {remarkReasonErr && (
-              <p style={{ margin: "7px 0 0", fontSize: 12, color: C.textPri, display: "flex", alignItems: "center", gap: 6 }}>
+              <p style={{ margin: "7px 0 0", fontSize: 12, color: "var(--destructive)", display: "flex", alignItems: "center", gap: 6 }}>
                 <IconAlert size={13} /> {remarkReasonErr}
               </p>
             )}
@@ -604,7 +604,7 @@ export default function TeacherSubmissions() {
                     </Td>
                     <Td style={{ color: C.textMuted, fontSize: 12, fontFamily: FONT_MONO }}>{i + 1}</Td>
                     <Td>
-                      <div style={{ fontWeight: 500, color: C.textPri, fontSize: 13.5, display: "flex", alignItems: "center", gap: 7 }}>
+                      <div style={{ fontWeight: 600, color: C.textPri, fontSize: 13.5, display: "flex", alignItems: "center", gap: 7 }}>
                         {sub.student_name || `Student #${sub.student_id}`}
                         {locked && !approved && (
                           <span title="Locked — awaiting admin approval to remark" style={{ color: C.textMuted, display: "flex" }}>
@@ -612,7 +612,7 @@ export default function TeacherSubmissions() {
                           </span>
                         )}
                         {approved && (
-                          <span title="Approved by admin — you may remark" style={{ color: C.textPri, display: "flex" }}>
+                          <span title="Approved by admin — you may remark" style={{ color: "var(--invert)", display: "flex" }}>
                             <IconUnlock size={12} />
                           </span>
                         )}
@@ -700,8 +700,8 @@ function StatCard({ label, value, icon, mono }) {
     <div className="tv-stat" style={s.statCard}>
       <div style={s.statIconWrap}>{icon}</div>
       <div>
-        <div style={{ fontSize: 10.5, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 5 }}>{label}</div>
-        <div style={{ fontSize: 22, fontWeight: 600, color: C.textPri, fontFamily: mono ? FONT_MONO : FONT_UI, letterSpacing: "-0.01em" }}>{value}</div>
+        <div style={{ fontSize: 10.5, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 5, fontWeight: 700 }}>{label}</div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: C.textPri, fontFamily: mono ? FONT_MONO : FONT_UI, letterSpacing: "-0.01em" }}>{value}</div>
       </div>
     </div>
   );
@@ -719,7 +719,7 @@ function StatusPill({ status }) {
   const { Icon: I, filled } = t;
   return (
     <span style={{
-      fontSize: 11.5, fontWeight: 500, padding: "4px 10px 4px 8px", borderRadius: 99,
+      fontSize: 11.5, fontWeight: 700, padding: "4px 10px 4px 8px", borderRadius: 99,
       background: filled ? C.white : "transparent",
       color: filled ? C.invertText : C.textSec,
       border: `1px solid ${filled ? C.white : C.border}`,
@@ -733,7 +733,7 @@ function StatusPill({ status }) {
 
 function ScoreBadge({ score }) {
   return (
-    <span style={{ fontWeight: 600, fontSize: 14, color: C.textPri, fontFamily: FONT_MONO }}>
+    <span style={{ fontWeight: 700, fontSize: 14, color: C.textPri, fontFamily: FONT_MONO }}>
       {score}<span style={{ fontSize: 10.5, color: C.textMuted, marginLeft: 3, fontFamily: FONT_UI }}>pts</span>
     </span>
   );
@@ -741,7 +741,7 @@ function ScoreBadge({ score }) {
 
 function Th({ children, style, onClick }) {
   return (
-    <th onClick={onClick} style={{ padding: "13px 14px", textAlign: "left", fontSize: 10.5, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap", userSelect: "none", ...style }}>
+    <th onClick={onClick} style={{ padding: "13px 14px", textAlign: "left", fontSize: 10.5, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap", userSelect: "none", ...style }}>
       <span style={{ display: "inline-flex", alignItems: "center" }}>{children}</span>
     </th>
   );
@@ -755,32 +755,36 @@ function Td({ children, style }) {
   );
 }
 
-/* ── Global stylesheet: theme variables + hover/focus
-      states live here so interaction and theme swaps
-      don't trigger React re-renders — keeps the page
-      feeling instant. ── */
+/* ── Global stylesheet: same design-token palette as
+      TeacherProfile / TeacherEAssessments (maroon
+      primary, warm neutrals, Inter type) — kept out of
+      React state so theme swaps don't re-render. ── */
 function GlobalStyle() {
   return (
     <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
       [data-theme='dark'] {
-        --bg:#000000; --surface:#0a0a0a; --card:#0d0d0d; --card-hover:#161616; --elevated:#161616;
-        --border:#1c1c1c; --border-hi:#2e2e2e;
-        --text-pri:#f5f5f5; --text-sec:#8a8a8a; --text-muted:#4a4a4a;
-        --invert:#ffffff; --invert-text:#000000;
-        --selection: rgba(255,255,255,0.2);
-        --shadow-toast: 0 12px 32px rgba(0,0,0,0.6);
-        --shadow-modal: 0 24px 64px rgba(0,0,0,0.7);
-        --backdrop: rgba(0,0,0,0.75);
+        --bg:#0F1115; --surface:#171A21; --card:#171A21; --card-hover:#1D2129; --elevated:#1D2129;
+        --border:#323844; --border-hi:#454C5A;
+        --text-pri:#FFFFFF; --text-sec:#C7CCD6; --text-muted:#9198A6;
+        --invert:#E8A0A8; --invert-text:#2A0A10;
+        --destructive:#FB7185;
+        --selection: rgba(232,160,168,0.25);
+        --shadow-toast: 0 12px 32px rgba(0,0,0,0.5);
+        --shadow-modal: 0 24px 64px rgba(0,0,0,0.55);
+        --backdrop: rgba(0,0,0,0.65);
       }
       [data-theme='light'] {
-        --bg:#fafafa; --surface:#f1f1f1; --card:#ffffff; --card-hover:#f2f2f2; --elevated:#ffffff;
-        --border:#e6e6e6; --border-hi:#d1d1d1;
-        --text-pri:#111111; --text-sec:#6b6b6b; --text-muted:#a8a8a8;
-        --invert:#000000; --invert-text:#ffffff;
-        --selection: rgba(0,0,0,0.12);
-        --shadow-toast: 0 8px 24px rgba(0,0,0,0.1);
-        --shadow-modal: 0 20px 48px rgba(0,0,0,0.16);
-        --backdrop: rgba(0,0,0,0.35);
+        --bg:#F8FAFC; --surface:#FFFFFF; --card:#FFFFFF; --card-hover:#F8FAFC; --elevated:#FFFFFF;
+        --border:#E2E5EA; --border-hi:#C9CED8;
+        --text-pri:#0B0F19; --text-sec:#384152; --text-muted:#64748B;
+        --invert:#8B1E2D; --invert-text:#FFFFFF;
+        --destructive:#DC2626;
+        --selection: rgba(139,30,45,0.15);
+        --shadow-toast: 0 8px 24px rgba(16,24,40,0.1);
+        --shadow-modal: 0 20px 48px rgba(16,24,40,0.16);
+        --backdrop: rgba(11,15,25,0.4);
       }
 
       @keyframes tv-spin { to { transform: rotate(360deg); } }
@@ -805,17 +809,17 @@ function GlobalStyle() {
       .tv-btn-icon { padding: 8px; width: 34px; height: 34px; }
       .tv-btn-ghost { border-color: var(--border); }
       .tv-btn-solid { background: var(--invert); color: var(--invert-text); border-color: var(--invert); font-weight: 600; }
-      .tv-btn-solid:hover { filter: brightness(0.88); }
+      .tv-btn-solid:hover { filter: brightness(0.94); }
 
       .tv-input {
         background: var(--surface); border: 1px solid var(--border); color: var(--text-pri);
         font-family: ${FONT_UI}; outline: none; transition: border-color 0.12s ease;
       }
-      .tv-input:focus { border-color: var(--border-hi); }
+      .tv-input:focus { border-color: var(--invert); }
       .tv-input::placeholder { color: var(--text-muted); }
 
       .tv-textarea { transition: border-color 0.12s ease; }
-      .tv-textarea:focus { outline: none; border-color: var(--border-hi) !important; }
+      .tv-textarea:focus { outline: none; border-color: var(--invert) !important; }
 
       .tv-checkbox {
         appearance: none; -webkit-appearance: none; width: 16px; height: 16px;
@@ -841,7 +845,7 @@ function GlobalStyle() {
 const s = {
   page: {
     minHeight: "100vh", background: C.bg, color: C.textPri,
-    padding: "32px 32px 60px", fontFamily: FONT_UI, maxWidth: 1220, margin: "0 auto",
+    padding: "32px 2.5% 60px", fontFamily: FONT_UI, width: "95%", margin: "0 auto",
     transition: "background-color 0.15s ease, color 0.15s ease",
   },
   spinner: {
@@ -864,28 +868,28 @@ const s = {
     padding: "26px 26px 22px", width: "100%", maxWidth: 440,
     boxShadow: "var(--shadow-modal)",
   },
-  label: { display: "block", fontSize: 12, fontWeight: 500, color: C.textSec, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" },
+  label: { display: "block", fontSize: 11, fontWeight: 700, color: C.textSec, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" },
   textarea: {
     width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
     color: C.textPri, fontSize: 13.5, padding: "10px 13px", resize: "vertical",
     fontFamily: "inherit", boxSizing: "border-box", lineHeight: 1.55,
   },
   header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20, marginBottom: 30 },
-  title: { margin: 0, fontSize: 22, fontWeight: 600, color: C.textPri, letterSpacing: "-0.015em" },
-  subtitle: { margin: "4px 0 0", fontSize: 13, color: C.textSec },
+  title: { margin: 0, fontSize: 22, fontWeight: 800, color: C.textPri, letterSpacing: "-0.015em" },
+  subtitle: { margin: "4px 0 0", fontSize: 13, color: C.textSec, fontWeight: 500 },
   headerActions: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
   searchWrap: { position: "relative", display: "flex", alignItems: "center" },
-  search: { padding: "9px 34px 9px 34px", borderRadius: 8, fontSize: 13.5, minWidth: 210 },
+  search: { padding: "9px 34px 9px 34px", borderRadius: 10, fontSize: 13.5, minWidth: 210 },
   clearBtn: { position: "absolute", right: 9, background: "none", border: "none", color: C.textMuted, cursor: "pointer", padding: 3, display: "flex" },
   selectWrap: { position: "relative", display: "flex", alignItems: "center" },
-  select: { padding: "9px 14px 9px 32px", borderRadius: 8, fontSize: 13.5, cursor: "pointer" },
+  select: { padding: "9px 14px 9px 32px", borderRadius: 10, fontSize: 13.5, cursor: "pointer" },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 10, marginBottom: 26 },
-  statCard: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 },
-  statIconWrap: { width: 36, height: 36, borderRadius: 9, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: C.textPri, flexShrink: 0 },
+  statCard: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 },
+  statIconWrap: { width: 36, height: 36, borderRadius: 10, background: "var(--selection)", color: "var(--invert)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   errorBanner: { background: C.surface, border: `1px solid ${C.borderHi}`, borderRadius: 10, padding: "13px 16px", marginBottom: 18, display: "flex", gap: 11, alignItems: "center", color: C.textPri, fontSize: 13.5 },
   bulkBar: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", gap: 10, alignItems: "center" },
-  tableWrap: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" },
+  tableWrap: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" },
   table: { width: "100%", borderCollapse: "collapse" },
   tableFooter: { padding: "11px 16px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.textMuted },
-  empty: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "56px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" },
+  empty: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "56px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" },
 };

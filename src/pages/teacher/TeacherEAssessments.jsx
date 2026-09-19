@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import API from "../../api";
 
 /* ─────────────────────────────────────────────
-   Design tokens — strict black & white system,
-   light and dark, via CSS custom properties so
-   toggling repaints instantly with no re-render.
+   Design tokens — now shares the same palette as
+   TeacherProfile (maroon primary, warm neutrals,
+   Inter type), applied via CSS custom properties
+   so toggling theme repaints instantly.
 ───────────────────────────────────────────── */
 const C = {
   bg:         "var(--bg)",
@@ -376,26 +377,29 @@ function InfoRow({ label, value }) {
   );
 }
 
-/* ── Global stylesheet: theme variables + interaction
-      states, kept out of React state entirely. ── */
+/* ── Global stylesheet: same design-token palette as
+      TeacherProfile (maroon primary, warm neutrals,
+      Inter type) — kept out of React state entirely. ── */
 function GlobalStyle() {
   return (
     <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
       [data-theme='dark'] {
-        --bg:#000000; --surface:#0a0a0a; --card:#0d0d0d; --card-hover:#161616; --elevated:#161616;
-        --border:#1c1c1c; --border-hi:#2e2e2e;
-        --text-pri:#f5f5f5; --text-sec:#8a8a8a; --text-muted:#4a4a4a;
-        --invert:#ffffff; --invert-text:#000000;
-        --selection: rgba(255,255,255,0.2);
-        --shadow-card: 0 16px 40px rgba(0,0,0,0.35);
+        --bg:#0F1115; --surface:#171A21; --card:#171A21; --card-hover:#1D2129; --elevated:#1D2129;
+        --border:#323844; --border-hi:#454C5A;
+        --text-pri:#FFFFFF; --text-sec:#C7CCD6; --text-muted:#9198A6;
+        --invert:#E8A0A8; --invert-text:#2A0A10;
+        --selection: rgba(232,160,168,0.25);
+        --shadow-card: 0 14px 28px rgba(0,0,0,0.4);
       }
       [data-theme='light'] {
-        --bg:#fafafa; --surface:#f1f1f1; --card:#ffffff; --card-hover:#f2f2f2; --elevated:#ffffff;
-        --border:#e6e6e6; --border-hi:#d1d1d1;
-        --text-pri:#111111; --text-sec:#6b6b6b; --text-muted:#a8a8a8;
-        --invert:#000000; --invert-text:#ffffff;
-        --selection: rgba(0,0,0,0.12);
-        --shadow-card: 0 10px 28px rgba(0,0,0,0.06);
+        --bg:#F8FAFC; --surface:#FFFFFF; --card:#FFFFFF; --card-hover:#F8FAFC; --elevated:#FFFFFF;
+        --border:#E2E5EA; --border-hi:#C9CED8;
+        --text-pri:#0B0F19; --text-sec:#384152; --text-muted:#64748B;
+        --invert:#8B1E2D; --invert-text:#FFFFFF;
+        --selection: rgba(139,30,45,0.15);
+        --shadow-card: 0 10px 28px rgba(16,24,40,0.08);
       }
 
       @keyframes tv-spin { to { transform: rotate(360deg); } }
@@ -418,13 +422,13 @@ function GlobalStyle() {
       .tv-btn-icon { padding: 8px; width: 36px; height: 36px; }
       .tv-btn-ghost { border-color: var(--border); }
       .tv-btn-solid { background: var(--invert); color: var(--invert-text); border-color: var(--invert); font-weight: 600; }
-      .tv-btn-solid:hover { filter: brightness(0.88); }
+      .tv-btn-solid:hover { filter: brightness(0.94); }
 
       .tv-input {
         background: var(--surface); border: 1px solid var(--border); color: var(--text-pri);
         font-family: ${FONT_UI}; outline: none; transition: border-color 0.12s ease;
       }
-      .tv-input:focus { border-color: var(--border-hi); }
+      .tv-input:focus { border-color: var(--invert); }
       .tv-input::placeholder { color: var(--text-muted); }
       select.tv-input { appearance: none; -webkit-appearance: none; cursor: pointer; }
 
@@ -440,11 +444,11 @@ function GlobalStyle() {
 const S = {
   page: {
     minHeight: "100vh",
-    padding: "32px 36px 80px",
+    padding: "32px 2.5% 80px",
     background: C.bg,
     color: C.textPri,
     fontFamily: FONT_UI,
-    maxWidth: 1320,
+    width: "95%",
     margin: "0 auto",
     transition: "background-color 0.15s ease, color 0.15s ease",
   },
@@ -481,15 +485,15 @@ const S = {
     marginBottom: 30,
   },
   pageHeaderLeft: { display: "flex", alignItems: "center", gap: 18 },
-  pageTitle: { margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: "-0.015em", color: C.textPri },
-  pageSubtitle: { margin: "4px 0 0", color: C.textSec, fontSize: 13.5 },
+  pageTitle: { margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.015em", color: C.textPri },
+  pageSubtitle: { margin: "4px 0 0", color: C.textSec, fontSize: 13.5, fontWeight: 500 },
 
   /* Controls */
   controls: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
   searchWrap: { position: "relative", display: "flex", alignItems: "center" },
   searchInput: {
     padding: "9px 34px 9px 34px",
-    borderRadius: 8,
+    borderRadius: 10,
     fontSize: 13.5,
     minWidth: 260,
   },
@@ -497,7 +501,7 @@ const S = {
   selectWrap: { position: "relative", display: "flex", alignItems: "center" },
   select: {
     padding: "9px 14px 9px 32px",
-    borderRadius: 8,
+    borderRadius: 10,
     fontSize: 13.5,
     cursor: "pointer",
   },
@@ -512,25 +516,26 @@ const S = {
   statCard: {
     background: C.card,
     border: `1px solid ${C.border}`,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: "16px 18px",
     display: "flex",
     alignItems: "center",
     gap: 14,
+    boxShadow: "var(--shadow-card)",
   },
   statIconWrap: {
     width: 38,
     height: 38,
-    borderRadius: 9,
-    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    background: "var(--selection)",
+    color: "var(--invert)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: C.textPri,
     flexShrink: 0,
   },
-  statLabel: { margin: 0, fontSize: 10.5, color: C.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" },
-  statValue: { margin: "5px 0 0", fontSize: 24, fontWeight: 600, lineHeight: 1, color: C.textPri, letterSpacing: "-0.01em" },
+  statLabel: { margin: 0, fontSize: 10.5, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" },
+  statValue: { margin: "5px 0 0", fontSize: 24, fontWeight: 800, lineHeight: 1, color: C.textPri, letterSpacing: "-0.01em" },
 
   /* Results meta */
   resultsMeta: {
@@ -539,7 +544,7 @@ const S = {
     justifyContent: "space-between",
     marginBottom: 18,
   },
-  resultsCount: { fontSize: 13, color: C.textMuted, fontWeight: 500 },
+  resultsCount: { fontSize: 13, color: C.textMuted, fontWeight: 600 },
 
   /* Grid */
   grid: {
@@ -556,6 +561,7 @@ const S = {
     padding: 22,
     display: "flex",
     flexDirection: "column",
+    boxShadow: "var(--shadow-card)",
   },
   cardTop: {
     display: "flex",
@@ -565,14 +571,14 @@ const S = {
     marginBottom: 16,
   },
   cardTopLeft: { flex: 1, minWidth: 0 },
-  cardTitle: { margin: "0 0 6px", fontSize: 16.5, fontWeight: 600, lineHeight: 1.3, color: C.textPri, letterSpacing: "-0.01em" },
-  cardSubject: { fontSize: 12.5, color: C.textSec, fontWeight: 500, display: "inline-flex", alignItems: "center" },
+  cardTitle: { margin: "0 0 6px", fontSize: 16.5, fontWeight: 800, lineHeight: 1.3, color: C.textPri, letterSpacing: "-0.01em" },
+  cardSubject: { fontSize: 12.5, color: C.textSec, fontWeight: 600, display: "inline-flex", alignItems: "center" },
   badgeStack: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 },
   statusBadge: {
     padding: "4px 10px 4px 8px",
     borderRadius: 20,
     fontSize: 11.5,
-    fontWeight: 500,
+    fontWeight: 700,
     textTransform: "capitalize",
     whiteSpace: "nowrap",
     display: "inline-flex",
@@ -583,7 +589,7 @@ const S = {
     padding: "2px 2px",
     borderRadius: 20,
     fontSize: 11,
-    fontWeight: 500,
+    fontWeight: 600,
     whiteSpace: "nowrap",
   },
 
@@ -608,15 +614,15 @@ const S = {
     width: 30,
     height: 30,
     borderRadius: 8,
-    border: `1px solid ${C.border}`,
+    background: "var(--selection)",
+    color: "var(--invert)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: C.textPri,
     flexShrink: 0,
   },
-  miniStatLabel: { margin: 0, fontSize: 10, color: C.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" },
-  miniStatValue: { margin: "2px 0 0", fontSize: 17, fontWeight: 600, lineHeight: 1, color: C.textPri, fontFamily: FONT_MONO },
+  miniStatLabel: { margin: 0, fontSize: 10, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" },
+  miniStatValue: { margin: "2px 0 0", fontSize: 17, fontWeight: 800, lineHeight: 1, color: C.textPri, fontFamily: FONT_MONO },
 
   /* Info block */
   infoBlock: {
@@ -634,8 +640,8 @@ const S = {
     borderRadius: 9,
     border: `1px solid ${C.border}`,
   },
-  infoLabel: { fontSize: 12.5, color: C.textMuted, fontWeight: 500 },
-  infoValue: { fontSize: 13, fontWeight: 600, color: C.textPri },
+  infoLabel: { fontSize: 12.5, color: C.textMuted, fontWeight: 600 },
+  infoValue: { fontSize: 13, fontWeight: 700, color: C.textPri },
 
   /* Actions */
   actionsRow: {
@@ -661,7 +667,8 @@ const S = {
     borderRadius: 14,
     gap: 8,
     textAlign: "center",
+    boxShadow: "var(--shadow-card)",
   },
-  emptyTitle: { margin: 0, fontSize: 16, fontWeight: 600, color: C.textPri },
+  emptyTitle: { margin: 0, fontSize: 16, fontWeight: 800, color: C.textPri },
   emptyText: { margin: 0, fontSize: 13.5, color: C.textMuted },
 };
