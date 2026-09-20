@@ -762,36 +762,124 @@ function ViewToggle({ view, onChange }) {
   return <div style={{ display: "flex" }}>{opt("list", "List", ListChecks)}{opt("calendar", "Calendar", CalendarDays)}</div>;
 }
 
+/* ── Official-style timetable table ──
+   One continuous table like the printed institutional timetable:
+   # | Day / Date (merged down the day) | Time | S/N | Subject | Duration | Venue.
+   Break rows (green) are DERIVED from the gap between one session's end
+   and the next session's start on the same day — nothing is entered
+   separately (§5). Used by both the screen List view and the print
+   sheet so they can never drift apart. ── */
+const _utcMins = (v) => {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.getUTCHours() * 60 + d.getUTCMinutes();
+};
+const _clock = (mins) => {
+  const h24 = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  const ap = h24 >= 12 ? "pm" : "am";
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}.${String(m).padStart(2, "0")} ${ap}`;
+};
+const _dur = (mins) => {
+  if (!mins || mins <= 0) return "—";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return [h ? `${h} hour${h > 1 ? "s" : ""}` : "", m ? `${m} minutes` : ""].filter(Boolean).join(" ");
+};
+const _dayLabel = (key) => new Date(`${key}T00:00:00Z`)
+  .toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
+
+function ExamTimetableTable({ byDay, print = false }) {
+  const C = useC();
+  const border = print ? "#7B8494" : C.border;
+  const cell = { padding: "7px 10px", border: `1px solid ${border}`, verticalAlign: "top", textAlign: "left", fontSize: print ? 11.5 : 13 };
+  const head = { ...cell, fontWeight: 700, textTransform: "uppercase", fontSize: print ? 9.5 : 11, letterSpacing: "0.04em", background: print ? "#F1F3F6" : C.bgAlt, color: print ? "#0B0F19" : C.textMuted, verticalAlign: "middle" };
+  const breakBg = "rgba(112,173,71,0.45)";
+
+  let sn = 0;
+  const body = [];
+  byDay.forEach(([key, sessions], dayIdx) => {
+    const rows = [];
+    let prevEnd = null;
+    sessions.forEach((s) => {
+      const st = _utcMins(s.start_time);
+      let en = _utcMins(s.end_time);
+      if (en === null && st !== null && s.duration_minutes) en = st + Number(s.duration_minutes);
+      if (prevEnd !== null && st !== null && st > prevEnd) {
+        rows.push({ type: "break", from: prevEnd, to: st });
+      }
+      rows.push({ type: "exam", s, st, en });
+      if (en !== null) prevEnd = en;
+    });
+
+    rows.forEach((r, i) => {
+      const first = i === 0;
+      const dayCells = first ? (
+        <>
+          <td rowSpan={rows.length} style={{ ...cell, fontWeight: 700, textAlign: "center", width: 34 }}>{dayIdx + 1}.</td>
+          <td rowSpan={rows.length} style={{ ...cell, minWidth: 110 }}>
+            <div style={{ fontWeight: 800, textTransform: "uppercase" }}>{fmtDayName(key)}</div>
+            <div style={{ marginTop: 6, fontWeight: 700 }}>{_dayLabel(key)}</div>
+          </td>
+        </>
+      ) : null;
+
+      if (r.type === "break") {
+        body.push(
+          <tr key={`${key}-b-${i}`}>
+            {dayCells}
+            <td style={{ ...cell, background: breakBg, fontWeight: 700, whiteSpace: "nowrap" }}>{_clock(r.from)} – {_clock(r.to)}</td>
+            <td style={{ ...cell, background: breakBg }} />
+            <td style={{ ...cell, background: breakBg, fontWeight: 700 }}>Break</td>
+            <td style={{ ...cell, background: breakBg, fontWeight: 700 }}>{_dur(r.to - r.from)}</td>
+            <td style={{ ...cell, background: breakBg }} />
+          </tr>
+        );
+      } else {
+        sn += 1;
+        const { s, st, en } = r;
+        const dur = s.duration_minutes ? Number(s.duration_minutes) : (st !== null && en !== null ? en - st : 0);
+        body.push(
+          <tr key={`${key}-s-${s.id}`}>
+            {dayCells}
+            <td style={{ ...cell, whiteSpace: "nowrap" }}>{st !== null ? _clock(st) : "—"}{en !== null ? ` – ${_clock(en)}` : ""}</td>
+            <td style={{ ...cell, textAlign: "center", width: 40 }}>{sn}.</td>
+            <td style={{ ...cell, fontWeight: 700 }}>{s.subject}</td>
+            <td style={cell}>{_dur(dur)}</td>
+            <td style={cell}>{s.venue || "—"}</td>
+          </tr>
+        );
+      }
+    });
+  });
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={{ ...head, textAlign: "center" }}>#</th>
+            <th style={head}>Day / Date</th>
+            <th style={head}>Time</th>
+            <th style={{ ...head, textAlign: "center" }}>S/N</th>
+            <th style={head}>Subject</th>
+            <th style={head}>Duration</th>
+            <th style={head}>Venue</th>
+          </tr>
+        </thead>
+        <tbody>{body}</tbody>
+      </table>
+    </div>
+  );
+}
+
 /* ── List view (§5) — day-grouped table, screen version ── */
 function TimetableListView({ byDay, unscheduled }) {
   const C = useC();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {byDay.map(([key, sessions]) => (
-        <div key={key} style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "10px 14px", background: C.bgAlt, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontWeight: 800, fontSize: 13.5, color: C.textPri }}>{fmtDate(key)}</span>
-            <span style={{ fontSize: 12, color: C.textMuted }}>{fmtDayName(key)}</span>
-            <span style={{ marginLeft: "auto", fontSize: 12, color: C.textMuted }}>{sessions.length} subject{sessions.length === 1 ? "" : "s"}</span>
-          </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-            <thead>
-              <tr><Th>Time</Th><Th>Subject</Th><Th>Duration</Th><Th>Venue</Th><Th>Status</Th></tr>
-            </thead>
-            <tbody>
-              {sessions.map((s) => (
-                <tr key={s.id}>
-                  <Td>{fmtTime(s.start_time)}–{fmtTime(s.end_time)}</Td>
-                  <Td style={{ fontWeight: 700, color: C.textPri }}>{s.subject}</Td>
-                  <Td>{s.duration_minutes ? `${s.duration_minutes} min` : "—"}</Td>
-                  <Td>{s.venue || "—"}</Td>
-                  <Td><LifecycleBadge status={s.status} /></Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {byDay.length > 0 && <ExamTimetableTable byDay={byDay} />}
 
       {unscheduled.length > 0 && (
         <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
@@ -984,24 +1072,7 @@ function TimetablePrintSheet({ examination, byDay, unscheduled }) {
         {"  ·  "}{fmtDate(examination?.start_date)} — {fmtDate(examination?.end_date)}
       </div>
 
-      {byDay.map(([key, sessions]) => (
-        <div key={key}>
-          <h3>{fmtDate(key)} — {fmtDayName(key)}</h3>
-          <table>
-            <thead><tr><th>Time</th><th>Subject</th><th>Duration</th><th>Venue</th></tr></thead>
-            <tbody>
-              {sessions.map((s) => (
-                <tr key={s.id}>
-                  <td>{fmtTime(s.start_time)}–{fmtTime(s.end_time)}</td>
-                  <td>{s.subject}</td>
-                  <td>{s.duration_minutes ? `${s.duration_minutes} min` : "—"}</td>
-                  <td>{s.venue || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {byDay.length > 0 && <ExamTimetableTable byDay={byDay} print />}
 
       {unscheduled.length > 0 && (
         <div>
