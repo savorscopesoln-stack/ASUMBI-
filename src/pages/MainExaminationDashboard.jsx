@@ -496,11 +496,11 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
               <ModalInput type="date" value={form.exam_date} onChange={(v) => setForm((f) => ({ ...f, exam_date: v }))} />
             </div>
             <div>
-              <FieldLabel>Start Time</FieldLabel>
+              <FieldLabel>Start Time (EAT)</FieldLabel>
               <ModalInput type="time" value={form.start_clock} onChange={(v) => setForm((f) => ({ ...f, start_clock: v }))} />
             </div>
             <div>
-              <FieldLabel>End Time</FieldLabel>
+              <FieldLabel>End Time (EAT)</FieldLabel>
               <ModalInput type="time" value={form.end_clock} onChange={(v) => setForm((f) => ({ ...f, end_clock: v }))} />
             </div>
           </div>
@@ -1010,7 +1010,7 @@ function TimetableCalendarView({ byDay, sorted }) {
             <span style={{ fontSize: 12, color: C.textMuted }}>{fmtDayName(selectedKey)}</span>
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-            <thead><tr><Th>Time</Th><Th>Subject</Th><Th>Duration</Th><Th>Venue</Th><Th>Status</Th></tr></thead>
+            <thead><tr><Th>Time (EAT)</Th><Th>Subject</Th><Th>Duration</Th><Th>Venue</Th><Th>Status</Th></tr></thead>
             <tbody>
               {selectedSessions.map((s) => (
                 <tr key={s.id}>
@@ -1822,8 +1822,8 @@ function CandidateScheduleReportView({ data }) {
         columns={[
           { key: "subject", label: "Subject", strong: true },
           { key: "exam_date", label: "Date", fmt: (v) => fmtDate(v) },
-          { key: "start_time", label: "Start", fmt: (v) => fmtTime(v) },
-          { key: "end_time", label: "End", fmt: (v) => fmtTime(v) },
+          { key: "start_time", label: "Start (EAT)", fmt: (v) => fmtTime(v) },
+          { key: "end_time", label: "End (EAT)", fmt: (v) => fmtTime(v) },
           { key: "venue", label: "Venue" },
           { key: "status", label: "Status" },
         ]}

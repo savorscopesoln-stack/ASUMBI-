@@ -396,12 +396,14 @@ export const globalStyles = `
 // 9:00): every start_time/end_time this app hands to these formatters
 // is a mssql DATETIME column round-tripped with the driver's default
 // useUTC:true — the column's literal wall-clock digits (what the admin
-// typed) are what come back labeled as a "Z" UTC instant (see
-// toDateTime() in examSubjectSession.controller.js). Formatting that
-// with the *viewer's local browser timezone* (the old `undefined`
-// default) re-shifted it by however far that browser's clock sits from
-// UTC. Pinning timeZone: "UTC" here makes every viewer, on any device
-// in any timezone, see the exact same wall-clock time that's stored —
+// typed, in East Africa Time — see the "Start Time (EAT)"/"End Time
+// (EAT)" fields in MainExaminationDashboard.jsx) are what come back
+// labeled as a "Z" UTC instant (see toDateTime() in
+// examSubjectSession.controller.js). Formatting that with the
+// *viewer's local browser timezone* (the old `undefined` default)
+// re-shifted it by however far that browser's clock sits from UTC.
+// Pinning timeZone: "UTC" here makes every viewer, on any device in
+// any timezone, see the exact same EAT wall-clock time that's stored —
 // which is what a fixed exam schedule needs anyway.
 export function fmtDate(v) {
   if (!v) return "—";
