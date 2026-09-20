@@ -141,15 +141,19 @@ export default function StudentMainExamTimetable() {
     })();
   }, [mainExamId]);
 
+  // timeZone: "UTC" — see the matching note on fmtTime/fmtDate in
+  // components/mainExams/shared.jsx. Without it this showed students a
+  // start time shifted by their own device's timezone instead of the
+  // actual scheduled wall-clock time.
   const fmtDate = (v) => {
     if (!v) return "—";
     const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
   };
   const fmtTime = (v) => {
     if (!v) return "—";
     const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
   };
 
   return (

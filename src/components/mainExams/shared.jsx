@@ -392,18 +392,29 @@ export const globalStyles = `
   .btn-hover:hover { filter: brightness(0.97); }
 `;
 
+// BUGFIX (times off by a fixed number of hours, e.g. 7:00 shown as
+// 9:00): every start_time/end_time this app hands to these formatters
+// is a mssql DATETIME column round-tripped with the driver's default
+// useUTC:true — the column's literal wall-clock digits (what the admin
+// typed) are what come back labeled as a "Z" UTC instant (see
+// toDateTime() in examSubjectSession.controller.js). Formatting that
+// with the *viewer's local browser timezone* (the old `undefined`
+// default) re-shifted it by however far that browser's clock sits from
+// UTC. Pinning timeZone: "UTC" here makes every viewer, on any device
+// in any timezone, see the exact same wall-clock time that's stored —
+// which is what a fixed exam schedule needs anyway.
 export function fmtDate(v) {
   if (!v) return "—";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 export function fmtTime(v) {
   if (!v) return "—";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 }
 
 export function fmtDateTime(v) {
@@ -416,19 +427,23 @@ export function fmtDayName(v) {
   if (!v) return "";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { weekday: "long" });
+  return d.toLocaleDateString(undefined, { weekday: "long", timeZone: "UTC" });
 }
 
-// Local YYYY-MM-DD key (not UTC — a DATE/DATETIME column read back from
-// SQL Server via mssql already lands in local time, and grouping by
-// calendar day must follow that, not getTime()). Used to group subject
-// sessions by day for both the Calendar grid and the List/print table.
+// Calendar-day key, read with UTC getters for the same reason as above:
+// the Date object's "local" component getters depend on the viewer's
+// browser timezone, but the value stored/returned is a UTC-labeled
+// wall clock, not a real UTC instant — grouping by getFullYear/getDate
+// (local) could silently roll a session into the wrong day for a
+// viewer in a different timezone than whoever scheduled it. Used to
+// group subject sessions by day for both the Calendar grid and the
+// List/print table.
 export function dateKeyOf(v) {
   if (!v) return null;
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }

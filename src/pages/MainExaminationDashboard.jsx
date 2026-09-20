@@ -9,6 +9,7 @@ import {
   Table2, PlayCircle, CalendarDays, ChevronLeft, ChevronRight, Printer,
   ChevronDown, Search, UserCircle2, HelpCircle, Gauge, Timer, ClipboardCheck,
   AlertCircle, Target, Download, FileSpreadsheet, Building2, Eye, X,
+  Key, Copy, RotateCw,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -339,9 +340,17 @@ function splitDateTime(dtStr) {
   const d = new Date(dtStr);
   if (Number.isNaN(d.getTime())) return { date: "", time: "" };
   const pad = (n) => String(n).padStart(2, "0");
+  // BUGFIX: use the UTC getters, not the local ones. The API always
+  // returns this value as an ISO string with a trailing "Z" (the JSON
+  // serialization of a Date), and that "Z" instant is exactly the
+  // wall-clock the admin typed (see toDateTime() in
+  // examSubjectSession.controller.js). Reading it back with getHours()/
+  // getFullYear() re-interprets it through whatever timezone the
+  // viewer's *browser* happens to be set to, which silently shifted the
+  // time shown in this edit form away from what was actually saved.
   return {
-    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    date: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`,
+    time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`,
   };
 }
 
@@ -579,6 +588,77 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
    an institution header. No separate fetch/state per view — all
    three read the same `subjects` prop the dashboard already loaded.
 ═══════════════════════════════════════════════════════════ */
+/* ── Exam code — lets the whole Main Examination (every subject's
+   questions/roster + the timetable) be pulled onto the local exam
+   server in one shot via GET /local-sync/pull-exam/:examCode, instead
+   of authorizing/pulling each subject's assessment individually. See
+   generateExamCode() in mainExam.controller.js and pullExamPackage()
+   in syncController.js. ── */
+function ExamCodeCard({ id, examination, onChanged, showToast }) {
+  const C = useC();
+  const [busy, setBusy] = useState(false);
+  const code = examination?.exam_code || null;
+
+  const generate = async (regenerate) => {
+    try {
+      setBusy(true);
+      const { data } = await API.post(`/main-exams/${id}/exam-code`, regenerate ? { regenerate: true } : {});
+      showToast(regenerate ? "New exam code generated — the old code will no longer work." : "Exam code ready");
+      onChanged();
+      return data?.exam_code;
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to generate exam code", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyCode = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      showToast("Exam code copied");
+    } catch {
+      showToast("Couldn't copy — copy it manually", "error");
+    }
+  };
+
+  return (
+    <div
+      className="no-print"
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
+        padding: "12px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.bgAlt, marginBottom: 14,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <Key size={16} color={C.textMuted} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, color: C.textMuted }}>Exam code (for the local exam server)</div>
+          {code ? (
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: 2, color: C.textPri, fontFamily: "monospace" }}>{code}</div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: C.textSec }}>Not generated yet — the whole exam can't be pulled offline until it is.</div>
+          )}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {code && (
+          <ActionButton icon={<Copy size={14} />} onClick={copyCode}>Copy</ActionButton>
+        )}
+        <ActionButton
+          primary={!code}
+          icon={code ? <RotateCw size={14} /> : <Key size={14} />}
+          onClick={() => generate(!!code)}
+          disabled={busy}
+        >
+          {busy ? "Working…" : code ? "Regenerate" : "Generate Exam Code"}
+        </ActionButton>
+      </div>
+    </div>
+  );
+}
+
 function TimetableTab({ id, subjects, examination, onChanged, showToast }) {
   const C = useC();
   const [publishing, setPublishing] = useState(false);
@@ -621,6 +701,7 @@ function TimetableTab({ id, subjects, examination, onChanged, showToast }) {
 
   return (
     <div>
+      <ExamCodeCard id={id} examination={examination} onChanged={onChanged} showToast={showToast} />
       <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <p style={{ margin: 0, fontSize: 13, color: C.textSec }}>
           Derived directly from the scheduled subjects — nothing here is entered separately (§5).
@@ -1530,28 +1611,45 @@ function NominalRollTable({ data }) {
   const rows = nr.rows || [];
   if (!rows.length) return <EmptyState icon={<FileText size={22} />} text="No registered candidates found for this examination." />;
   return (
-    <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 10 }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead><tr>
-          <Th>Position</Th><Th>Assessment No.</Th><Th>G</Th><Th>Name</Th>
-          {subjects.map((s) => <Th key={s.session_id}>{s.subject}</Th>)}
-          <Th>Average %</Th>
-        </tr></thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.student_id}>
-              <Td>{r.class_position ?? "—"}</Td>
-              <Td>{r.admission_no || "—"}</Td>
-              <Td>{r.gender || "—"}</Td>
-              <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
-              {r.marks.map((m, i) => (
-                <Td key={i}>{m.not_registered || m.score == null ? "—" : m.score}</Td>
-              ))}
-              <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
-            </tr>
+    <div>
+      <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 10 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <Th>Position</Th><Th>Assessment No.</Th><Th>G</Th><Th>Name</Th>
+            {subjects.map((s) => <Th key={s.session_id} title={s.subject}>{s.code}</Th>)}
+            <Th>Average %</Th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.student_id}>
+                <Td>{r.class_position ?? "—"}</Td>
+                <Td>{r.admission_no || "—"}</Td>
+                <Td>{r.gender || "—"}</Td>
+                <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
+                {r.marks.map((m, i) => (
+                  <Td key={i}>{m.not_registered || m.score == null ? "—" : m.score}</Td>
+                ))}
+                <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* Key — column headers above are short codes (this schema has no
+          subject-code table, so they're generated per exam; see
+          assignSubjectCodes() in mainExamAnalytics.controller.js), so
+          the roll always ships with what each code means. */}
+      {subjects.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 12.5, color: C.textSec }}>
+          <span style={{ fontWeight: 600, color: C.textPri }}>Key: </span>
+          {subjects.map((s, i) => (
+            <span key={s.session_id}>
+              <strong style={{ color: C.textPri }}>{s.code}</strong> = {s.subject}
+              {i < subjects.length - 1 ? " · " : ""}
+            </span>
           ))}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -1846,7 +1944,7 @@ function AnalyticsTab({ id, subjects, classes, showToast }) {
             <SmallStat label="Highest" value={performance.highest != null ? `${performance.highest}%` : "—"} icon={<TrendingUp size={16} />} tone="success" />
             <SmallStat label="Lowest" value={performance.lowest != null ? `${performance.lowest}%` : "—"} icon={<TrendingUp size={16} />} tone="danger" />
             <SmallStat label="Std. Deviation" value={performance.std_dev != null ? performance.std_dev : "Not enough data"} icon={<BarChart3 size={16} />} />
-            <SmallStat label="Pass Rate" value="Unavailable" icon={<Target size={16} />} subtext={performance.pass_rate_note} />
+            <SmallStat label="Pass Rate" value={performance.pass_rate != null ? `${performance.pass_rate}%` : "Unavailable"} icon={<Target size={16} />} subtext={performance.pass_rate_note} />
           </div>
 
           {/* ── Grade distribution (§16) ── */}
@@ -2096,7 +2194,7 @@ function SubjectAnalyticsView({ label, loading, data, onBack }) {
         <SmallStat label="Median" value={perf.median != null ? `${perf.median}%` : "Not enough data"} icon={<Gauge size={16} />} />
         <SmallStat label="Highest" value={perf.highest != null ? `${perf.highest}%` : "—"} icon={<TrendingUp size={16} />} tone="success" />
         <SmallStat label="Lowest" value={perf.lowest != null ? `${perf.lowest}%` : "—"} icon={<TrendingUp size={16} />} tone="danger" />
-        <SmallStat label="Pass Rate" value="Unavailable" icon={<Target size={16} />} subtext={perf.pass_rate_note} />
+        <SmallStat label="Pass Rate" value={perf.pass_rate != null ? `${perf.pass_rate}%` : "Unavailable"} icon={<Target size={16} />} subtext={perf.pass_rate_note} />
       </div>
 
       <SectionHeader title="Topic / Competency Analytics" />
