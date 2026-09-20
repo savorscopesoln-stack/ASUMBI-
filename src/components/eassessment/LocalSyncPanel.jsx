@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import API from "../../api"; // adjust relative path to wherever api.js lives from this file's location
 import {
   Server, PlusCircle, ShieldOff, RotateCw, CheckCircle2, AlertTriangle,
-  XCircle, Loader2, ArrowDownCircle, ArrowUpCircle, Clock, Copy, ClipboardCheck,
+  XCircle, Loader2, ArrowDownCircle, ArrowUpCircle, Clock, Copy, ClipboardCheck, Trash2, X,
 } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the rest
@@ -158,6 +158,30 @@ export default function LocalSyncPanel({ assessments = [] }) {
       loadAll();
     } catch (err) {
       alert(err?.response?.data?.message || "Failed to create device");
+    }
+  };
+
+  // Sync-activity history only — never touches devices, tokens or any
+  // pulled/pushed exam data (see deleteSyncLogs in syncController.js).
+  const handleDeleteLogs = async (scope) => {
+    const msg = scope === "failed"
+      ? "Delete all FAILED entries from the sync activity log?"
+      : "Delete the ENTIRE sync activity log? Devices and exam data are not affected.";
+    if (!window.confirm(msg)) return;
+    try {
+      await API.delete(`/local-sync/logs?scope=${scope}`);
+      loadAll();
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to delete logs");
+    }
+  };
+
+  const handleDeleteLog = async (id) => {
+    try {
+      await API.delete(`/local-sync/logs/${id}`);
+      setLogs((prev) => prev.filter((l) => l.id !== id));
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to delete log entry");
     }
   };
 
@@ -344,6 +368,17 @@ export default function LocalSyncPanel({ assessments = [] }) {
         <div style={S.panelHeader}>
           <Clock size={16} color="var(--text-secondary)" />
           <h3 style={S.panelTitle}>Recent sync activity</h3>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={loadAll} className="profile-btn" style={S.smallBtnGhost}>Refresh</button>
+            <button onClick={() => handleDeleteLogs("failed")} disabled={!logs.some((l) => l.status === "error")} className="profile-btn"
+              style={{ ...S.smallBtnGhost, opacity: logs.some((l) => l.status === "error") ? 1 : 0.5 }}>
+              Delete failed
+            </button>
+            <button onClick={() => handleDeleteLogs("all")} disabled={!logs.length} className="profile-btn"
+              style={{ ...S.smallBtnGhost, color: "var(--destructive)", opacity: logs.length ? 1 : 0.5 }}>
+              <Trash2 size={12} style={{ verticalAlign: -1, marginRight: 4 }} />Delete all
+            </button>
+          </div>
         </div>
         <p style={{ margin: "-6px 0 12px", fontSize: 12, color: "var(--text-muted)" }}>
           Every pull and push attempt across all devices — successes and failures, with why.
@@ -358,6 +393,7 @@ export default function LocalSyncPanel({ assessments = [] }) {
                 <th style={S.th}>Records</th>
                 <th style={S.th}>Status</th>
                 <th style={S.th}>Details</th>
+                <th style={S.th}></th>
               </tr>
             </thead>
             <tbody>
@@ -375,10 +411,15 @@ export default function LocalSyncPanel({ assessments = [] }) {
                   <td style={{ ...S.td, color: l.status === "error" ? "var(--destructive)" : "var(--text-muted)", maxWidth: 320 }}>
                     {l.message || (l.status === "ok" ? "—" : "No further detail")}
                   </td>
+                  <td style={S.td}>
+                    <button onClick={() => handleDeleteLog(l.id)} title="Delete this entry" className="profile-btn" style={{ ...S.smallBtnGhost, padding: "4px 7px" }}>
+                      <X size={12} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {!logs.length && (
-                <tr><td colSpan={6} style={{ ...S.td, color: "var(--text-muted)", textAlign: "center" }}>No sync activity yet.</td></tr>
+                <tr><td colSpan={7} style={{ ...S.td, color: "var(--text-muted)", textAlign: "center" }}>No sync activity yet.</td></tr>
               )}
             </tbody>
           </table>
