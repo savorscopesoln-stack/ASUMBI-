@@ -1726,21 +1726,21 @@ function NominalRollTable({ data }) {
 }
 
 function TimetableReportView({ data }) {
+  const byDay = useMemo(() => {
+    const sorted = [...(data.timetable || [])].sort((x, y) => new Date(x.start_time || x.exam_date || 0) - new Date(y.start_time || y.exam_date || 0));
+    const groups = new Map();
+    sorted.forEach((s) => {
+      const key = dateKeyOf(s.exam_date || s.start_time);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push({ ...s, id: s.id ?? s.session_id ?? `${key}-${s.subject}` });
+    });
+    return [...groups.entries()].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+  }, [data.timetable]);
   return (
     <div>
       {data.examination && <ReportHeadline items={[["Examination", data.examination.name]]} />}
-      <RowsTable
-        rows={data.timetable}
-        emptyText="No subjects scheduled yet."
-        columns={[
-          { key: "subject", label: "Subject", strong: true },
-          { key: "exam_date", label: "Date", fmt: (v) => fmtDate(v) },
-          { key: "start_time", label: "Start", fmt: (v) => fmtTime(v) },
-          { key: "end_time", label: "End", fmt: (v) => fmtTime(v) },
-          { key: "venue", label: "Venue" },
-          { key: "status", label: "Status" },
-        ]}
-      />
+      {byDay.length === 0 ? <EmptyState icon={<Table2 size={22} />} text="No subjects scheduled yet." /> : <ExamTimetableTable byDay={byDay} />}
     </div>
   );
 }
