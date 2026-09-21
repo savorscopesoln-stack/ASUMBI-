@@ -166,6 +166,24 @@ const injectExamStyles = () => {
       50%      { box-shadow: 0 0 14px 3px var(--destructive); }
     }
     .eyes-off-flash { animation: eyesOffFlash 0.6s ease-in-out infinite; }
+
+    /* ── active-exam container sizing ──
+       When a single assessment is being taken, the page used to sit
+       at a flat 900px max-width regardless of viewport, which reads
+       as oversized/empty on wide screens. On large displays the
+       container now caps at roughly a third of the viewport width;
+       it steps back up on narrower screens so the exam stays usable
+       on tablets/phones. */
+    .exam-page-container { max-width: 900px; }
+    @media (min-width: 1440px) {
+      .exam-page-container { max-width: 33vw; min-width: 480px; }
+    }
+    @media (min-width: 1100px) and (max-width: 1439px) {
+      .exam-page-container { max-width: 560px; }
+    }
+    @media (max-width: 720px) {
+      .exam-page-container { max-width: 100%; }
+    }
   `;
   document.head.appendChild(el);
 };
@@ -185,8 +203,8 @@ const REVEAL_SECONDS = 15; // minimum time the student must sit with the token b
    an error and stop; this adds the same bounded 15-second retry window
    with backoff + jitter for TRANSIENT failures only:
      - retry on no response at all (the request never reached the
-       server — connection refused/reset/timeout) or HTTP
-       408/429/500/502/503/504
+        server — connection refused/reset/timeout) or HTTP
+        408/429/500/502/503/504
      - stop immediately on anything else (a real 400/404/423/409 is
        never retried — those already have their own specific handling
        below and retrying them would just repeat the same rejection) */
@@ -1215,13 +1233,22 @@ export default function TakeEAssessment() {
   ═══════════════════════════════════════════════════════════ */
 
   /* ── step 0: username + this assessment's exam password —
-       no portal account login required ── */
+       no portal account login required.
+       Deliberately styled apart from the student-portal login (info-
+       blue accent + an "EXAM ACCESS" badge instead of the app's usual
+       primary/maroon look), so a student can tell at a glance this is
+       a separate, exam-only sign-in — not their regular portal login.
+       The "log in instead" link to the portal login has been removed:
+       this screen is exam-only and shouldn't route students toward
+       their portal credentials, which must never be sufficient to
+       open an exam (see hasUsableSession above). ── */
   if (phase === "examlogin") {
     return (
       <div className="dash-main" style={S.stateWrap}>
-        <form className="dash-card" style={S.panelCard} onSubmit={handleExamLogin}>
-          <div style={{ ...S.iconCircle, background: "var(--primary-tint)" }}>
-            <LogIn size={26} color="var(--primary)" />
+        <form className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--info)" }} onSubmit={handleExamLogin}>
+          <span style={S.examAccessBadge}>Exam Access</span>
+          <div style={{ ...S.iconCircle, background: "var(--info-tint)" }}>
+            <LogIn size={26} color="var(--info)" />
           </div>
           <h2 style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Sign In to Take This Assessment</h2>
           <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
@@ -1262,17 +1289,12 @@ export default function TakeEAssessment() {
           )}
 
           <button
-            style={{ ...S.primaryBtn, marginTop: 18 }}
+            style={{ ...S.primaryBtn, background: "var(--info)", marginTop: 18 }}
             type="submit"
             disabled={examLoggingIn || !examUsername.trim() || !examPasswordInput.trim()}
           >
             {examLoggingIn ? "Signing in…" : "Continue to Exam"}
           </button>
-
-          <p style={{ color: "var(--text-muted)", fontSize: 11.5, margin: "14px 0 0", textAlign: "center" }}>
-            Already have a student portal account?{" "}
-            <a href="/login" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>Log in instead</a>
-          </p>
         </form>
         <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
@@ -1443,7 +1465,7 @@ export default function TakeEAssessment() {
 
   /* ── active exam ── */
   return (
-    <main className="dash-main" style={S.page}>
+    <main className="dash-main exam-page-container" style={S.page}>
       <div className="exam-top-bar" style={S.topBar}>
         <div>
           <h1 style={S.examTitle}>{assessment?.title}</h1>
@@ -1642,7 +1664,10 @@ const S = {
     color: "var(--text)",
     minHeight: "100vh",
     fontFamily: "'Inter', system-ui, sans-serif",
-    maxWidth: 900,
+    // Static maxWidth removed — sizing is now handled responsively by
+    // the .exam-page-container class (see injectExamStyles above),
+    // which caps the exam view at roughly a third of the viewport on
+    // large screens instead of a flat, oversized 900px.
     margin: "0 auto",
     boxSizing: "border-box",
   },
@@ -1788,6 +1813,16 @@ const S = {
     background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
     padding: "34px 30px", maxWidth: 420, width: "100%", display: "flex", flexDirection: "column",
     alignItems: "center", boxShadow: "var(--shadow)",
+  },
+  // Small pill badge shown only on the exam-login screen so it reads
+  // as visually distinct from the regular student-portal login.
+  examAccessBadge: {
+    display: "inline-flex", alignItems: "center",
+    background: "var(--info-tint)", color: "var(--info)",
+    border: "1px solid var(--info)", borderRadius: 999,
+    padding: "3px 10px", fontSize: 10.5, fontWeight: 800,
+    letterSpacing: "0.06em", textTransform: "uppercase",
+    marginBottom: 14,
   },
   iconCircle: {
     width: 54, height: 54, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
