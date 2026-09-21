@@ -5,7 +5,7 @@ import { useTheme } from "../../context/ThemeContext";
 import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
-  Camera, CameraOff, Eye, EyeOff,
+  Camera, CameraOff, Eye, EyeOff, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
@@ -40,6 +40,17 @@ import {
         facing the screen (best-effort, and deliberately scoped
         honestly — see the note above the EYES_OFF_LIMIT_MS
         constant below for exactly what this can and can't detect).
+        Camera access is now REQUIRED to start the exam (checked
+        at "Start Exam" time, before the token is spent). Unlike
+        the detectors in point 3, this check deliberately never
+        locks or interrupts the exam by itself — a false positive
+        (bad lighting, a webcam blip) shouldn't cost a student
+        their sitting. Instead, every time the student's eyes are
+        off the screen it keeps quietly capturing a timestamped,
+        captioned snapshot from their own camera feed and uploading
+        it to the server for an invigilator to review after the
+        fact — continuously, for as long as the condition persists,
+        not just once.
    ═════════════════════════════════════════════════════════ */
 
 /* ─── shared design-token stylesheet ───
@@ -143,6 +154,13 @@ const injectExamStyles = () => {
     }
     .exam-option-row:hover { border-color: var(--primary) !important; }
 
+    /* Rich-text essay box (EssayEditor) — the empty-state placeholder
+       needs a real stylesheet rule (:empty:before), which an inline
+       React style object can't express. */
+    .essay-content:empty:before { content: attr(data-placeholder); color: var(--text-muted); }
+    .essay-content sub { vertical-align: sub; font-size: 0.75em; }
+    .essay-content sup { vertical-align: super; font-size: 0.75em; }
+
     @keyframes eyesOffFlash {
       0%, 100% { box-shadow: 0 0 0 0 var(--destructive); }
       50%      { box-shadow: 0 0 14px 3px var(--destructive); }
@@ -155,6 +173,33 @@ const injectExamStyles = () => {
 const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
 const REVEAL_SECONDS = 15; // minimum time the student must sit with the token before continuing
+
+/* ── START-EXAM RETRY CONFIG — ported from exam.html's exam-login retry
+   block. There, it wraps the kiosk's own username/password login call;
+   this build has no separate exam-login step (the student is already
+   authenticated into the portal), so the equivalent single-shot,
+   thundering-herd-prone request here is POST /start-exam in bootStart
+   below — the first exam-specific call a student makes, and the one
+   every student in a class is likely to fire within the same second
+   the moment a timed assessment opens. A failed call used to just show
+   an error and stop; this adds the same bounded 15-second retry window
+   with backoff + jitter for TRANSIENT failures only:
+     - retry on no response at all (the request never reached the
+       server — connection refused/reset/timeout) or HTTP
+       408/429/500/502/503/504
+     - stop immediately on anything else (a real 400/404/423/409 is
+       never retried — those already have their own specific handling
+       below and retrying them would just repeat the same rejection) */
+const START_EXAM_RETRY_WINDOW_MS = 15000;
+const START_EXAM_RETRY_BASE_DELAY_MS = 400;
+const START_EXAM_RETRY_MAX_DELAY_MS = 2000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableStartExamError = (err) => {
+  if (!err?.response) return true; // axios never got a response at all
+  return [408, 429, 500, 502, 503, 504].includes(err.response.status);
+};
 
 /* ── webcam eye/gaze monitoring ──────────────────────────────────
    HONEST SCOPE NOTE: a browser has no reliable way to compute exact
@@ -186,17 +231,31 @@ const REVEAL_SECONDS = 15; // minimum time the student must sit with the token b
    time, it feeds into the exact same registerViolation() escalation
    path as the other detectors above (tab-switch, devtools, etc.), so
    it counts toward the same 3-strikes lockout.
-   Camera access is requested but never made mandatory to start the
-   exam — a student without a webcam, or who denies the permission,
-   simply continues without this particular check (a one-time notice
-   is shown, not an error) rather than being locked out of an exam
-   entirely over a hardware/permission issue outside their control. */
+   Camera access IS mandatory to start the exam (see the mandatory
+   check inside handleVerifySubmit below) — but denial/loss of the
+   camera AFTER the exam is already running still never locks or
+   ends it by itself; it just turns this one check off with a
+   one-time notice, same spirit as everything else in this file:
+   a hardware/permission hiccup outside the student's control should
+   never cost them their sitting. What it no longer does is feed
+   into the 3-strikes lockout at all — see registerViolation() calls
+   (or rather, the deliberate absence of one) below. */
 const EYES_OFF_LIMIT_MS = 10000;
 const FACE_CHECK_INTERVAL_MS = 1000;
 const EAR_CLOSED_THRESHOLD = 0.20;   // below this, an eye counts as closed (typical open EAR is ~0.28-0.35)
 const YAW_OFFSET_LIMIT = 0.16;       // how far the nose may sit off-center (as a fraction of face width) before "turned away"
 const FACE_API_SCRIPT_SRC = "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js";
 const FACE_API_MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights";
+// "ideal" (not exact) so a webcam that can't do 640x480 still connects at
+// its own best resolution instead of getUserMedia() failing outright.
+// 640x480 (up from the previous 320x240) gives the face detector more to
+// work with and makes the saved violation photos legible instead of a
+// postage stamp.
+const CAMERA_VIDEO_CONSTRAINTS = { width: { ideal: 640 }, height: { ideal: 480 } };
+// How often another evidence photo is captured while the student's eyes
+// stay off the screen, continuously, for as long as the condition lasts —
+// this is the "keep photographing" behavior instead of locking.
+const VIOLATION_PHOTO_INTERVAL_MS = 5000;
 
 /* Distance between two face-api.js landmark points ({x,y}). */
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -248,6 +307,13 @@ const getDeviceId = () => {
 };
 
 const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
+
+// Ported from exam.html's answersKey/saveAnswer — the React build never
+// persisted in-progress answers anywhere, so a refresh mid-exam (which
+// already re-runs the whole reveal/verify flow from scratch, see the
+// boot effect below) silently lost every answer the student had entered
+// so far. Scoped per-assessment, same as the lock key beside it.
+const answersKey = (assessmentId) => `exam_answers_${assessmentId}`;
 
 /* Loads the face-api.js UMD bundle from CDN exactly once, however many
    times this is called (e.g. StrictMode double-invoke, remounts) — the
@@ -319,6 +385,116 @@ const hasUsableSession = (assessmentId) => {
   return true;
 };
 
+/* ── rich-text essay answer box — ported from exam.html's essay
+   toolbar (contenteditable + document.execCommand). A plain <textarea>
+   used to be the only essay input in this build, so students couldn't
+   format an answer at all; this brings it in line with the kiosk.
+
+   Deliberately its own component, not inline JSX in the parent: the
+   parent re-renders every second (the exam timer ticks via state), and
+   a contentEditable node must NEVER have its content re-driven by
+   React on a render it didn't cause itself — that resets the cursor
+   position and can wipe what the student is mid-typing. Content is
+   seeded into the DOM imperatively, once per question (the effect
+   below, keyed on `id`), and never touched again except by the
+   student's own typing or a toolbar command — never by a JSX prop. */
+function EssayEditor({ id, initialValue, onChange }) {
+  const contentRef = useRef(null);
+  const [activeCmds, setActiveCmds] = useState({});
+  const [wordCount, setWordCount] = useState(0);
+  const [charCount, setCharCount] = useState(0);
+
+  const countFrom = (el) => {
+    const text = el?.textContent || "";
+    setWordCount(text.trim().length ? text.trim().split(/\s+/).length : 0);
+    setCharCount(text.length);
+  };
+
+  // Seed this question's saved answer into the DOM exactly once per
+  // question (id change = a fresh mount, thanks to key={q.id} on the
+  // wrapper below) — never re-run from a parent re-render alone.
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.innerHTML = initialValue || "";
+      countFrom(contentRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  const updateToolbarState = () => {
+    const next = {};
+    ["bold", "italic", "underline", "strikeThrough", "subscript", "superscript", "insertUnorderedList", "insertOrderedList"].forEach((cmd) => {
+      try { next[cmd] = document.queryCommandState(cmd); } catch { /* unsupported in this browser — leave un-toggled */ }
+    });
+    setActiveCmds(next);
+  };
+
+  const runCommand = (cmd) => {
+    if (!contentRef.current) return;
+    contentRef.current.focus();
+    document.execCommand(cmd, false, null);
+    onChange(contentRef.current.innerHTML);
+    countFrom(contentRef.current);
+    updateToolbarState();
+  };
+
+  const TOOLBAR = [
+    { cmd: "undo", label: "↶", title: "Undo" },
+    { cmd: "redo", label: "↷", title: "Redo" },
+    { sep: true },
+    { cmd: "bold", label: <b>B</b>, title: "Bold" },
+    { cmd: "italic", label: <i>I</i>, title: "Italic" },
+    { cmd: "underline", label: <u>U</u>, title: "Underline" },
+    { cmd: "strikeThrough", label: <s>S</s>, title: "Strikethrough" },
+    { sep: true },
+    { cmd: "subscript", label: "X₂", title: "Subscript" },
+    { cmd: "superscript", label: "X²", title: "Superscript" },
+    { sep: true },
+    { cmd: "insertUnorderedList", label: "•—", title: "Bulleted list" },
+    { cmd: "insertOrderedList", label: "1.—", title: "Numbered list" },
+    { cmd: "outdent", label: "⇤", title: "Decrease indent" },
+    { cmd: "indent", label: "⇥", title: "Increase indent" },
+    { sep: true },
+    { cmd: "removeFormat", label: "Tx", title: "Clear formatting" },
+  ];
+
+  return (
+    <div style={S.essayBox}>
+      <div style={S.essayToolbar}>
+        {TOOLBAR.map((item, i) => item.sep ? (
+          <span key={`sep-${i}`} style={S.essaySep} />
+        ) : (
+          <button
+            key={item.cmd}
+            type="button"
+            title={item.title}
+            style={{ ...S.essayToolbarBtn, ...(activeCmds[item.cmd] ? S.essayToolbarBtnActive : {}) }}
+            onMouseDown={(e) => e.preventDefault()} // keep selection focused in the content box, not the button
+            onClick={() => runCommand(item.cmd)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div
+        ref={contentRef}
+        contentEditable
+        suppressContentEditableWarning
+        style={S.essayContent}
+        data-placeholder="Type your answer here…"
+        onInput={(e) => { onChange(e.currentTarget.innerHTML); countFrom(e.currentTarget); }}
+        onKeyUp={updateToolbarState}
+        onMouseUp={updateToolbarState}
+        onFocus={updateToolbarState}
+      />
+      <div style={S.essayStatus}>
+        <span>Words: {wordCount}</span>
+        <span>Characters: {charCount}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function TakeEAssessment() {
   injectStyles();
   injectExamStyles();
@@ -336,6 +512,10 @@ export default function TakeEAssessment() {
   const [assessment, setAssessment] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({}); // question_id -> value
+  // One-question-at-a-time view, ported from exam.html — index into
+  // `questions`. The React build used to render every question on one
+  // long scrolling page; this matches the kiosk build's actual flow.
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [violations, setViolations] = useState(0);
@@ -345,6 +525,7 @@ export default function TakeEAssessment() {
   const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | denied | unsupported | error
   const [faceVisible, setFaceVisible] = useState(true); // true = "looking at the screen" (see isLookingAtScreen)
   const [faceAbsentSeconds, setFaceAbsentSeconds] = useState(0); // seconds of continuous not-looking-at-screen
+  const [photosCaptured, setPhotosCaptured] = useState(0); // evidence photos sent this session — for the student-facing widget only
 
   // exam-login step (username + this assessment's exam password —
   // no portal account required)
@@ -368,6 +549,18 @@ export default function TakeEAssessment() {
   const cameraStreamRef = useRef(null);
   const faceCheckIntervalRef = useRef(null);
   const faceAbsentSinceRef = useRef(null); // timestamp, or null while looking at the screen
+  const lastViolationPhotoAtRef = useRef(null); // timestamp of the last evidence photo sent for the current absence
+  // A camera stream captured during the mandatory pre-start check in
+  // handleVerifySubmit, held here so the monitoring effect below can
+  // reuse it once the exam goes active instead of prompting for
+  // permission a second time.
+  const preGrantedStreamRef = useRef(null);
+  // Keeps the exam title/subject available to captureViolationPhoto's
+  // caption without adding `assessment` to the face-check effect's
+  // dependency array (which would tear down and re-request the live
+  // camera stream every time it changed).
+  const assessmentRef = useRef(null);
+  useEffect(() => { assessmentRef.current = assessment; }, [assessment]);
 
   /* ── restore a persisted local lock (survives refresh) ── */
   useEffect(() => {
@@ -380,28 +573,49 @@ export default function TakeEAssessment() {
 
   /* ── step 1: generate the token and show the reveal screen ── */
   const bootStart = useCallback(async () => {
-    try {
-      setPhase("loading");
-      const startRes = await API.post(`/e-assessments/${id}/start-exam`);
-      const t = startRes.data.token;
-      setToken(t);
-      setRevealCountdown(REVEAL_SECONDS);
+    setPhase("loading");
 
-      // Best-effort fetch of this exam's cover page (if the admin/teacher
-      // set one) so it can be offered on the reveal screen below, before
-      // the student commits to starting. Never blocks the exam flow if
-      // this fails for any reason.
+    // Bounded retry loop around the single POST — see the config block
+    // above. Any definitive failure (423/409/anything else non-
+    // transient) breaks out and falls through to the existing handling
+    // below exactly as before; only a transient failure loops back.
+    const deadline = Date.now() + START_EXAM_RETRY_WINDOW_MS;
+    let attempt = 0;
+    let startRes = null;
+    let finalErr = null;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      attempt++;
       try {
-        const detail = await API.get(`/e-assessments/${id}`);
-        if (detail?.data?.assessment?.cover_page_url) {
-          setCoverPageUrl(detail.data.assessment.cover_page_url);
-        }
-      } catch {
-        // no cover page, or couldn't fetch one — exam proceeds regardless
-      }
+        startRes = await API.post(`/e-assessments/${id}/start-exam`);
+        finalErr = null;
+        break;
+      } catch (err) {
+        if (!isRetryableStartExamError(err)) { finalErr = err; break; }
 
-      setPhase("reveal");
-    } catch (err) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) { finalErr = err; break; }
+
+        // Bounded exponential backoff + jitter, capped at
+        // START_EXAM_RETRY_MAX_DELAY_MS, honoring a Retry-After header
+        // when the server sends one, never scheduled past the
+        // remaining deadline. Jitter keeps many simultaneously-failing
+        // browsers from retrying in lockstep and re-synchronizing into
+        // another burst — exactly the scenario this exists for (a
+        // whole class hitting "Start Exam" the same second).
+        const serverRetryAfterMs = (Number(err?.response?.headers?.["retry-after"]) || 0) * 1000;
+        const backoff = Math.min(START_EXAM_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1), START_EXAM_RETRY_MAX_DELAY_MS);
+        const jitter = Math.random() * backoff * 0.5;
+        const delay = Math.min(Math.max(serverRetryAfterMs, backoff) + jitter, Math.max(remaining - 50, 0));
+        await sleep(delay);
+        // loop continues, unless the deadline check above catches it
+        // on the next iteration
+      }
+    }
+
+    if (finalErr) {
+      const err = finalErr;
       if (err?.response?.status === 423) {
         const reason = err?.response?.data?.message || "This exam token is already in use on another device.";
         localStorage.setItem(lockKey(id), reason);
@@ -410,11 +624,34 @@ export default function TakeEAssessment() {
       } else if (err?.response?.status === 409) {
         setErrorMsg(err.response.data.message || "You have already completed this assessment.");
         setPhase("ended");
+      } else if (isRetryableStartExamError(err)) {
+        setErrorMsg("The server is currently busy. We could not start your exam within 15 seconds. Please try again.");
+        setPhase("error");
       } else {
         setErrorMsg(err?.response?.data?.message || "Failed to start the assessment.");
         setPhase("error");
       }
+      return;
     }
+
+    const t = startRes.data.token;
+    setToken(t);
+    setRevealCountdown(REVEAL_SECONDS);
+
+    // Best-effort fetch of this exam's cover page (if the admin/teacher
+    // set one) so it can be offered on the reveal screen below, before
+    // the student commits to starting. Never blocks the exam flow if
+    // this fails for any reason.
+    try {
+      const detail = await API.get(`/e-assessments/${id}`);
+      if (detail?.data?.assessment?.cover_page_url) {
+        setCoverPageUrl(detail.data.assessment.cover_page_url);
+      }
+    } catch {
+      // no cover page, or couldn't fetch one — exam proceeds regardless
+    }
+
+    setPhase("reveal");
   }, [id]);
 
   useEffect(() => {
@@ -491,6 +728,15 @@ export default function TakeEAssessment() {
     setAssessment(detail.data.assessment);
     setQuestions(detail.data.questions || []);
     setSecondsLeft((detail.data.assessment.duration_minutes || 30) * 60);
+
+    // Restore any answers saved locally from an earlier attempt at this
+    // same assessment (e.g. a refresh mid-exam) — see answersKey above.
+    try {
+      const saved = localStorage.getItem(answersKey(id));
+      if (saved) setAnswers(JSON.parse(saved));
+    } catch { /* ignore a corrupted/unreadable saved-answers blob */ }
+
+    setCurrentQuestionIndex(0);
     setPhase("active");
   }, [id]);
 
@@ -507,6 +753,26 @@ export default function TakeEAssessment() {
 
     setVerifyError("");
     setActivating(true);
+
+    // Camera access is MANDATORY for this exam — checked here, before the
+    // token is even spent on the server, so a student without a working/
+    // permitted camera never gets as far as activating (and locking) their
+    // token. The granted stream is stashed in preGrantedStreamRef so the
+    // camera-monitoring effect reuses it once active instead of prompting
+    // for permission a second time.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVerifyError("This exam requires camera access, but your browser doesn't support it. Please switch to an up-to-date Chrome, Edge, or Firefox and try again.");
+      setActivating(false);
+      return;
+    }
+    try {
+      preGrantedStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
+    } catch {
+      setVerifyError("Camera access is required to start this exam. Please allow camera access when your browser asks, then try again.");
+      setActivating(false);
+      return;
+    }
+
     try {
       const activateRes = await API.post("/e-assessments/exam-session/activate", {
         token, device_id: deviceId, device_label: navigator.userAgent,
@@ -518,6 +784,12 @@ export default function TakeEAssessment() {
 
       await enterActive();
     } catch (err) {
+      // Activation failed after all — release the pre-granted camera so
+      // the indicator light doesn't stay on for a student who isn't starting.
+      if (preGrantedStreamRef.current) {
+        preGrantedStreamRef.current.getTracks().forEach((t) => t.stop());
+        preGrantedStreamRef.current = null;
+      }
       if (err?.response?.status === 423) {
         const reason = err?.response?.data?.message || "This exam token is already in use on another device.";
         localStorage.setItem(lockKey(id), reason);
@@ -590,6 +862,83 @@ export default function TakeEAssessment() {
       return next;
     });
   }, [triggerLock]);
+
+  /* Shrinks `text` with a trailing "…" until it fits `maxWidth` on the
+     canvas context `ctx` — used so a long name/exam title never spills
+     past the caption bar's edge. */
+  const fitCaptionText = (ctx, text, maxWidth) => {
+    if (ctx.measureText(text).width <= maxWidth) return text;
+    let t = text;
+    while (t.length > 1 && ctx.measureText(t + "…").width > maxWidth) t = t.slice(0, -1);
+    return t + "…";
+  };
+
+  /* Grabs a single frame from the student's own camera feed at the exact
+     moment a camera-based violation (eyes off screen) fires, burns a
+     caption bar into it (who + which exam + when), and uploads it to
+     /e-assessments/violation-photo so an invigilator can review it
+     later. Deliberately fire-and-forget: a slow network, a failed
+     upload, or the canvas being unavailable must never delay or break
+     the exam — this never touches `violations` or triggerLock. */
+  const captureViolationPhoto = useCallback((reason) => {
+    try {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || !video.videoWidth) return;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const barHeight = Math.max(56, Math.round(vh * 0.18));
+      const canvas = document.createElement("canvas");
+      canvas.width = vw;
+      canvas.height = vh + barHeight;
+      const ctx = canvas.getContext("2d");
+      // The on-screen preview is mirrored for the student (S.camVideo's
+      // scaleX(-1)), but the saved photo should reflect the raw camera
+      // frame, not the mirrored preview — draw straight from <video>.
+      ctx.drawImage(video, 0, 0, vw, vh);
+
+      ctx.fillStyle = "rgba(0,0,0,0.85)";
+      ctx.fillRect(0, vh, vw, barHeight);
+      ctx.fillStyle = "#FF1414";
+      ctx.textBaseline = "middle";
+
+      let currentUser = {};
+      try { currentUser = JSON.parse(localStorage.getItem("user") || "{}"); } catch { /* ignore */ }
+      const name = currentUser.name || examUsername || "Unknown student";
+      const uname = currentUser.username || examUsername;
+      const usernameSuffix = uname ? ` (${uname})` : "";
+      const examTitle = assessmentRef.current?.title || "Unknown exam";
+      const examSubject = assessmentRef.current?.subject ? ` · ${assessmentRef.current.subject}` : "";
+      const when = new Date().toLocaleString();
+      const maxTextWidth = vw - Math.round(barHeight * 0.32);
+      const pad = Math.round(barHeight * 0.16);
+      const line1Size = Math.round(barHeight * 0.32);
+      const line2Size = Math.round(barHeight * 0.24);
+
+      ctx.font = `800 ${line1Size}px system-ui, sans-serif`;
+      ctx.fillText(fitCaptionText(ctx, `${name}${usernameSuffix}`, maxTextWidth), pad, vh + pad + line1Size / 2);
+
+      ctx.font = `800 ${line2Size}px system-ui, sans-serif`;
+      ctx.fillText(fitCaptionText(ctx, `${examTitle}${examSubject}  ·  ${when}`, maxTextWidth), pad, vh + pad + line1Size + 4 + line2Size / 2);
+
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      API.post("/e-assessments/violation-photo", {
+        assessment_id: Number(id),
+        token,
+        device_id: deviceId,
+        image: dataUrl,
+        reason,
+      }).then(() => setPhotosCaptured((c) => c + 1)).catch(() => {});
+    } catch {
+      // e.g. a tainted canvas — never let photo capture break the exam
+    }
+  }, [id, token, deviceId, examUsername]);
+
+  // Latest-ref pattern: the face-check effect below only depends on
+  // `phase`, so it neither restarts the live camera stream nor
+  // re-prompts permission every time captureViolationPhoto's own deps
+  // change — it always calls through to whatever this ref currently
+  // points at.
+  const captureViolationPhotoRef = useRef(captureViolationPhoto);
+  useEffect(() => { captureViolationPhotoRef.current = captureViolationPhoto; }, [captureViolationPhoto]);
 
   /* ── block the browser "Back" button once there is an active
        assessment in progress (reveal → verify → active). We trap it
@@ -688,11 +1037,18 @@ export default function TakeEAssessment() {
       }
       setCameraStatus("requesting");
       let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false });
-      } catch {
-        if (!cancelled) setCameraStatus("denied");
-        return;
+      if (preGrantedStreamRef.current) {
+        // Reuse the stream captured during the mandatory pre-start check
+        // in handleVerifySubmit instead of prompting for permission again.
+        stream = preGrantedStreamRef.current;
+        preGrantedStreamRef.current = null;
+      } else {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
+        } catch {
+          if (!cancelled) setCameraStatus("denied");
+          return;
+        }
       }
       if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
 
@@ -730,17 +1086,29 @@ export default function TakeEAssessment() {
 
         if (looking) {
           faceAbsentSinceRef.current = null;
+          lastViolationPhotoAtRef.current = null;
           setFaceVisible(true);
           setFaceAbsentSeconds(0);
         } else {
+          // Deliberately NOT registerViolation()/triggerLock() here — a
+          // camera-based flag never locks the exam by itself (see the
+          // HONEST SCOPE NOTE at the top of this file). Instead, once the
+          // eyes have been off the screen for EYES_OFF_LIMIT_MS, this
+          // keeps capturing and uploading a fresh evidence photo every
+          // VIOLATION_PHOTO_INTERVAL_MS for as long as the condition
+          // persists, so an invigilator gets a continuous paper trail
+          // instead of a single "3rd strike" screenshot.
           if (!faceAbsentSinceRef.current) faceAbsentSinceRef.current = now;
           const absentMs = now - faceAbsentSinceRef.current;
           setFaceVisible(false);
           setFaceAbsentSeconds(Math.floor(absentMs / 1000));
+
           if (absentMs >= EYES_OFF_LIMIT_MS) {
-            faceAbsentSinceRef.current = now; // require another full window before flagging again
-            setFaceAbsentSeconds(0);
-            registerViolation("eyes not on the screen for 10+ seconds");
+            const sinceLastPhoto = lastViolationPhotoAtRef.current ? now - lastViolationPhotoAtRef.current : Infinity;
+            if (sinceLastPhoto >= VIOLATION_PHOTO_INTERVAL_MS) {
+              lastViolationPhotoAtRef.current = now;
+              captureViolationPhotoRef.current("eyes not on the screen for 10+ seconds");
+            }
           }
         }
       }, FACE_CHECK_INTERVAL_MS);
@@ -748,7 +1116,7 @@ export default function TakeEAssessment() {
 
     startMonitoring();
     return () => { cancelled = true; stopCamera(); };
-  }, [phase, registerViolation]);
+  }, [phase]);
 
   /* ── while locked, keep polling in case an admin unlocks this session ── */
   useEffect(() => {
@@ -771,6 +1139,30 @@ export default function TakeEAssessment() {
   }, [phase, token, deviceId, id, enterActive]);
 
   /* ── submit ── */
+  // Updates both the live `answers` state and its localStorage mirror in
+  // one call — every place that used to call setAnswers directly for a
+  // question response now goes through this instead (see the option/
+  // essay handlers in the active-exam render below).
+  const saveAnswer = (questionId, val) => {
+    setAnswers((prev) => {
+      const next = { ...prev, [questionId]: val };
+      try { localStorage.setItem(answersKey(id), JSON.stringify(next)); } catch { /* storage full/unavailable — exam continues, just unsaved locally */ }
+      return next;
+    });
+  };
+
+  const goToQuestion = (index) => {
+    if (index < 0 || index >= questions.length) return;
+    setCurrentQuestionIndex(index);
+  };
+
+  // A question counts as answered once it has a non-empty selection
+  // (MCQ) or non-empty text (essay) — mirrors exam.html's isAnswered.
+  const isAnswered = (q) => {
+    const val = answers[q.id];
+    return typeof val === "string" ? val.trim().length > 0 : !!val;
+  };
+
   const handleSubmit = async (auto = false) => {
     if (submitting) return;
     setSubmitting(true);
@@ -788,6 +1180,7 @@ export default function TakeEAssessment() {
       };
       await API.post("/e-assessments/submit", payload);
       localStorage.removeItem(lockKey(id));
+      localStorage.removeItem(answersKey(id));
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       setPhase("ended");
       setErrorMsg(auto ? "Time's up — your assessment was submitted automatically." : "Assessment submitted successfully.");
@@ -1016,6 +1409,11 @@ export default function TakeEAssessment() {
             Type the token you just saved. Once it's accepted, your paper opens and this device
             locks to the exam until you submit.
           </p>
+          <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 16px", textAlign: "center" }}>
+            <Camera size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+            This exam requires camera access for identity/eye-gaze monitoring — your browser will ask
+            for permission when you press Start Exam, and you won't be able to begin without allowing it.
+          </p>
           <input
             style={S.verifyInput}
             value={verifyInput}
@@ -1062,7 +1460,7 @@ export default function TakeEAssessment() {
       {cameraStatus === "active" && !faceVisible && (
         <div className="eyes-off-flash" style={S.eyesOffBanner}>
           <EyeOff size={18} color="#fff" style={{ flexShrink: 0 }} />
-          <span style={S.eyesOffBannerText}>Keep your eyes on the computer</span>
+          <span style={S.eyesOffBannerText}>Keep your eyes on the computer — this is being photographed for review</span>
         </div>
       )}
 
@@ -1076,7 +1474,7 @@ export default function TakeEAssessment() {
       {cameraStatus === "denied" && (
         <div style={S.warningStrip}>
           <CameraOff size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
-          <span>Camera access was not granted, so eye-gaze monitoring is off for this session. This alone will not affect your submission.</span>
+          <span>Camera access was lost or revoked. This exam requires camera monitoring to stay active — please re-allow camera access for this site and reload the page.</span>
         </div>
       )}
 
@@ -1095,7 +1493,7 @@ export default function TakeEAssessment() {
             ) : (
               <><EyeOff size={12} color="var(--destructive)" />
                 <span style={{ color: "var(--destructive)" }}>
-                  Eyes off screen — {faceAbsentSeconds}s
+                  Eyes off screen — {faceAbsentSeconds}s{photosCaptured > 0 ? ` · ${photosCaptured} photo${photosCaptured !== 1 ? "s" : ""} sent` : ""}
                 </span>
               </>
             )}
@@ -1111,61 +1509,124 @@ export default function TakeEAssessment() {
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {questions.map((q, i) => (
-          <div key={q.id} className="dash-card" style={S.qCard}>
-            <p style={S.qText}>
-              <span style={{ color: "var(--primary)", marginRight: 8 }}>Q{i + 1}.</span>{q.question_text}
-              <span style={S.qMarks}>{q.marks} mark{q.marks !== 1 ? "s" : ""}</span>
-            </p>
+        {questions.length > 0 && (() => {
+          const total = questions.length;
+          const qi = Math.min(currentQuestionIndex, Math.max(total - 1, 0));
+          const q = questions[qi];
+          const answeredCount = questions.filter(isAnswered).length;
+          return (
+            <>
+              <p style={S.qProgress}>
+                Question {qi + 1} of {total} &nbsp;·&nbsp; {answeredCount} of {total} answered
+              </p>
 
-            {Array.isArray(q.images) && q.images.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-                {q.images.map((img) => (
-                  <img
-                    key={img.id}
-                    src={resolveFileUrl(img.image_url)}
-                    alt="Diagram for this question"
-                    style={{ maxWidth: 260, maxHeight: 220, objectFit: "contain", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)" }}
+              <div key={q.id} className="dash-card" style={S.qCard}>
+                <p style={S.qText}>
+                  <span style={{ color: "var(--primary)", marginRight: 8 }}>Q{qi + 1}.</span>{q.question_text}
+                  <span style={S.qMarks}>{q.marks} mark{q.marks !== 1 ? "s" : ""}</span>
+                </p>
+
+                {Array.isArray(q.images) && q.images.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+                    {q.images.map((img) => (
+                      <img
+                        key={img.id}
+                        src={resolveFileUrl(img.image_url)}
+                        alt="Diagram for this question"
+                        style={{ maxWidth: 260, maxHeight: 220, objectFit: "contain", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)" }}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {q.question_type === "essay" ? (
+                  <EssayEditor
+                    key={q.id}
+                    id={q.id}
+                    initialValue={answers[q.id] || ""}
+                    onChange={(html) => saveAnswer(q.id, html)}
                   />
-                ))}
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {q.options.map((o) => (
+                      <label key={o.option_label} className="exam-option-row" style={{
+                        ...S.optionRow,
+                        borderColor: answers[q.id] === o.option_label ? "var(--primary)" : "var(--border)",
+                        background: answers[q.id] === o.option_label ? "var(--primary-tint)" : "var(--bg)",
+                      }}>
+                        <input
+                          type="radio"
+                          name={`q_${q.id}`}
+                          checked={answers[q.id] === o.option_label}
+                          onChange={() => saveAnswer(q.id, o.option_label)}
+                          style={{ accentColor: "var(--primary)" }}
+                        />
+                        <span style={{ fontWeight: 700, color: "var(--primary)" }}>{o.option_label}.</span>
+                        <span style={{ color: "var(--text)" }}>{o.option_text}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
 
-            {q.question_type === "essay" ? (
-              <textarea
-                style={S.essayInput}
-                placeholder="Type your answer here…"
-                value={answers[q.id] || ""}
-                onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
-              />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {q.options.map((o) => (
-                  <label key={o.option_label} className="exam-option-row" style={{
-                    ...S.optionRow,
-                    borderColor: answers[q.id] === o.option_label ? "var(--primary)" : "var(--border)",
-                    background: answers[q.id] === o.option_label ? "var(--primary-tint)" : "var(--bg)",
-                  }}>
-                    <input
-                      type="radio"
-                      name={`q_${q.id}`}
-                      checked={answers[q.id] === o.option_label}
-                      onChange={() => setAnswers({ ...answers, [q.id]: o.option_label })}
-                      style={{ accentColor: "var(--primary)" }}
-                    />
-                    <span style={{ fontWeight: 700, color: "var(--primary)" }}>{o.option_label}.</span>
-                    <span style={{ color: "var(--text)" }}>{o.option_text}</span>
-                  </label>
-                ))}
+              <div style={S.navButtonsRow}>
+                <button
+                  type="button"
+                  style={{ ...S.navBtn, opacity: qi === 0 ? 0.45 : 1, cursor: qi === 0 ? "not-allowed" : "pointer" }}
+                  onClick={() => goToQuestion(qi - 1)}
+                  disabled={qi === 0}
+                >
+                  <ChevronLeft size={15} /> Previous
+                </button>
+                <button
+                  type="button"
+                  style={{ ...S.navBtn, opacity: qi >= total - 1 ? 0.45 : 1, cursor: qi >= total - 1 ? "not-allowed" : "pointer" }}
+                  onClick={() => goToQuestion(qi + 1)}
+                  disabled={qi >= total - 1}
+                >
+                  Next <ChevronRight size={15} />
+                </button>
               </div>
-            )}
-          </div>
-        ))}
+
+              <div style={S.qnavWrap}>
+                <p style={S.qnavLabel}>Jump to question</p>
+                <div style={S.qnavStrip}>
+                  {questions.map((qq, i) => {
+                    const answered = isAnswered(qq);
+                    const isCurrent = i === qi;
+                    return (
+                      <button
+                        key={qq.id}
+                        type="button"
+                        title={answered ? `Question ${i + 1} — answered` : `Question ${i + 1} — not answered yet`}
+                        onClick={() => goToQuestion(i)}
+                        style={{
+                          ...S.qnavBtn,
+                          background: answered ? "var(--success)" : "var(--bg)",
+                          borderColor: isCurrent ? "var(--primary)" : answered ? "var(--success)" : "var(--border)",
+                          boxShadow: isCurrent ? "0 0 0 2px var(--primary-tint)" : "none",
+                          color: answered ? "#fff" : "var(--text-secondary)",
+                        }}
+                      >
+                        {i + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                style={{ ...S.submitBtn, opacity: (submitting || qi < total - 1) ? 0.6 : 1, cursor: (submitting || qi < total - 1) ? "not-allowed" : "pointer" }}
+                onClick={() => handleSubmit(false)}
+                disabled={submitting || qi < total - 1}
+                title={qi < total - 1 ? "Reach the last question to submit" : ""}
+              >
+                {submitting ? "Submitting…" : "Submit Assessment"}
+              </button>
+            </>
+          );
+        })()}
       </div>
-
-      <button style={S.submitBtn} onClick={() => handleSubmit(false)} disabled={submitting}>
-        {submitting ? "Submitting…" : "Submit Assessment"}
-      </button>
     </main>
   );
 }
@@ -1259,15 +1720,54 @@ const S = {
   },
   qText: { margin: "0 0 14px", fontSize: 15, fontWeight: 600, color: "var(--text)", lineHeight: 1.6 },
   qMarks: { float: "right", fontSize: 11, color: "var(--text-muted)", fontWeight: 700 },
+  // One-question-at-a-time nav (ported from exam.html's .q-progress /
+  // .nav-buttons-row / .qnav-wrap / .qnav-btn).
+  qProgress: { margin: 0, fontSize: 12.5, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.02em" },
+  navButtonsRow: { display: "flex", gap: 10 },
+  navBtn: {
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    padding: 12, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
+    background: "var(--card)", color: "var(--text)", fontSize: 13.5, fontWeight: 700,
+  },
+  qnavWrap: { marginTop: 4, paddingTop: 16, borderTop: "1px solid var(--border)" },
+  qnavLabel: { margin: "0 0 10px", fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" },
+  qnavStrip: { display: "flex", flexWrap: "wrap", gap: 8 },
+  qnavBtn: {
+    width: 34, height: 34, borderRadius: 8, border: "1.5px solid var(--border)",
+    fontSize: 12.5, fontWeight: 800, cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    transition: "background .15s ease, border-color .15s ease, color .15s ease",
+  },
   optionRow: {
     display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
     borderRadius: "var(--radius-sm)", border: "1px solid", cursor: "pointer",
     transition: "border-color 0.15s ease, background 0.15s ease",
   },
-  essayInput: {
-    width: "100%", minHeight: 120, padding: "12px 14px", borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)",
-    fontSize: 14, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit",
+  essayBox: {
+    border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
+    background: "var(--bg)", overflow: "hidden",
+  },
+  essayToolbar: {
+    display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap",
+    padding: "6px 8px", borderBottom: "1px solid var(--border)", background: "var(--card)",
+  },
+  essayToolbarBtn: {
+    width: 30, height: 30, borderRadius: 6, border: "1px solid transparent",
+    background: "transparent", color: "var(--text-secondary)", cursor: "pointer",
+    fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
+  },
+  essayToolbarBtnActive: {
+    background: "var(--primary-tint)", color: "var(--primary)", borderColor: "var(--primary)",
+  },
+  essaySep: { width: 1, height: 18, background: "var(--border)", margin: "0 4px", flexShrink: 0 },
+  essayContent: {
+    minHeight: 120, maxHeight: 420, overflowY: "auto", padding: "12px 14px",
+    fontSize: 14, lineHeight: 1.6, outline: "none", color: "var(--text)",
+  },
+  essayStatus: {
+    display: "flex", justifyContent: "flex-end", gap: 10, padding: "5px 12px",
+    fontSize: 11, color: "var(--text-muted)", fontWeight: 600,
+    borderTop: "1px solid var(--border)", background: "var(--card)",
   },
   submitBtn: {
     width: "100%", padding: 15, marginTop: 24, border: "none", borderRadius: "var(--radius-sm)",
