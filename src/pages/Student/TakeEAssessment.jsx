@@ -168,22 +168,10 @@ const injectExamStyles = () => {
     .eyes-off-flash { animation: eyesOffFlash 0.6s ease-in-out infinite; }
 
     /* ── active-exam container sizing ──
-       When a single assessment is being taken, the page used to sit
-       at a flat 900px max-width regardless of viewport, which reads
-       as oversized/empty on wide screens. On large displays the
-       container now caps at roughly a third of the viewport width;
-       it steps back up on narrower screens so the exam stays usable
-       on tablets/phones. */
-    .exam-page-container { max-width: 900px; }
-    @media (min-width: 1440px) {
-      .exam-page-container { max-width: 33vw; min-width: 480px; }
-    }
-    @media (min-width: 1100px) and (max-width: 1439px) {
-      .exam-page-container { max-width: 560px; }
-    }
-    @media (max-width: 720px) {
-      .exam-page-container { max-width: 100%; }
-    }
+       The question-taking view should use almost the full browser
+       width so there's room to read and work, rather than being
+       boxed into a narrow column. */
+    .exam-page-container { max-width: 95vw; }
   `;
   document.head.appendChild(el);
 };
@@ -1664,10 +1652,9 @@ const S = {
     color: "var(--text)",
     minHeight: "100vh",
     fontFamily: "'Inter', system-ui, sans-serif",
-    // Static maxWidth removed — sizing is now handled responsively by
-    // the .exam-page-container class (see injectExamStyles above),
-    // which caps the exam view at roughly a third of the viewport on
-    // large screens instead of a flat, oversized 900px.
+    // Static maxWidth removed — sizing is now handled by the
+    // .exam-page-container class (see injectExamStyles above), which
+    // caps the exam view at 95% of the viewport width.
     margin: "0 auto",
     boxSizing: "border-box",
   },

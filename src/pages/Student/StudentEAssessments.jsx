@@ -174,13 +174,7 @@ export default function StudentEAssessments() {
               {a.cover_page_url && !a.my_submission_id && (
                 <div
                   className="cover-preview"
-                  style={{
-                    ...D.coverWrap,
-                    aspectRatio:
-                      a.cover_page_width && a.cover_page_height
-                        ? `${a.cover_page_width} / ${a.cover_page_height}`
-                        : "210 / 297", // A4 portrait fallback for covers uploaded before size-tracking existed
-                  }}
+                  style={D.coverWrap}
                   onClick={() => navigate(`/take-assessment/${a.id}`)}
                   role="button"
                   tabIndex={0}
@@ -190,7 +184,7 @@ export default function StudentEAssessments() {
                   }}
                 >
                   <iframe
-                    src={`${resolveFileUrl(a.cover_page_url)}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
+                    src={`${resolveFileUrl(a.cover_page_url)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
                     title={`${a.title} cover page`}
                     style={D.coverFrame}
                     tabIndex={-1}
@@ -333,9 +327,13 @@ const D = {
     alignItems: "center",
   },
 
+  // Cards now cap at a sensible max width instead of stretching to
+  // fill the entire row when only one (or a partial row of) cards is
+  // present — that stretch was what let the aspect-ratio cover
+  // preview below balloon to full-viewport height.
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 340px))",
     gap: 16,
   },
   card: {
@@ -345,6 +343,8 @@ const D = {
     padding: 20,
     boxShadow: "var(--shadow-sm)",
     transition: "box-shadow 0.15s ease, border-color 0.15s ease",
+    width: "100%",
+    maxWidth: 340,
   },
   cardTop: {
     display: "flex",
@@ -365,8 +365,15 @@ const D = {
     textTransform: "capitalize",
     flexShrink: 0,
   },
+  // Fixed-height thumbnail instead of an aspect-ratio box that scaled
+  // with the card's width — on a card stretched to fill a whole grid
+  // row (e.g. only one assessment available) that aspect-ratio math is
+  // what blew this preview up to fill most of the screen. A flat
+  // height keeps it a small, consistent "click to view" thumbnail no
+  // matter how wide the card is.
   coverWrap: {
     position: "relative",
+    height: 160,
     borderRadius: "var(--radius-sm)",
     overflow: "hidden",
     border: "1px solid var(--border)",
