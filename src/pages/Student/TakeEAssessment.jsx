@@ -40,17 +40,17 @@ import {
         facing the screen (best-effort, and deliberately scoped
         honestly — see the note above the EYES_OFF_LIMIT_MS
         constant below for exactly what this can and can't detect).
-        Camera access is now REQUIRED to start the exam (checked
-        at "Start Exam" time, before the token is spent). Unlike
-        the detectors in point 3, this check deliberately never
-        locks or interrupts the exam by itself — a false positive
-        (bad lighting, a webcam blip) shouldn't cost a student
-        their sitting. Instead, every time the student's eyes are
-        off the screen it keeps quietly capturing a timestamped,
-        captioned snapshot from their own camera feed and uploading
-        it to the server for an invigilator to review after the
-        fact — continuously, for as long as the condition persists,
-        not just once.
+        Camera access is OPTIONAL: a student can start and complete
+        the exam with no webcam at all, or after declining/losing
+        camera permission. When a camera IS available and granted,
+        this check deliberately never locks or interrupts the exam
+        by itself — a false positive (bad lighting, a webcam blip)
+        shouldn't cost a student their sitting. Instead, every time
+        the student's eyes are off the screen it keeps quietly
+        capturing a timestamped, captioned snapshot from their own
+        camera feed and uploading it to the server for an invigilator
+        to review after the fact — continuously, for as long as the
+        condition persists, not just once.
    ═════════════════════════════════════════════════════════ */
 
 /* ─── shared design-token stylesheet ───
@@ -237,15 +237,14 @@ const isRetryableStartExamError = (err) => {
    time, it feeds into the exact same registerViolation() escalation
    path as the other detectors above (tab-switch, devtools, etc.), so
    it counts toward the same 3-strikes lockout.
-   Camera access IS mandatory to start the exam (see the mandatory
-   check inside handleVerifySubmit below) — but denial/loss of the
-   camera AFTER the exam is already running still never locks or
-   ends it by itself; it just turns this one check off with a
-   one-time notice, same spirit as everything else in this file:
-   a hardware/permission hiccup outside the student's control should
-   never cost them their sitting. What it no longer does is feed
-   into the 3-strikes lockout at all — see registerViolation() calls
-   (or rather, the deliberate absence of one) below. */
+   Camera access is OPTIONAL, both to start the exam and throughout it
+   (see the optional check inside handleVerifySubmit below) — a student
+   with no webcam, or who declines/loses camera permission at any
+   point, simply proceeds with this one check turned off and a
+   one-time notice; nothing about starting or continuing the exam
+   depends on it. What it also never does is feed into the 3-strikes
+   lockout at all — see registerViolation() calls (or rather, the
+   deliberate absence of one) below. */
 const EYES_OFF_LIMIT_MS = 10000;
 const FACE_CHECK_INTERVAL_MS = 1000;
 const EAR_CLOSED_THRESHOLD = 0.20;   // below this, an eye counts as closed (typical open EAR is ~0.28-0.35)
@@ -528,7 +527,7 @@ export default function TakeEAssessment() {
   const [lockReason, setLockReason] = useState("");
 
   // camera/eye-gaze monitoring — see EYES_OFF_LIMIT_MS note above
-  const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | denied | unsupported | error
+  const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | denied | unsupported | error | off
   const [faceVisible, setFaceVisible] = useState(true); // true = "looking at the screen" (see isLookingAtScreen)
   const [faceAbsentSeconds, setFaceAbsentSeconds] = useState(0); // seconds of continuous not-looking-at-screen
   const [photosCaptured, setPhotosCaptured] = useState(0); // evidence photos sent this session — for the student-facing widget only
@@ -556,10 +555,11 @@ export default function TakeEAssessment() {
   const faceCheckIntervalRef = useRef(null);
   const faceAbsentSinceRef = useRef(null); // timestamp, or null while looking at the screen
   const lastViolationPhotoAtRef = useRef(null); // timestamp of the last evidence photo sent for the current absence
-  // A camera stream captured during the mandatory pre-start check in
+  // A camera stream captured during the optional pre-start check in
   // handleVerifySubmit, held here so the monitoring effect below can
   // reuse it once the exam goes active instead of prompting for
-  // permission a second time.
+  // permission a second time. Stays null if the student has no camera,
+  // declined permission, or the pre-start check is skipped entirely.
   const preGrantedStreamRef = useRef(null);
   // Keeps the exam title/subject available to captureViolationPhoto's
   // caption without adding `assessment` to the face-check effect's
@@ -760,23 +760,24 @@ export default function TakeEAssessment() {
     setVerifyError("");
     setActivating(true);
 
-    // Camera access is MANDATORY for this exam — checked here, before the
-    // token is even spent on the server, so a student without a working/
-    // permitted camera never gets as far as activating (and locking) their
-    // token. The granted stream is stashed in preGrantedStreamRef so the
-    // camera-monitoring effect reuses it once active instead of prompting
-    // for permission a second time.
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setVerifyError("This exam requires camera access, but your browser doesn't support it. Please switch to an up-to-date Chrome, Edge, or Firefox and try again.");
-      setActivating(false);
-      return;
-    }
-    try {
-      preGrantedStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
-    } catch {
-      setVerifyError("Camera access is required to start this exam. Please allow camera access when your browser asks, then try again.");
-      setActivating(false);
-      return;
+    // Camera access is OPTIONAL for this exam. We still try to grab it
+    // here, before the token is spent, purely so the monitoring effect
+    // can reuse an already-granted stream once the exam goes active
+    // instead of prompting a second time — but nothing here blocks or
+    // delays starting the exam. A missing browser API, a declined
+    // permission, or no camera at all just means the exam runs without
+    // eye-gaze monitoring; cameraStatus is set to "off" up front and the
+    // camera-monitoring effect below leaves it that way instead of
+    // trying again mid-exam.
+    if (navigator.mediaDevices?.getUserMedia) {
+      try {
+        preGrantedStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
+      } catch {
+        preGrantedStreamRef.current = null;
+        setCameraStatus("off");
+      }
+    } else {
+      setCameraStatus("off");
     }
 
     try {
@@ -1018,13 +1019,22 @@ export default function TakeEAssessment() {
 
   /* ── webcam eye/gaze monitoring ──
      Only runs during the active exam, same lifecycle as the other
-     detectors above. Requests the camera, then polls a lightweight
-     face+landmark detector roughly once a second to check both eyes
-     are open and the head is facing the screen (see isLookingAtScreen
-     and the HONEST SCOPE NOTE above); sustained failure feeds into
-     the same registerViolation() escalation as everything else. */
+     detectors above, and only if the student has a working, permitted
+     camera — this whole effect is a no-op enhancement layered on top
+     of an exam that runs perfectly well without it. Requests the
+     camera (or reuses the one pre-granted during handleVerifySubmit),
+     then polls a lightweight face+landmark detector roughly once a
+     second to check both eyes are open and the head is facing the
+     screen (see isLookingAtScreen and the HONEST SCOPE NOTE above);
+     sustained failure feeds into the same registerViolation()
+     escalation as everything else — a MISSING camera never does. */
   useEffect(() => {
     if (phase !== "active") return;
+    // The optional pre-start check in handleVerifySubmit already
+    // determined there's no camera available (unsupported, declined,
+    // or none present) — leave monitoring off instead of prompting
+    // again mid-exam.
+    if (cameraStatus === "off") return;
     let cancelled = false;
 
     const stopCamera = () => {
@@ -1038,13 +1048,13 @@ export default function TakeEAssessment() {
 
     const startMonitoring = async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraStatus("unsupported");
+        setCameraStatus("off");
         return;
       }
       setCameraStatus("requesting");
       let stream;
       if (preGrantedStreamRef.current) {
-        // Reuse the stream captured during the mandatory pre-start check
+        // Reuse the stream captured during the optional pre-start check
         // in handleVerifySubmit instead of prompting for permission again.
         stream = preGrantedStreamRef.current;
         preGrantedStreamRef.current = null;
@@ -1052,7 +1062,9 @@ export default function TakeEAssessment() {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
         } catch {
-          if (!cancelled) setCameraStatus("denied");
+          // No camera, or the student declined — the exam simply
+          // continues without eye-gaze monitoring.
+          if (!cancelled) setCameraStatus("off");
           return;
         }
       }
@@ -1068,7 +1080,9 @@ export default function TakeEAssessment() {
       try {
         faceapi = await loadFaceApi();
       } catch {
-        if (!cancelled) setCameraStatus("error");
+        // Monitoring script failed to load — again, not fatal to the
+        // exam, just turn this one check off.
+        if (!cancelled) setCameraStatus("off");
         return;
       }
       if (cancelled) return;
@@ -1122,6 +1136,7 @@ export default function TakeEAssessment() {
 
     startMonitoring();
     return () => { cancelled = true; stopCamera(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
   /* ── while locked, keep polling in case an admin unlocks this session ── */
@@ -1421,8 +1436,8 @@ export default function TakeEAssessment() {
           </p>
           <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 16px", textAlign: "center" }}>
             <Camera size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
-            This exam requires camera access for identity/eye-gaze monitoring — your browser will ask
-            for permission when you press Start Exam, and you won't be able to begin without allowing it.
+            This exam can optionally use your camera for eye-gaze monitoring. If your browser asks
+            for camera permission, you can allow or decline it — either way, your exam will start.
           </p>
           <input
             style={S.verifyInput}
@@ -1481,16 +1496,19 @@ export default function TakeEAssessment() {
         </div>
       )}
 
-      {cameraStatus === "denied" && (
-        <div style={S.warningStrip}>
-          <CameraOff size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
-          <span>Camera access was lost or revoked. This exam requires camera monitoring to stay active — please re-allow camera access for this site and reload the page.</span>
+      {/* Camera monitoring is optional, so a missing/declined camera is
+          just informational, not a warning — the exam is unaffected. */}
+      {cameraStatus === "off" && (
+        <div style={S.infoStrip}>
+          <CameraOff size={16} color="var(--info)" style={{ flexShrink: 0 }} />
+          <span>Camera monitoring is off for this session. Your exam will continue as normal.</span>
         </div>
       )}
 
       {/* Floating camera-monitor widget — visible to the student the whole
           time their camera is on, on purpose: the point is honest, visible
-          monitoring, not a hidden check. */}
+          monitoring, not a hidden check. Only rendered when a camera is
+          actually in use, since monitoring is optional. */}
       {(cameraStatus === "requesting" || cameraStatus === "active") && (
         <div style={S.camWidget}>
           <div style={{ ...S.camDot, background: faceVisible ? "var(--success)" : "var(--destructive)" }} />
@@ -1690,6 +1708,12 @@ const S = {
     display: "flex", alignItems: "center", gap: 10,
     background: "var(--warning-tint)", border: "1px solid var(--warning)",
     color: "var(--warning)", borderRadius: "var(--radius-sm)",
+    padding: "10px 14px", fontSize: 13, fontWeight: 600, marginBottom: 16,
+  },
+  infoStrip: {
+    display: "flex", alignItems: "center", gap: 10,
+    background: "var(--info-tint)", border: "1px solid var(--info)",
+    color: "var(--info)", borderRadius: "var(--radius-sm)",
     padding: "10px 14px", fontSize: 13, fontWeight: 600, marginBottom: 16,
   },
   eyesOffBanner: {
