@@ -178,7 +178,7 @@ const injectExamStyles = () => {
 
 const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
-const REVEAL_SECONDS = 15; // minimum time the student must sit with the token before continuing
+const REVEAL_SECONDS = 5; // minimum time the student must sit with the token before continuing
 
 /* ── START-EXAM RETRY CONFIG — ported from exam.html's exam-login retry
    block. There, it wraps the kiosk's own username/password login call;
