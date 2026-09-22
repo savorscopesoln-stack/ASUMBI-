@@ -4,12 +4,12 @@ import API from "../api";
 import { useTheme } from "../context/ThemeContext";
 import {
   ArrowLeft, Plus, RefreshCw, CalendarRange, Users, BookOpenCheck,
-  CheckCircle2, Archive, ClipboardList,
+  CheckCircle2, Archive, ClipboardList, ClipboardCheck,
 } from "lucide-react";
 import {
   injectStyles, useC, extract, ThemeToggle, EmptyState, ActionButton,
   Modal, ModalInput, ModalSelect, ModalTextarea, SaveButton, FieldLabel,
-  Chip, pageSx, fmtDate, globalStyles,
+  Chip, MiniBtn, pageSx, fmtDate, globalStyles,
 } from "../components/mainExams/shared";
 
 /* ═══════════════════════════════════════════════════════════
@@ -57,6 +57,31 @@ export default function MainExaminations() {
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // "Show on Report Cards" (§ student report card exam selection) — picks
+  // which Main Examination's marks/name students see on their report
+  // card (StudentReport.jsx). Only one exam can be active at a time; the
+  // backend unflags whatever was previously selected, so this list is
+  // just refreshed afterwards rather than patched optimistically for
+  // every card.
+  const [settingReportExamId, setSettingReportExamId] = useState(null);
+  const setReportExam = async (exam) => {
+    const makingActive = !exam.is_report_exam;
+    try {
+      setSettingReportExamId(exam.id);
+      await API.put(`/main-exams/${exam.id}/report-exam`, { active: makingActive });
+      showToast(
+        makingActive
+          ? `"${exam.name}" will now show on students' report cards`
+          : `"${exam.name}" removed from report cards`
+      );
+      await load();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to update report card exam", "error");
+    } finally {
+      setSettingReportExamId(null);
+    }
+  };
 
   const create = async () => {
     if (!form.name.trim()) return showToast("Examination name is required", "error");
@@ -117,7 +142,15 @@ export default function MainExaminations() {
         />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-          {list.map((exam) => <ExamCard key={exam.id} exam={exam} onClick={() => navigate(`/main-exams/${exam.id}`)} />)}
+          {list.map((exam) => (
+            <ExamCard
+              key={exam.id}
+              exam={exam}
+              onClick={() => navigate(`/main-exams/${exam.id}`)}
+              onSetReportExam={() => setReportExam(exam)}
+              settingReportExam={settingReportExamId === exam.id}
+            />
+          ))}
         </div>
       )}
 
@@ -165,17 +198,20 @@ export default function MainExaminations() {
 /* ═══════════════════════════════════════════════════════════
    EXAM CARD (§47)
 ═══════════════════════════════════════════════════════════ */
-function ExamCard({ exam, onClick }) {
+function ExamCard({ exam, onClick, onSetReportExam, settingReportExam }) {
   const C = useC();
   const statusTone = { draft: "neutral", published: "info", ongoing: "success", completed: "neutral", archived: "neutral" }[exam.status] || "neutral";
   return (
     <div className="dash-card" onClick={onClick} style={{
-      background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, cursor: "pointer",
+      background: C.card, border: `1px solid ${exam.is_report_exam ? C.success : C.border}`, borderRadius: 12, padding: 20, cursor: "pointer",
       display: "flex", flexDirection: "column", gap: 14,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: C.textPri, lineHeight: 1.3 }}>{exam.name}</h3>
-        <Chip text={exam.status || "draft"} tone={statusTone} uppercase />
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {exam.is_report_exam && <Chip text="On Report Cards" tone="success" icon={<ClipboardCheck size={12} />} />}
+          <Chip text={exam.status || "draft"} tone={statusTone} uppercase />
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
@@ -194,6 +230,18 @@ function ExamCard({ exam, onClick }) {
           {[exam.academic_year, exam.programme, exam.department].filter(Boolean).join(" · ")}
         </div>
       )}
+
+      {/* Picks which exam students see on their report card — see
+          setReportExam() in the parent. stopPropagation so this
+          doesn't also trigger the card's onClick navigation. */}
+      <MiniBtn
+        icon={<ClipboardCheck size={13} />}
+        tone={exam.is_report_exam ? "success" : undefined}
+        disabled={settingReportExam}
+        onClick={(e) => { e.stopPropagation(); onSetReportExam(); }}
+      >
+        {settingReportExam ? "Updating…" : exam.is_report_exam ? "Showing on Report Cards" : "Show on Report Cards"}
+      </MiniBtn>
     </div>
   );
 }
