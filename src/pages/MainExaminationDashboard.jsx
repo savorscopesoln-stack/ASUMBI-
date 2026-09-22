@@ -1669,6 +1669,41 @@ function SummaryReportView({ data }) {
         ]}
       />
 
+      {/* Class Performance — one row per class/stream, rolled up from the
+          same per-candidate mean the Overall Performance ranking and the
+          Nominal Roll below both use (§51). */}
+      <SectionHeader title="Class Performance" />
+      <RowsTable
+        rows={data.class_performance}
+        emptyText="No registered candidates found for this examination."
+        columns={[
+          { key: "class", label: "Class", strong: true },
+          { key: "registered", label: "Registered" },
+          { key: "scored", label: "Scored" },
+          { key: "mean", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
+          { key: "highest", label: "Highest %", fmt: (v) => (v != null ? `${v}%` : "—") },
+          { key: "lowest", label: "Lowest %", fmt: (v) => (v != null ? `${v}%` : "—") },
+          { key: "pass_rate", label: "Pass Rate", fmt: (v) => (v != null ? `${v}%` : "—") },
+        ]}
+      />
+
+      {/* Overall Performance — every scored candidate ranked exam-wide
+          (not just within their own class) by the mean, using the exact
+          same average_percentage the Nominal Roll shows for that
+          candidate (§51). */}
+      <SectionHeader title="Overall Performance" />
+      <RowsTable
+        rows={data.overall_ranking}
+        emptyText="No candidates have been scored yet."
+        columns={[
+          { key: "overall_position", label: "Position", strong: true },
+          { key: "admission_no", label: "Admission No" },
+          { key: "name", label: "Name" },
+          { key: "class", label: "Class" },
+          { key: "average_percentage", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
+        ]}
+      />
+
       <SectionHeader title="Nominal Roll" />
       <NominalRollTable data={data.nominal_roll} />
     </div>
