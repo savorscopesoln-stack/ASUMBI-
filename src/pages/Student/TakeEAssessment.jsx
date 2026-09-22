@@ -541,7 +541,7 @@ export default function TakeEAssessment() {
 
   // reveal step
   const [revealCountdown, setRevealCountdown] = useState(REVEAL_SECONDS);
-
+  const [coverPageUrl, setCoverPageUrl] = useState("");
 
   // verify step
   const [verifyInput, setVerifyInput] = useState("");
@@ -1405,7 +1405,7 @@ export default function TakeEAssessment() {
                 color: "var(--primary)", border: "1px solid var(--primary)", textDecoration: "none",
               }}
             >
-              📄 View Exam Cover Page / Instructions
+        
             </a>
           )}
           <button
