@@ -86,7 +86,7 @@ const LetterHead = ({ mode, school }) => (
 const COLORS = ["#16a34a", "#facc15", "#f97316", "#dc2626"];
 
 export default function Reports() {
-  const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const { settings: school, getOfficial, signatory, signatories } = useSchoolSettings();
   const { gradingSystem } = useGradingSystem();
   const passMark = getPassMark(gradingSystem);
   const dean = getOfficial("dean");
@@ -1129,11 +1129,24 @@ const printAllReports = async () => {
                 <small>Assessment Officer</small>
               </div>
 
-              <div>
-                <p>Approved by</p>
-                <div style={styles.signLine}></div>
-                <small>{principal?.title || signatory?.title || "Chief Principal"}</small>
-              </div>
+              {/* One "Approved by" box per official flagged as a signatory
+                  in School Settings (in their configured rank/order) —
+                  falls back to the single generic line if none are set. */}
+              {signatories.length > 0 ? (
+                signatories.map((s) => (
+                  <div key={s.id}>
+                    <p>Approved by</p>
+                    <div style={styles.signLine}></div>
+                    <small>{s.title}</small>
+                  </div>
+                ))
+              ) : (
+                <div>
+                  <p>Approved by</p>
+                  <div style={styles.signLine}></div>
+                  <small>{principal?.title || "Chief Principal"}</small>
+                </div>
+              )}
             </div>
           <div style={styles.stampBox}>
           OFFICIAL<br />COLLEGE<br />STAMP

@@ -15,6 +15,7 @@ import {
 import { useTheme } from "../../context/ThemeContext";
 import ThemeToggle from "../../components/ThemeToggle";
 import useSchoolSettings from "../../hooks/useSchoolSettings";
+import useReportTheme from "../../hooks/useReportTheme";
 import useGradingSystem from "../../hooks/useGradingSystem";
 import { getGradeForScore, getOverallResultForScore, getRemarkForScore } from "../../utils/grading";
 
@@ -48,9 +49,11 @@ const A4_HEIGHT_PX = 1123;
 
    The printed A4 sheet itself ("sr-sheet") intentionally does
    NOT use these tokens — it's an official document that gets
-   printed and exported to PDF, so it stays fixed maroon-on-white
-   regardless of the viewer's theme. Nothing in this block touches
-   data or computation logic. */
+   printed and exported to PDF, so its palette follows the
+   school's chosen Report Theme (School Settings → Report Theme)
+   instead of the viewer's light/dark preference; see
+   useReportTheme()/getStyles() below. Nothing in this block
+   touches data or computation logic. */
 function useReportGlobalStyles() {
   useEffect(() => {
     const linkId = "sr-font-link";
@@ -263,7 +266,7 @@ const ScreenState = ({ icon, title, text, action }) => (
 export default function StudentReport() {
   useReportGlobalStyles();
   useTheme();
-  const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const { settings: school, getOfficial, signatory, signatories, getClassTeacher } = useSchoolSettings();
   const { gradingSystem } = useGradingSystem();
   const dean = getOfficial("dean");
   const principal = getOfficial("principal");
@@ -344,6 +347,22 @@ export default function StudentReport() {
 
   const studentClass = student?.class || student?.className || student?.studentClass || "Not assigned";
   const yearOfStudy = Number(student?.yearOfStudy || 0);
+
+  // The Class Teacher / Lecturer assigned to this student's class in
+  // School Settings (see useSchoolSettings.getClassTeacher) — printed
+  // in the "Class Teacher / Lecturer's Remarks" box below in place of
+  // a blank hand-signed line when one has been assigned.
+  const classTeacher = getClassTeacher(studentClass);
+
+  // Report Theme (School Settings → Report Theme) — resolves the full
+  // color palette { primary, onPrimary, zebra, rule } for whatever key
+  // is saved on SchoolSettings.reportTheme (falls back to the same
+  // "slate" default the backend PDF engine uses). This is what makes
+  // the report card's header band, section labels, table header and
+  // zebra rows follow the school's chosen theme instead of a fixed
+  // maroon regardless of what's picked.
+  const reportTheme = useReportTheme(school?.reportTheme);
+  const styles = useMemo(() => getStyles(reportTheme), [reportTheme.key]);
 
   /* ================= POSITION (unchanged ranking logic) ================= */
   const position = useMemo(() => {
@@ -684,7 +703,7 @@ export default function StudentReport() {
               <div style={styles.summaryRow}>
                 {[
                   { label: "Average Score", value: `${analytics.avg}%`, color: "#1d4ed8" },
-                  { label: "Overall Grade", value: analytics.grade.label || "—", color: "#7f1d1d" },
+                  { label: "Overall Grade", value: analytics.grade.label || "—", color: reportTheme.primary },
                   { label: "Overall Result", value: analytics.result || "—", color: "#15803d" },
                   { label: "Class Position", value: `#${position}`, color: "#b45309" },
                   { label: "Learning Areas", value: analytics.assessedCount, color: "#0f766e" },
@@ -725,7 +744,7 @@ export default function StudentReport() {
                     const badge = valid ? getScoreBadgeStyle(s.score, gradingSystem) : null;
                     const remark = valid ? getRemarkForScore(s.score, gradingSystem) : "";
                     return (
-                      <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
+                      <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : reportTheme.zebra }}>
                         <td style={{ ...styles.td, color: "#64748b", fontSize: 8 }}>{s.code || `L/A-${i + 1}`}</td>
                         <td style={{ ...styles.td, textAlign: "left", fontWeight: 500 }}>{s.subject}</td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
@@ -830,7 +849,7 @@ export default function StudentReport() {
                       <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9 }} stroke="#94a3b8" />
                       <YAxis type="category" dataKey="subject" width={110} tick={{ fontSize: 9 }} stroke="#94a3b8" />
                       <Tooltip formatter={(v) => [`${v}%`, "Score"]} />
-                      <Bar dataKey="score" fill="#7f1d1d" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="score" fill={reportTheme.primary} radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -848,29 +867,54 @@ export default function StudentReport() {
 
                 {/* Comments */}
                 <div style={styles.authCard}>
-                  <p style={styles.authCardTitle}>Class Teacher / Lecturer's Remarks</p>
+                  <p style={styles.authCardTitle}>{classTeacher?.title ? `${classTeacher.title}'s Remarks` : "Class Teacher / Lecturer's Remarks"}</p>
                   <div style={styles.remarksBox}>
                     <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
                   </div>
                   <div style={styles.sigGrid}>
-                    <div style={styles.sigItem}><p style={styles.sigLabel}>Name</p><div style={styles.sigLine} /></div>
+                    <div style={styles.sigItem}>
+                      <p style={styles.sigLabel}>Name</p>
+                      {classTeacher?.name ? (
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: 11.5, color: "#0f172a" }}>{classTeacher.name}</p>
+                      ) : (
+                        <div style={styles.sigLine} />
+                      )}
+                    </div>
                     <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
                     <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
                   </div>
                 </div>
 
-                {/* Approval */}
-                <div style={styles.authCard}>
-                  <p style={styles.authCardTitle}>Approved By</p>
-                  <div style={{ padding: "4px 0" }}>
-                    <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{dean?.name || principal?.name || signatory?.name || "—"}</p>
-                    <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{dean?.title || principal?.title || signatory?.title || "—"}</p>
+                {/* Approval — one card per official flagged as a
+                    signatory in School Settings (in rank/order), or the
+                    single dean/principal fallback if none are set. */}
+                {signatories.length > 0 ? (
+                  signatories.map((s) => (
+                    <div style={styles.authCard} key={s.id}>
+                      <p style={styles.authCardTitle}>Approved By</p>
+                      <div style={{ padding: "4px 0" }}>
+                        <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{s.name || "—"}</p>
+                        <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{s.title || "—"}</p>
+                      </div>
+                      <div style={styles.sigGrid}>
+                        <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
+                        <div style={styles.sigItem}><p style={styles.sigLabel}>Official Stamp</p><div style={styles.stampBox} /></div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={styles.authCard}>
+                    <p style={styles.authCardTitle}>Approved By</p>
+                    <div style={{ padding: "4px 0" }}>
+                      <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{dean?.name || principal?.name || signatory?.name || "—"}</p>
+                      <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{dean?.title || principal?.title || signatory?.title || "—"}</p>
+                    </div>
+                    <div style={styles.sigGrid}>
+                      <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
+                      <div style={styles.sigItem}><p style={styles.sigLabel}>Official Stamp</p><div style={styles.stampBox} /></div>
+                    </div>
                   </div>
-                  <div style={styles.sigGrid}>
-                    <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
-                    <div style={styles.sigItem}><p style={styles.sigLabel}>Official Stamp</p><div style={styles.stampBox} /></div>
-                  </div>
-                </div>
+                )}
 
               </div>
             </div>
@@ -929,7 +973,38 @@ export default function StudentReport() {
    maroon/blue/green/amber palette — it's an official document
    that gets printed and exported to PDF, not a themed UI.
 ═══════════════════════════════════════════════════════════ */
-const styles = {
+/* ================= REPORT THEME COLOR HELPERS =================
+   The printed report card's palette now follows the school's chosen
+   Report Theme (School Settings → Report Theme) instead of a fixed
+   maroon. A theme only supplies 4 colors (primary, onPrimary, zebra,
+   rule — see backend/utils/reportThemes.js), so lighten() derives the
+   soft tinted text (tagline/subtitle/labels on the header band) that
+   used to be hard-coded maroon-specific hex values like #fecaca. */
+function hexToRgb(hex) {
+  const h = String(hex || "#7f1d1d").replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const int = parseInt(full, 16) || 0x7f1d1d;
+  return { r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255 };
+}
+function lighten(hex, amt) {
+  const { r, g, b } = hexToRgb(hex);
+  const mix = (c) => Math.round(c + (255 - c) * amt);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+function withAlpha(hex, alpha) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getStyles(theme) {
+  const primary = theme?.primary || "#7f1d1d";
+  const onPrimary = theme?.onPrimary || "#ffffff";
+  const zebra = theme?.zebra || "#f8fafc";
+  const rule = theme?.rule || "#b45309";
+  const tagline = lighten(primary, 0.68);
+  const subtitleTint = lighten(primary, 0.55);
+
+  return {
   /* ── Page shell (screen chrome only, stripped for print) ── */
   page: {
     background: "var(--bg)",
@@ -1030,7 +1105,7 @@ const styles = {
     fontSize: 64,
     fontWeight: 800,
     letterSpacing: "0.12em",
-    color: "rgba(127,29,29,0.04)",
+    color: withAlpha(primary, 0.04),
     whiteSpace: "nowrap",
     pointerEvents: "none",
     userSelect: "none",
@@ -1047,11 +1122,11 @@ const styles = {
     alignItems: "center",
     gap: 14,
     padding: "2mm 3mm 2px",
-    background: "#7f1d1d",
+    background: primary,
   },
   headerBandFoot: {
     height: 3,
-    background: "#b45309",
+    background: rule,
   },
   crestBox: {
     width: 66,
@@ -1069,7 +1144,7 @@ const styles = {
     margin: "0 0 2px",
     fontSize: 9.5,
     letterSpacing: "0.1em",
-    color: "#fecaca",
+    color: tagline,
     fontWeight: 600,
     textTransform: "uppercase",
   },
@@ -1077,7 +1152,7 @@ const styles = {
     margin: "0 0 3px",
     fontSize: 18,
     fontWeight: 800,
-    color: "#ffffff",
+    color: onPrimary,
     letterSpacing: "0.015em",
     lineHeight: 1.15,
     fontFamily: "'Playfair Display', 'Georgia', serif",
@@ -1085,7 +1160,7 @@ const styles = {
   collegeAddress: {
     margin: "0 0 8px",
     fontSize: 10.5,
-    color: "#fca5a5",
+    color: subtitleTint,
   },
   slipTitleBox: {
     background: "rgba(0,0,0,0.22)",
@@ -1097,14 +1172,14 @@ const styles = {
     margin: 0,
     fontSize: 11.5,
     fontWeight: 800,
-    color: "#fff",
+    color: onPrimary,
     letterSpacing: "0.05em",
     textTransform: "uppercase",
   },
   slipSubtitle: {
     margin: "2px 0 0",
     fontSize: 11,
-    color: "#ffffff",
+    color: onPrimary,
     fontWeight: 700,
     textTransform: "uppercase",
     letterSpacing: "0.04em",
@@ -1122,14 +1197,14 @@ const styles = {
   },
   metaKey: {
     fontSize: 10.5,
-    color: "#fca5a5",
+    color: subtitleTint,
     fontWeight: 600,
     textTransform: "uppercase",
     letterSpacing: "0.06em",
   },
   metaVal: {
     fontSize: 8,
-    color: "#fff",
+    color: onPrimary,
     fontWeight: 700,
     background: "rgba(255,255,255,0.12)",
     padding: "2px 7px",
@@ -1140,7 +1215,7 @@ const styles = {
     height: 40,
     borderRadius: "50%",
     background: "#fff",
-    color: "#7f1d1d",
+    color: primary,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1158,7 +1233,7 @@ const styles = {
     marginTop: 1,
   },
   sectionLabelBar: {
-    borderLeft: "4px solid #7f1d1d",
+    borderLeft: `4px solid ${primary}`,
     paddingLeft: 9,
     marginBottom: 8,
   },
@@ -1166,7 +1241,7 @@ const styles = {
     fontSize: 9.5,
     fontWeight: 800,
     letterSpacing: "0.12em",
-    color: "#7f1d1d",
+    color: primary,
     textTransform: "uppercase",
   },
 
@@ -1244,17 +1319,17 @@ const styles = {
     tableLayout: "fixed",
   },
   theadRow: {
-    background: "#0f172a",
+    background: primary,
   },
   th: {
     padding: "7px 6px",
     fontSize: 9.5,
     fontWeight: 700,
-    color: "#94a3b8",
+    color: withAlpha(onPrimary, 0.72),
     textTransform: "uppercase",
     letterSpacing: "0.08em",
     textAlign: "center",
-    borderBottom: "2px solid #1e293b",
+    borderBottom: "2px solid rgba(0,0,0,0.18)",
   },
   td: {
     padding: "5px 10px",
@@ -1273,8 +1348,8 @@ const styles = {
     fontSize: 5,
   },
   totalRow: {
-    background: "#0f172a",
-    color: "#e2e8f0",
+    background: primary,
+    color: onPrimary,
     fontWeight: 700,
     fontSize: 8,
   },
@@ -1294,7 +1369,7 @@ const styles = {
     margin: "0 0 9px",
     fontSize: 10.5,
     fontWeight: 800,
-    color: "#7f1d1d",
+    color: primary,
     textTransform: "uppercase",
     letterSpacing: "0.1em",
   },
@@ -1341,7 +1416,7 @@ const styles = {
     alignItems: "flex-start",
     gap: 12,
     padding: "10px 12mm 10mm",
-    borderTop: "2px solid #7f1d1d",
+    borderTop: `2px solid ${primary}`,
     marginTop: "auto",
   },
   footerLeft: {
@@ -1376,7 +1451,7 @@ const styles = {
     minWidth: 100,
   },
   resultRibbon: {
-    background: "#7f1d1d",
+    background: primary,
     borderRadius: 8,
     padding: "8px 12px",
     textAlign: "center",
@@ -1384,7 +1459,7 @@ const styles = {
   ribbonLabel: {
     margin: "0 0 3px",
     fontSize: 8.5,
-    color: "#fca5a5",
+    color: subtitleTint,
     fontWeight: 700,
     textTransform: "uppercase",
     letterSpacing: "0.1em",
@@ -1393,7 +1468,7 @@ const styles = {
     margin: 0,
     fontSize: 10.5,
     fontWeight: 900,
-    color: "#fff",
+    color: onPrimary,
     lineHeight: 1.3,
   },
 
@@ -1456,4 +1531,5 @@ const styles = {
     color: "var(--text-secondary)",
     lineHeight: 1.5,
   },
-};
+  };
+}

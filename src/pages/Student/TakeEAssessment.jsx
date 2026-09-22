@@ -523,6 +523,11 @@ export default function TakeEAssessment() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  // Set once the submit-triggered logout has actually run — distinguishes
+  // "just submitted, session cleared" from the other ways this screen can
+  // land on the "ended" phase (already completed, session ended remotely),
+  // where the student is still legitimately logged into the portal.
+  const [loggedOut, setLoggedOut] = useState(false);
   const [violations, setViolations] = useState(0);
   const [lockReason, setLockReason] = useState("");
 
@@ -541,7 +546,6 @@ export default function TakeEAssessment() {
 
   // reveal step
   const [revealCountdown, setRevealCountdown] = useState(REVEAL_SECONDS);
-  const [coverPageUrl, setCoverPageUrl] = useState("");
 
   // verify step
   const [verifyInput, setVerifyInput] = useState("");
@@ -643,19 +647,6 @@ export default function TakeEAssessment() {
     const t = startRes.data.token;
     setToken(t);
     setRevealCountdown(REVEAL_SECONDS);
-
-    // Best-effort fetch of this exam's cover page (if the admin/teacher
-    // set one) so it can be offered on the reveal screen below, before
-    // the student commits to starting. Never blocks the exam flow if
-    // this fails for any reason.
-    try {
-      const detail = await API.get(`/e-assessments/${id}`);
-      if (detail?.data?.assessment?.cover_page_url) {
-        setCoverPageUrl(detail.data.assessment.cover_page_url);
-      }
-    } catch {
-      // no cover page, or couldn't fetch one — exam proceeds regardless
-    }
 
     setPhase("reveal");
   }, [id]);
@@ -1203,6 +1194,16 @@ export default function TakeEAssessment() {
       localStorage.removeItem(lockKey(id));
       localStorage.removeItem(answersKey(id));
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+
+      // Submitting the exam doubles as logging the student out — the
+      // Submit button is the last thing they should be able to do in
+      // this session, whether they were on an exam-only token or a full
+      // portal login, so both are cleared here exactly like the normal
+      // student logout (StudentLayout.jsx's logout()).
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setLoggedOut(true);
+
       setPhase("ended");
       setErrorMsg(auto ? "Time's up — your assessment was submitted automatically." : "Assessment submitted successfully.");
     } catch (err) {
@@ -1211,6 +1212,16 @@ export default function TakeEAssessment() {
       setSubmitting(false);
     }
   };
+
+  // Submitting logs the student out (see handleSubmit) — once that's
+  // happened, finish the job by bouncing them off this screen and back
+  // to the login page after a moment, rather than leaving them stranded
+  // on a "logged out" screen with nowhere to go but the button above.
+  useEffect(() => {
+    if (!loggedOut) return;
+    const t = setTimeout(() => navigate("/login"), 3000);
+    return () => clearTimeout(t);
+  }, [loggedOut, navigate]);
 
   const mmss = (total) => {
     const m = Math.floor(total / 60).toString().padStart(2, "0");
@@ -1346,7 +1357,16 @@ export default function TakeEAssessment() {
           <p style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", margin: "16px 0 0" }}>
             {errorMsg || "This assessment is complete."}
           </p>
-          {wasExamOnly ? (
+          {loggedOut ? (
+            <>
+              <p style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "center", margin: "12px 0 0" }}>
+                You've been logged out for security. Redirecting you to the login page…
+              </p>
+              <button style={{ ...S.primaryBtn, marginTop: 18 }} onClick={() => navigate("/login")}>
+                Go to Login
+              </button>
+            </>
+          ) : wasExamOnly ? (
             <p style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "center", margin: "12px 0 0" }}>
               You can close this tab now.
             </p>
@@ -1394,20 +1414,6 @@ export default function TakeEAssessment() {
             lock to whichever device you use first.
           </p>
           <div style={S.tokenDisplay}>{token}</div>
-          {coverPageUrl && (
-            <a
-              href={resolveFileUrl(coverPageUrl)}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6, margin: "0 0 16px",
-                padding: "8px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
-                color: "var(--primary)", border: "1px solid var(--primary)", textDecoration: "none",
-              }}
-            >
-              📄 View Exam Cover Page / Instructions
-            </a>
-          )}
           <button
             style={{ ...S.primaryBtn, opacity: revealCountdown > 0 ? 0.55 : 1, cursor: revealCountdown > 0 ? "not-allowed" : "pointer" }}
             onClick={confirmSaved}

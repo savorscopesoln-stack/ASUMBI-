@@ -189,6 +189,67 @@ const injectMarkingStyles = () => {
     .mkp-rich-wrap:focus-within { border-color: var(--primary) !important; }
 
     .mkp-stamp { display: inline-flex; align-items: center; gap: 8px; border: 2.5px dashed var(--success); color: var(--success); border-radius: 12px; padding: 10px 22px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; font-size: 13px; transform: rotate(-8deg); animation: mkp-stamp-in .4s cubic-bezier(.2,.9,.3,1.2) both; }
+
+    /* ── KNEC-style marking layout: toolbar strip, answer / quick-mark / scheme
+       three-up, and a bottom coloured action bar — see Marking.jsx render ── */
+    .mkp-toolbar-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 10px 14px; margin: 14px 0 18px; flex-wrap: wrap;
+    }
+    .mkp-response-id { font-size: 12.5px; font-weight: 700; color: var(--success); font-variant-numeric: tabular-nums; }
+    .mkp-flagbar-btn {
+      background: var(--warning-tint); border: 1px solid var(--warning); color: var(--warning);
+      border-radius: 8px; padding: 7px 14px; font-size: 12.5px; font-weight: 700;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .mkp-flagbar-btn.active { background: var(--warning); color: #fff; }
+    .mkp-skipbar-btn {
+      background: var(--destructive-tint); border: 1px solid var(--destructive); color: var(--destructive);
+      border-radius: 8px; padding: 7px 14px; font-size: 12.5px; font-weight: 700;
+    }
+
+    .mkp-triptych { display: grid; grid-template-columns: 1fr 96px 1fr; gap: 20px; align-items: start; margin-top: 4px; }
+    @media (max-width: 780px) {
+      .mkp-triptych { grid-template-columns: 1fr; }
+      .mkp-triptych-controls { flex-direction: row !important; justify-content: center; }
+    }
+
+    .mkp-triptych-controls { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 30px; }
+    .mkp-quickmark {
+      width: 44px; height: 44px; border-radius: 10px; font-size: 18px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center; border: 1px solid var(--border);
+      background: var(--card); color: var(--text-secondary);
+    }
+    .mkp-quickmark.full { color: var(--success); border-color: var(--success); }
+    .mkp-quickmark.full:hover:not(:disabled) { background: var(--success-tint); }
+    .mkp-quickmark.zero { color: var(--destructive); border-color: var(--destructive); }
+    .mkp-quickmark.zero:hover:not(:disabled) { background: var(--destructive-tint); }
+    .mkp-quickmark.review { color: var(--warning); border-color: var(--warning); }
+    .mkp-quickmark.review:hover:not(:disabled) { background: var(--warning-tint); }
+    .mkp-quickmark.review.active { background: var(--warning); color: #fff; }
+    .mkp-score-fraction {
+      width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--primary);
+      display: flex; align-items: center; justify-content: center; color: var(--primary);
+      font-weight: 800; font-size: 13px; font-variant-numeric: tabular-nums; text-align: center;
+    }
+
+    .mkp-scheme-heading { color: var(--destructive); font-weight: 800; font-size: 13px; text-decoration: underline; margin: 0 0 8px; }
+    .mkp-answer-heading { color: var(--destructive); font-weight: 500; font-size: 13px; text-decoration: underline; margin: 0 0 8px; text-transform: lowercase; }
+
+    .mkp-actionbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 24px; }
+    @media (max-width: 560px) { .mkp-actionbar { grid-template-columns: 1fr 1fr; } }
+    .mkp-actionbtn { border: none; border-radius: var(--radius-sm); padding: 12px 10px; font-size: 13px; font-weight: 700; color: #fff; }
+    .mkp-actionbtn.back { background: var(--info); }
+    .mkp-actionbtn.skip { background: var(--destructive); }
+    .mkp-actionbtn.done { background: var(--success); }
+
+    /* ── top tab strip mirroring the KNEC dashboard's
+       DashBoard / MarkingProgress / Review / Live Marking / Flags row ── */
+    .mkp-tabstrip { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
+    .mkp-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 12px 18px; font-size: 13.5px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; font-family: inherit; }
+    .mkp-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 800; }
+    .mkp-tab:hover:not(.active) { color: var(--text); }
   `;
   document.head.appendChild(style);
 };
@@ -899,6 +960,7 @@ export default function Marking() {
     return (
       <div className="mkp-root">
         <Toast toast={toast} onDismiss={dismissToast} />
+        <MarkingTabStrip />
 
         <div className="mkp-topbar">
           <div>
@@ -958,6 +1020,7 @@ export default function Marking() {
   return (
     <div className="mkp-root">
       <Toast toast={toast} onDismiss={dismissToast} />
+      <MarkingTabStrip />
 
       <div className="mkp-topbar">
         <div>
@@ -1031,72 +1094,117 @@ export default function Marking() {
               <span style={s.remainingBadge}>
                 Left: {Math.max(0, (current.max_marks || 0) - editableHlForCurrent.reduce((sum, h) => sum + (h.mark || 0), 0))}
               </span>
-              <button
-                onClick={() => toggleFlag(current.id)}
-                className={`mkp-btn mkp-flag-btn${flags[current.id] ? " active" : ""}`}
-                style={s.flagToggle}
-                title="Flag for a second look (F)"
-              >
-                <Flag size={12} /> {flags[current.id] ? "Flagged" : "Flag"}
-              </button>
             </div>
+          </div>
+
+          {/* ── Response toolbar — mirrors the KNEC marking screen's
+              Response #  ·  Flag as Irregularity  ·  Skip this response row ── */}
+          <div className="mkp-toolbar-row">
+            <span className="mkp-response-id">Response #: R{String(current.id).padStart(6, "0")}</span>
+            <button
+              onClick={() => toggleFlag(current.id)}
+              className={`mkp-btn mkp-flagbar-btn${flags[current.id] ? " active" : ""}`}
+              title="Flag for a second look (F)"
+            >
+              <Flag size={13} /> {flags[current.id] ? "Flagged as irregularity" : "Flag as Irregularity"}
+            </button>
+            <button onClick={goNext} disabled={currentIdx >= remaining.length - 1} className="mkp-btn mkp-skipbar-btn">
+              Skip this response
+            </button>
           </div>
 
           <FieldLabel>Question</FieldLabel>
           <div style={s.questionBox}>{current.question_text}</div>
 
-          <FieldLabel>Marking guide</FieldLabel>
-          <div style={s.guideBox}>
-            <div style={s.guideEyebrow}><BookOpen size={13} /> What a full-marks answer looks like</div>
-            <div style={s.guideBody}>{current.marking_guide || "No marking guide was set for this question."}</div>
+          {/* ── Answer (left) · quick-mark stack (middle) · marking scheme (right) ── */}
+          <div className="mkp-triptych">
+            <div>
+              <p className="mkp-answer-heading">answer</p>
+              <RichEssayViewer
+                answerId={current.id}
+                html={essayHTML[current.id] ?? toDisplayHTML(current.essay_answer || "")}
+                highlights={editableHlForCurrent}
+                maxMarks={current.max_marks}
+                onAdd={handleEssayAdd}
+                onRemove={handleEssayRemove}
+                onAdjust={handleEssayAdjust}
+                onLimitReached={handleLimitReached}
+              />
+
+              <FieldLabel>
+                Override score{current.max_marks != null ? ` (max ${current.max_marks})` : ""}
+                <span style={s.editorSubtitle}>optional — otherwise taken from the highlights above</span>
+              </FieldLabel>
+              <input
+                type="number"
+                min={0}
+                max={current.max_marks ?? undefined}
+                placeholder="Taken from highlights"
+                value={scores[current.id] ?? ""}
+                onChange={(e) => handleScoreChange(current.id, e.target.value, current.max_marks)}
+                style={s.input}
+              />
+            </div>
+
+            <div className="mkp-triptych-controls">
+              <button
+                type="button"
+                className="mkp-btn mkp-quickmark full"
+                title="Award full marks"
+                onClick={() => handleScoreChange(current.id, current.max_marks ?? 0, current.max_marks)}
+              >
+                ✓
+              </button>
+              <button
+                type="button"
+                className="mkp-btn mkp-quickmark zero"
+                title="Award zero"
+                onClick={() => handleScoreChange(current.id, 0, current.max_marks)}
+              >
+                ✗
+              </button>
+              <button
+                type="button"
+                className={`mkp-btn mkp-quickmark review${flags[current.id] ? " active" : ""}`}
+                title="Flag for review (F)"
+                onClick={() => toggleFlag(current.id)}
+              >
+                R
+              </button>
+              <div className="mkp-score-fraction">
+                {scores[current.id] ?? editableHlForCurrent.reduce((sum, h) => sum + (h.mark || 0), 0)}/{current.max_marks ?? "–"}
+              </div>
+            </div>
+
+            <div>
+              <p className="mkp-scheme-heading">Marking scheme</p>
+              <div style={s.guideBox}>
+                <div style={s.guideEyebrow}><BookOpen size={13} /> What a full-marks answer looks like</div>
+                <div style={s.guideBody}>{current.marking_guide || "No marking guide was set for this question."}</div>
+              </div>
+            </div>
           </div>
-
-          <FieldLabel>Student's answer</FieldLabel>
-          <RichEssayViewer
-            answerId={current.id}
-            html={essayHTML[current.id] ?? toDisplayHTML(current.essay_answer || "")}
-            highlights={editableHlForCurrent}
-            maxMarks={current.max_marks}
-            onAdd={handleEssayAdd}
-            onRemove={handleEssayRemove}
-            onAdjust={handleEssayAdjust}
-            onLimitReached={handleLimitReached}
-          />
-
-          <FieldLabel>
-            Override score{current.max_marks != null ? ` (max ${current.max_marks})` : ""}
-            <span style={s.editorSubtitle}>optional — otherwise taken from the highlights above</span>
-          </FieldLabel>
-          <input
-            type="number"
-            min={0}
-            max={current.max_marks ?? undefined}
-            placeholder="Taken from highlights"
-            value={scores[current.id] ?? ""}
-            onChange={(e) => handleScoreChange(current.id, e.target.value, current.max_marks)}
-            style={s.input}
-          />
 
           <FieldLabel>Feedback for the student</FieldLabel>
           <RichEditor value={remarks[current.id] || ""} onChange={(html) => handleRemarkChange(current.id, html)} />
 
-          <div className="mkp-navrow">
-            <button onClick={goPrev} disabled={currentIdx === 0} className="mkp-btn" style={{ ...s.navBtn, opacity: currentIdx === 0 ? 0.4 : 1 }}>
-              ← Previous
+          <p className="mkp-nav-counter" style={{ ...s.navCounter, textAlign: "center", marginTop: 18 }}>
+            {currentIdx + 1} of {remaining.length} <span style={{ opacity: 0.8 }}>· ← → to move, Enter to mark, F to flag</span>
+          </p>
+
+          {/* ── Bottom action bar — Back / Restart / Save and Move / Refresh,
+              mapped onto the same Previous / Skip / Mark&next / Save actions ── */}
+          <div className="mkp-actionbar">
+            <button onClick={goPrev} disabled={currentIdx === 0} className="mkp-btn mkp-actionbtn back" style={{ opacity: currentIdx === 0 ? 0.5 : 1 }}>
+              Back
             </button>
-
-            <span className="mkp-nav-counter" style={s.navCounter}>
-              {currentIdx + 1} of {remaining.length} <span style={{ opacity: 0.8 }}>· ← → to move, Enter to mark, F to flag</span>
-            </span>
-
-            <div className="mkp-navrow-side" style={{ display: "flex", gap: 10 }}>
-              <button onClick={goNext} disabled={currentIdx >= remaining.length - 1} className="mkp-btn" style={{ ...s.navBtn, opacity: currentIdx >= remaining.length - 1 ? 0.4 : 1 }}>
-                Skip →
-              </button>
-              <button onClick={markAndAdvance} className="mkp-btn" style={s.markDoneBtn}>
-                Mark & next ✓
-              </button>
-            </div>
+            <button onClick={goNext} disabled={currentIdx >= remaining.length - 1} className="mkp-btn mkp-actionbtn skip" style={{ opacity: currentIdx >= remaining.length - 1 ? 0.5 : 1 }}>
+              Skip
+            </button>
+            <button onClick={markAndAdvance} className="mkp-btn mkp-actionbtn done">
+              Save and Move Next
+            </button>
+            <SaveBtn saving={saving} saved={saved} onClick={saveMarking} small />
           </div>
         </div>
       )}
@@ -1149,6 +1257,24 @@ function StatCard({ label, value, accent }) {
 
 function FieldLabel({ children }) {
   return <p style={s.fieldLabel}>{children}</p>;
+}
+
+/* KNEC's dashboard keeps this same DashBoard/MarkingProgress/Review/Live
+   Marking/Flags strip visible across every tab of the marking tool — this
+   page only implements "Live Marking" (that's what this whole file is),
+   so the others render disabled/inert; they're here for the same
+   at-a-glance orientation, not as working navigation. */
+function MarkingTabStrip({ active = "Live Marking" }) {
+  const tabs = ["DashBoard", "MarkingProgress", "Review", "Live Marking", "Flags"];
+  return (
+    <div className="mkp-tabstrip">
+      {tabs.map((t) => (
+        <button key={t} type="button" className={`mkp-tab${t === active ? " active" : ""}`} disabled={t !== active}>
+          {t}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════

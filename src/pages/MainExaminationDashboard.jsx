@@ -9,7 +9,7 @@ import {
   Table2, PlayCircle, CalendarDays, ChevronLeft, ChevronRight, Printer,
   ChevronDown, Search, UserCircle2, HelpCircle, Gauge, Timer, ClipboardCheck,
   AlertCircle, Target, Download, FileSpreadsheet, Building2, Eye, X,
-  Key, Copy, RotateCw,
+  Key, Copy, RotateCw, Undo2,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -18,7 +18,7 @@ import {
 import {
   injectStyles, useC, extract, ThemeToggle, EmptyState, ActionButton, MiniBtn,
   Modal, ModalInput, ModalSelect, ModalTextarea, SaveButton, FieldLabel,
-  Chip, LifecycleBadge, Th, Td, DetailRow, pageSx, fmtDate, fmtTime,
+  Chip, LifecycleBadge, CountdownToActive, Th, Td, DetailRow, pageSx, fmtDate, fmtTime,
   fmtDateTime, fmtDayName, dateKeyOf, globalStyles, SectionHeader, TabErrorBoundary,
 } from "../components/mainExams/shared";
 import useSchoolSettings from "../hooks/useSchoolSettings";
@@ -146,6 +146,9 @@ export default function MainExaminationDashboard() {
 
       <div className="no-print" style={sx.header}>
         <div>
+          <button style={sx.backBtn} className="dash-icon-btn" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft size={14} /> Back to Dashboard
+          </button>
           <button style={sx.backBtn} className="dash-icon-btn" onClick={() => navigate("/main-exams")}>
             <ArrowLeft size={14} /> All Main Examinations
           </button>
@@ -324,6 +327,7 @@ function SubjectMiniCard({ s }) {
       <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
         {fmtDate(s.exam_date || s.start_time)} · {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
       </div>
+      <CountdownToActive startTime={s.start_time} status={s.status} style={{ marginTop: 4 }} />
     </div>
   );
 }
@@ -532,7 +536,12 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
 function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
   const C = useC();
   const [attaching, setAttaching] = useState(false);
-  const locked = ["active", "ended", "marking", "completed"].includes(s.status);
+  // Only an actually-live session is protected from removal — a finished
+  // one (ended/marking/completed) can be removed since its results live
+  // entirely on the referenced e_assessment, not on this row (matches the
+  // backend's deleteSubjectSession guard). Editing the schedule has its
+  // own, separate lock (see the "locked" banner in the edit modal above).
+  const deleteLocked = s.status === "active";
 
   return (
     <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px" }}>
@@ -547,6 +556,7 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
             {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
             {s.venue ? ` · ${s.venue}` : ""}
           </div>
+          <CountdownToActive startTime={s.start_time} status={s.status} style={{ marginTop: 4 }} />
           <div style={{ fontSize: 12.5, color: C.textSec, marginTop: 4 }}>
             {s.e_assessment_id
               ? <>Assessment: <strong>{s.assessment_title || `#${s.e_assessment_id}`}</strong></>
@@ -572,7 +582,7 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
             </select>
           )}
           <MiniBtn icon={<Pencil size={12} />} onClick={onEdit}>Edit</MiniBtn>
-          <MiniBtn tone="danger" icon={<Trash2 size={12} />} onClick={onDelete} disabled={locked} title={locked ? `Cannot remove once ${s.status}` : "Remove"} />
+          <MiniBtn tone="danger" icon={<Trash2 size={12} />} onClick={onDelete} disabled={deleteLocked} title={deleteLocked ? "Cannot remove while active — end it first" : "Remove"} />
         </div>
       </div>
     </div>
@@ -662,6 +672,7 @@ function ExamCodeCard({ id, examination, onChanged, showToast }) {
 function TimetableTab({ id, subjects, examination, onChanged, showToast }) {
   const C = useC();
   const [publishing, setPublishing] = useState(false);
+  const [unpublishing, setUnpublishing] = useState(false);
   const [view, setView] = useState("list"); // "list" | "calendar"
 
   const sorted = useMemo(
@@ -699,6 +710,21 @@ function TimetableTab({ id, subjects, examination, onChanged, showToast }) {
     }
   };
 
+  const unpublish = async () => {
+    if (!window.confirm("Revert this timetable to draft? Subjects that haven't started yet will go back to draft and stop being schedule-driven until you publish again.")) return;
+    try {
+      setUnpublishing(true);
+      await API.put(`/main-exams/${id}/unpublish`);
+      showToast("Timetable reverted to draft.");
+      onChanged();
+    } catch (err) {
+      const data = err?.response?.data;
+      showToast(data?.message || "Failed to revert timetable to draft", "error");
+    } finally {
+      setUnpublishing(false);
+    }
+  };
+
   return (
     <div>
       <ExamCodeCard id={id} examination={examination} onChanged={onChanged} showToast={showToast} />
@@ -712,6 +738,11 @@ function TimetableTab({ id, subjects, examination, onChanged, showToast }) {
           {examination?.status === "draft" && (
             <ActionButton primary icon={<CheckCircle2 size={14} />} onClick={publish} disabled={publishing}>
               {publishing ? "Publishing…" : "Publish Timetable"}
+            </ActionButton>
+          )}
+          {examination?.status === "published" && (
+            <ActionButton icon={<Undo2 size={14} />} onClick={unpublish} disabled={unpublishing}>
+              {unpublishing ? "Reverting…" : "Revert to Draft"}
             </ActionButton>
           )}
         </div>
@@ -1339,6 +1370,8 @@ function useMemoFilterRows(rows, search) {
 ═══════════════════════════════════════════════════════════ */
 const REPORT_TYPES = [
   { key: "summary", label: "Main Examination Summary", needs: null, path: (id) => `/main-exams/${id}/reports/summary` },
+  { key: "class-ranking", label: "Class Performance Ranking", needs: null, path: (id) => `/main-exams/${id}/reports/class-ranking` },
+  { key: "overall-performance", label: "Overall Performance (Candidate Ranking)", needs: null, path: (id) => `/main-exams/${id}/reports/overall-performance` },
   { key: "timetable", label: "Examination Timetable", needs: null, path: (id) => `/main-exams/${id}/reports/timetable` },
   { key: "grade-distribution", label: "Grade Distribution", needs: null, path: (id) => `/main-exams/${id}/reports/grade-distribution` },
   { key: "marking-progress", label: "Marking Progress", needs: null, path: (id) => `/main-exams/${id}/reports/marking-progress` },
@@ -1563,6 +1596,8 @@ function RowsTable({ rows, columns, emptyText }) {
 function ReportView({ reportKey, data }) {
   switch (reportKey) {
     case "summary": return <SummaryReportView data={data} />;
+    case "class-ranking": return <ClassRankingReportView data={data} />;
+    case "overall-performance": return <OverallPerformanceReportView data={data} />;
     case "timetable": return <TimetableReportView data={data} />;
     case "grade-distribution": return <GradeDistributionReportView data={data} />;
     case "marking-progress":
@@ -1687,25 +1722,117 @@ function SummaryReportView({ data }) {
         ]}
       />
 
+      {/* Class Performance Ranking — every scored candidate ranked WITHIN
+          their own class (class_position), one row per student rather
+          than the aggregate roll-up above, with each candidate's marks
+          per subject (§51 — same figures the Nominal Roll shows). */}
+      <SectionHeader title="Class Performance Ranking" />
+      <RankedCandidatesTable
+        rows={data.class_ranking}
+        subjects={data.nominal_roll?.subjects}
+        positionKey="class_position"
+        emptyText="No candidates have been scored yet."
+      />
+
       {/* Overall Performance — every scored candidate ranked exam-wide
           (not just within their own class) by the mean, using the exact
           same average_percentage the Nominal Roll shows for that
-          candidate (§51). */}
+          candidate (§51), plus their marks per subject. */}
       <SectionHeader title="Overall Performance" />
-      <RowsTable
+      <RankedCandidatesTable
         rows={data.overall_ranking}
+        subjects={data.nominal_roll?.subjects}
+        positionKey="overall_position"
         emptyText="No candidates have been scored yet."
-        columns={[
-          { key: "overall_position", label: "Position", strong: true },
-          { key: "admission_no", label: "Admission No" },
-          { key: "name", label: "Name" },
-          { key: "class", label: "Class" },
-          { key: "average_percentage", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
-        ]}
       />
 
       <SectionHeader title="Nominal Roll" />
       <NominalRollTable data={data.nominal_roll} />
+    </div>
+  );
+}
+
+/* Shared by the Class Performance Ranking and Overall Performance
+   sections above (and by their standalone report views below) — a
+   position/admission-no/name/class table with one column per subject
+   (short code, same as the Nominal Roll — see assignSubjectCodes() in
+   mainExamAnalytics.controller.js) and a mean column, so either ranking
+   doubles as "how did they do in each paper", not just the mean. */
+function RankedCandidatesTable({ rows, subjects, positionKey, emptyText }) {
+  const C = useC();
+  const list = rows || [];
+  const subjectList = subjects || [];
+  if (!list.length) return <EmptyState icon={<FileText size={22} />} text={emptyText || "No candidates have been scored yet."} />;
+  return (
+    <div>
+      <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 10 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <Th>Position</Th><Th>Admission No</Th><Th>Name</Th><Th>Class</Th>
+            {subjectList.map((s) => <Th key={s.session_id} title={s.subject}>{s.code}</Th>)}
+            <Th>Mean %</Th>
+          </tr></thead>
+          <tbody>
+            {list.map((r) => (
+              <tr key={r.student_id}>
+                <Td>{r[positionKey] ?? "—"}</Td>
+                <Td>{r.admission_no || "—"}</Td>
+                <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
+                <Td>{r.class || "—"}</Td>
+                {(r.marks || []).map((m, i) => (
+                  <Td key={i}>{m.not_registered || m.score == null ? "—" : m.score}</Td>
+                ))}
+                <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {subjectList.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 12.5, color: C.textSec }}>
+          <span style={{ fontWeight: 600, color: C.textPri }}>Key: </span>
+          {subjectList.map((s, i) => (
+            <span key={s.session_id}>
+              <strong style={{ color: C.textPri }}>{s.code}</strong> = {s.subject}
+              {i < subjectList.length - 1 ? " · " : ""}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Standalone view for the "Class Performance Ranking" report — same
+   table as the Summary's own section above, rendered on its own for
+   when it's viewed/downloaded separately rather than as part of the
+   full Summary bundle. */
+function ClassRankingReportView({ data }) {
+  return (
+    <div>
+      <SectionHeader title="Class Performance Ranking" />
+      <RankedCandidatesTable
+        rows={data.class_ranking}
+        subjects={data.nominal_roll?.subjects}
+        positionKey="class_position"
+        emptyText="No candidates have been scored yet."
+      />
+    </div>
+  );
+}
+
+/* Standalone view for the "Overall Performance" report — same table as
+   the Summary's own section above, rendered on its own. */
+function OverallPerformanceReportView({ data }) {
+  return (
+    <div>
+      <SectionHeader title="Overall Performance" />
+      <RankedCandidatesTable
+        rows={data.overall_ranking}
+        subjects={data.nominal_roll?.subjects}
+        positionKey="overall_position"
+        emptyText="No candidates have been scored yet."
+      />
     </div>
   );
 }

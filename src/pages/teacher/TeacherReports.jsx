@@ -31,7 +31,7 @@ const theme = {
 
 /* ================= MAIN ================= */
 export default function TeacherReports() {
-  const { settings: school, getOfficial, signatory } = useSchoolSettings();
+  const { settings: school, getOfficial, signatory, signatories } = useSchoolSettings();
   const { gradingSystem } = useGradingSystem();
   const passMark = getPassMark(gradingSystem);
   const getGrade = (score) => getGradeForScore(score, gradingSystem).label;
@@ -412,10 +412,21 @@ const insights = useMemo(() => {
       <p>Head of Department</p>
     </div>
 
-    <div style={printStyles.signBlock}>
-      <div style={printStyles.line}></div>
-      <p>{principal?.title || "Principal"}</p>
-    </div>
+    {/* One block per official flagged as a signatory in School Settings
+        (in rank/order), or the single Principal fallback if none are set. */}
+    {signatories.length > 0 ? (
+      signatories.map((s) => (
+        <div style={printStyles.signBlock} key={s.id}>
+          <div style={printStyles.line}></div>
+          <p>{s.title}</p>
+        </div>
+      ))
+    ) : (
+      <div style={printStyles.signBlock}>
+        <div style={printStyles.line}></div>
+        <p>{principal?.title || "Principal"}</p>
+      </div>
+    )}
 
   </div>
 

@@ -131,6 +131,12 @@ export default function TakeAssessmentPicker() {
   const [loginError, setLoginError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
 
+  // pre-login cover banner — a student hasn't authenticated yet at this
+  // point, so this comes from the public GET /e-assessments/public/covers
+  // (no session needed) rather than the full list below, which is
+  // per-student and requires a login. Only relevant while phase==="login".
+  const [publicCover, setPublicCover] = useState(null);
+
   // list step
   const [assessments, setAssessments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -139,6 +145,23 @@ export default function TakeAssessmentPicker() {
   useEffect(() => {
     if (phase === "list") fetchAssessments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "login") return;
+    let cancelled = false;
+    API.get("/e-assessments/public/covers")
+      .then((res) => {
+        if (cancelled) return;
+        const rows = res.data?.assessments || res.data?.data || res.data || [];
+        setPublicCover(rows.find((r) => r.cover_page_url) || null);
+      })
+      .catch(() => {
+        // Purely decorative — no login-gate functionality depends on it,
+        // so a failed fetch here just means no banner is shown.
+        if (!cancelled) setPublicCover(null);
+      });
+    return () => { cancelled = true; };
   }, [phase]);
 
   const fetchAssessments = async () => {
@@ -211,6 +234,16 @@ export default function TakeAssessmentPicker() {
   if (phase === "login") {
     return (
       <div style={S.stateWrap}>
+        {publicCover && (
+          <div style={S.preLoginCoverWrap}>
+            <iframe
+              src={`${resolveFileUrl(publicCover.cover_page_url)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+              title={`${publicCover.title || "Assessment"} cover page`}
+              style={S.coverFrame}
+              tabIndex={-1}
+            />
+          </div>
+        )}
         <div style={S.panelCard}>
           <div style={{ ...S.iconCircle, background: "var(--primary-tint)", marginBottom: 16 }}>
             <ClipboardList size={26} color="var(--primary)" />
@@ -610,6 +643,24 @@ const S = {
     minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column",
     alignItems: "center", justifyContent: "center", gap: 16, padding: 24,
     fontFamily: "'Inter', system-ui, sans-serif",
+  },
+  // Pre-login cover-page banner. A flat, explicit height capped at 2/3
+  // of the viewport — same "fixed height, not aspect-ratio" choice used
+  // for the per-assessment cover thumbnails below (see coverWrap's
+  // comment): an aspect-ratio box here would scale with the PDF's own
+  // page shape and could balloon a tall cover to fill the whole screen,
+  // which is exactly what this cap has to prevent. The PDF's own
+  // view=FitH still fits it to the available width; this just bounds
+  // how tall that box is ever allowed to get.
+  preLoginCoverWrap: {
+    width: "100%",
+    maxWidth: 480,
+    height: "min(66vh, 520px)",
+    borderRadius: "var(--radius)",
+    overflow: "hidden",
+    border: "1px solid var(--border)",
+    boxShadow: "var(--shadow)",
+    background: "var(--card)",
   },
   panelCard: {
     background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",

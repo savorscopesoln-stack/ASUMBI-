@@ -1941,7 +1941,15 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onStats, onEdi
         <MetaRow label="Total Marks" value={a.total_marks || 100} />
         <MetaRow label="Questions"   value={a.question_count || 0} />
         <MetaRow label="Submissions" value={a.submission_count || 0} />
-        <MetaRow label="Teacher"     value={a.teacher_name || "Not assigned"} />
+        <MetaRow
+          label="Teacher"
+          value={
+            a.teacher_name ||
+            (Array.isArray(a.question_setter_names) && a.question_setter_names.length > 0
+              ? a.question_setter_names.join(", ")
+              : "Not assigned")
+          }
+        />
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
@@ -2267,7 +2275,7 @@ function MetaRow({ label, value }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: C.bgAlt, borderRadius: 7 }}>
       <span style={{ fontSize: 12, color: C.textMuted }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: C.textSec, maxWidth: "60%", textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+      <span title={typeof value === "string" ? value : undefined} style={{ fontSize: 13, fontWeight: 600, color: C.textSec, maxWidth: "60%", textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
     </div>
   );
 }

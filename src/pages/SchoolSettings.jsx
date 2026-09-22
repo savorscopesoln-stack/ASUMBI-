@@ -73,7 +73,8 @@ const sx = {
   primaryBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px 20px", borderRadius: 12, border: "none", background: C.accent, color: C.white, fontSize: 13.5, fontWeight: 700, cursor: "pointer" },
   secondaryBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "9px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textSec, fontSize: 13, fontWeight: 700, cursor: "pointer" },
   dangerBtnSm: { display: "flex", alignItems: "center", justifyContent: "center", padding: "8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "var(--destructive-tint)", color: C.danger, cursor: "pointer" },
-  officialRow: { display: "grid", gridTemplateColumns: "auto 1fr 1fr auto auto", gap: 8, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` },
+  officialRow: { display: "grid", gridTemplateColumns: "auto 50px 1fr 1fr auto auto", gap: 8, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` },
+  rankInput: { width: 50, padding: "10px 8px", borderRadius: 10, border: `1px solid ${C.border}`, background: "var(--bg)", color: C.textPri, fontSize: 13, fontFamily: "inherit", textAlign: "center", boxSizing: "border-box" },
   logoBox: { width: 96, height: 96, borderRadius: 12, border: `1px dashed ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", overflow: "hidden", flexShrink: 0 },
 };
 
@@ -85,7 +86,7 @@ const emptyForm = {
 
 export default function SchoolSettings() {
   const navigate = useNavigate();
-  const { settings, officials, loading, refresh } = useSchoolSettings();
+  const { settings, officials, classTeachers, loading, refresh } = useSchoolSettings();
 
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -104,9 +105,33 @@ export default function SchoolSettings() {
       .catch(() => {});
   }, []);
 
-  const [newOfficial, setNewOfficial] = useState({ title: "", name: "" });
+  const [newOfficial, setNewOfficial] = useState({ title: "", name: "", teacherId: "" });
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({});
+
+  // Teachers to pick from instead of hand-typing a name — see
+  // GET /school-settings/officials/teachers.
+  const [teachers, setTeachers] = useState([]);
+  useEffect(() => {
+    API.get("/school-settings/officials/teachers")
+      .then((res) => setTeachers(res.data?.teachers || []))
+      .catch(() => {});
+  }, []);
+
+  // Every class in use (Students.studentClass) — see GET /api/meta/classes
+  // — so a Class Teacher / Lecturer can be assigned per class instead of
+  // typing the class name freehand and risking a mismatch with the
+  // report card's lookup.
+  const [classes, setClasses] = useState([]);
+  useEffect(() => {
+    API.get("/meta/classes")
+      .then((res) => setClasses((res.data || []).map((r) => r.class_name).filter(Boolean)))
+      .catch(() => {});
+  }, []);
+
+  const [newClassTeacher, setNewClassTeacher] = useState({ className: "", title: "Class Teacher / Lecturer", name: "", teacherId: "" });
+  const [editingCtId, setEditingCtId] = useState(null);
+  const [editCtDraft, setEditCtDraft] = useState({});
 
   useEffect(() => injectStyles(), []);
 
@@ -174,14 +199,19 @@ export default function SchoolSettings() {
 
   const addOfficial = async () => {
     if (!newOfficial.title.trim()) return;
+    if (!newOfficial.teacherId && !newOfficial.name.trim()) {
+      showToast("error", "Pick a teacher or type a name");
+      return;
+    }
     try {
       await API.post("/school-settings/officials", {
         title: newOfficial.title.trim(),
         name: newOfficial.name.trim(),
+        teacherId: newOfficial.teacherId || null,
         sortOrder: officials.length + 1,
-        isSignatory: officials.length === 0,
+        isSignatory: false,
       });
-      setNewOfficial({ title: "", name: "" });
+      setNewOfficial({ title: "", name: "", teacherId: "" });
       await refresh();
     } catch (err) {
       showToast("error", err?.response?.data?.message || "Failed to add official");
@@ -190,7 +220,13 @@ export default function SchoolSettings() {
 
   const startEdit = (o) => {
     setEditingId(o.id);
-    setEditDraft({ title: o.title, name: o.name || "", sortOrder: o.sortOrder, isSignatory: !!o.isSignatory });
+    setEditDraft({
+      title: o.title,
+      name: o.teacherId ? "" : (o.name || ""),
+      teacherId: o.teacherId || "",
+      sortOrder: o.sortOrder,
+      isSignatory: !!o.isSignatory,
+    });
   };
 
   const saveEdit = async (id) => {
@@ -210,6 +246,67 @@ export default function SchoolSettings() {
       await refresh();
     } catch (err) {
       showToast("error", err?.response?.data?.message || "Failed to remove official");
+    }
+  };
+
+  /* ── Class Teachers / Lecturers (per-class rank) ──
+     Same add/edit/delete shape as Officials above, but every entry is
+     scoped to one class — see routes/schoolSettings.js's /class-teachers
+     endpoints. Printed automatically on a student's own report card
+     for their class instead of a blank hand-signed line. */
+  const addClassTeacher = async () => {
+    if (!newClassTeacher.className) {
+      showToast("error", "Pick a class");
+      return;
+    }
+    if (!newClassTeacher.teacherId && !newClassTeacher.name.trim()) {
+      showToast("error", "Pick a teacher or type a name");
+      return;
+    }
+    try {
+      const sameClassCount = classTeachers.filter((c) => c.className === newClassTeacher.className).length;
+      await API.post("/school-settings/class-teachers", {
+        className: newClassTeacher.className,
+        title: newClassTeacher.title.trim() || "Class Teacher / Lecturer",
+        name: newClassTeacher.name.trim(),
+        teacherId: newClassTeacher.teacherId || null,
+        sortOrder: sameClassCount + 1,
+      });
+      setNewClassTeacher({ className: "", title: "Class Teacher / Lecturer", name: "", teacherId: "" });
+      await refresh();
+    } catch (err) {
+      showToast("error", err?.response?.data?.message || "Failed to add class teacher");
+    }
+  };
+
+  const startEditCt = (c) => {
+    setEditingCtId(c.id);
+    setEditCtDraft({
+      className: c.className,
+      title: c.title,
+      name: c.teacherId ? "" : (c.name || ""),
+      teacherId: c.teacherId || "",
+      sortOrder: c.sortOrder,
+    });
+  };
+
+  const saveEditCt = async (id) => {
+    try {
+      await API.put(`/school-settings/class-teachers/${id}`, editCtDraft);
+      setEditingCtId(null);
+      await refresh();
+    } catch (err) {
+      showToast("error", err?.response?.data?.message || "Failed to update class teacher");
+    }
+  };
+
+  const deleteClassTeacher = async (id) => {
+    if (!window.confirm("Remove this class teacher?")) return;
+    try {
+      await API.delete(`/school-settings/class-teachers/${id}`);
+      await refresh();
+    } catch (err) {
+      showToast("error", err?.response?.data?.message || "Failed to remove class teacher");
     }
   };
 
@@ -350,9 +447,10 @@ export default function SchoolSettings() {
         <div style={sx.card}>
           <h3 style={sx.cardTitle}>Officials</h3>
           <p style={{ margin: "-10px 0 16px", fontSize: 12.5, color: C.textMuted }}>
-            Anyone whose title/name should appear on a result slip or certificate — Principal, Dean of
-            Curriculum, Dean of Students, or any other role. The star marks whose name appears on the
-            main signature line.
+            Anyone whose rank/name should appear on a result slip or certificate — Principal, Dean of
+            Curriculum, Dean of Students, or any other role. Pick an existing teacher or type a name,
+            give them a rank/order, and star as many as you like — every starred official appears on
+            the report's signature line, in the order shown.
           </p>
 
           {officials.map((o) => (
@@ -361,24 +459,51 @@ export default function SchoolSettings() {
                 <>
                   <button
                     type="button"
-                    title="Mark as main signatory"
+                    title="Show on report signature line"
                     style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
                     onClick={() => setEditDraft((d) => ({ ...d, isSignatory: !d.isSignatory }))}
                   >
                     <Star size={16} color={editDraft.isSignatory ? C.accent : C.textMuted} fill={editDraft.isSignatory ? C.accent : "none"} />
                   </button>
-                  <input style={sx.input} value={editDraft.title} onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))} />
-                  <input style={sx.input} value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Full name" />
+                  <input
+                    style={sx.rankInput} type="number" title="Sign/display order"
+                    value={editDraft.sortOrder ?? 0}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, sortOrder: e.target.value }))}
+                  />
+                  <input style={sx.input} placeholder="Rank / title (e.g. Deputy Principal)" value={editDraft.title} onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))} />
+                  {editDraft.teacherId ? (
+                    <select
+                      style={sx.input} value={editDraft.teacherId}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, teacherId: e.target.value, name: "" }))}
+                    >
+                      {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      <option value="">— Type a name instead —</option>
+                    </select>
+                  ) : (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input style={sx.input} value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Full name" />
+                      {teachers.length > 0 && (
+                        <select style={{ ...sx.input, maxWidth: 40 }} value="" title="Pick a teacher instead" onChange={(e) => e.target.value && setEditDraft((d) => ({ ...d, teacherId: e.target.value, name: "" }))}>
+                          <option value="">↴</option>
+                          {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )}
                   <button style={sx.secondaryBtn} onClick={() => saveEdit(o.id)}>Save</button>
                   <button style={sx.secondaryBtn} onClick={() => setEditingId(null)}>Cancel</button>
                 </>
               ) : (
                 <>
                   <Star size={16} color={o.isSignatory ? C.accent : C.textMuted} fill={o.isSignatory ? C.accent : "none"} />
+                  <div style={{ fontSize: 12.5, color: C.textMuted, textAlign: "center" }}>#{o.sortOrder}</div>
                   <div>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: C.textPri }}>{o.title}</div>
                   </div>
-                  <div style={{ fontSize: 13.5, color: C.textSec }}>{o.name || <em style={{ color: C.textMuted }}>No name set</em>}</div>
+                  <div style={{ fontSize: 13.5, color: C.textSec }}>
+                    {o.name || <em style={{ color: C.textMuted }}>No name set</em>}
+                    {o.teacherId && <span style={{ marginLeft: 6, fontSize: 11, color: C.textMuted }}>(linked teacher)</span>}
+                  </div>
                   <button style={sx.secondaryBtn} onClick={() => startEdit(o)}>Edit</button>
                   <button style={sx.dangerBtnSm} onClick={() => deleteOfficial(o.id)}><Trash2 size={14} /></button>
                 </>
@@ -387,11 +512,127 @@ export default function SchoolSettings() {
           ))}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginTop: 16 }}>
-            <input style={sx.input} placeholder="Title (e.g. Dean of Students)" value={newOfficial.title} onChange={(e) => setNewOfficial((n) => ({ ...n, title: e.target.value }))} />
-            <input style={sx.input} placeholder="Full name" value={newOfficial.name} onChange={(e) => setNewOfficial((n) => ({ ...n, name: e.target.value }))} />
+            <input style={sx.input} placeholder="Rank / title (e.g. Dean of Students)" value={newOfficial.title} onChange={(e) => setNewOfficial((n) => ({ ...n, title: e.target.value }))} />
+            {newOfficial.teacherId ? (
+              <select style={sx.input} value={newOfficial.teacherId} onChange={(e) => setNewOfficial((n) => ({ ...n, teacherId: e.target.value, name: "" }))}>
+                {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                <option value="">— Type a name instead —</option>
+              </select>
+            ) : (
+              <select
+                style={sx.input} value=""
+                onChange={(e) => e.target.value === "__custom__" ? setNewOfficial((n) => ({ ...n, teacherId: "" })) : setNewOfficial((n) => ({ ...n, teacherId: e.target.value, name: "" }))}
+              >
+                <option value="">Select a teacher…</option>
+                {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}{t.subject ? ` — ${t.subject}` : ""}</option>)}
+              </select>
+            )}
             <button style={sx.primaryBtn} onClick={addOfficial}><Plus size={15} /></button>
           </div>
+          {!newOfficial.teacherId && (
+            <input
+              style={{ ...sx.input, marginTop: 8 }} placeholder="…or type a full name instead"
+              value={newOfficial.name} onChange={(e) => setNewOfficial((n) => ({ ...n, name: e.target.value }))}
+            />
+          )}
         </div>
+      </div>
+
+      {/* ── Class Teachers / Lecturers — one rank per class, full width ── */}
+      <div style={{ ...sx.card, marginTop: 0 }}>
+        <h3 style={sx.cardTitle}>Class Teachers / Lecturers</h3>
+        <p style={{ margin: "-10px 0 16px", fontSize: 12.5, color: C.textMuted }}>
+          The teacher (or lecturer) in charge of each class — unlike Officials above, this is
+          per-class, not school-wide. Give each one a rank/title (defaults to "Class Teacher /
+          Lecturer" but can be relabelled, e.g. "Form Tutor" or "Assistant Class Teacher"). The
+          top-ranked entry for a class is printed automatically on that class's student report
+          cards, in place of a blank hand-signed line.
+        </p>
+
+        {classTeachers.length === 0 && (
+          <p style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 14 }}>No class teachers assigned yet.</p>
+        )}
+
+        {classTeachers.map((c) => (
+          <div key={c.id} style={sx.officialRow}>
+            {editingCtId === c.id ? (
+              <>
+                <div style={{ fontSize: 12.5, color: C.textMuted, textAlign: "center" }}>#{c.sortOrder}</div>
+                <select style={sx.input} value={editCtDraft.className} onChange={(e) => setEditCtDraft((d) => ({ ...d, className: e.target.value }))}>
+                  {classes.map((cn) => <option key={cn} value={cn}>{cn}</option>)}
+                  {!classes.includes(editCtDraft.className) && editCtDraft.className && (
+                    <option value={editCtDraft.className}>{editCtDraft.className}</option>
+                  )}
+                </select>
+                <input style={sx.input} placeholder="Rank / title (e.g. Class Teacher / Lecturer)" value={editCtDraft.title} onChange={(e) => setEditCtDraft((d) => ({ ...d, title: e.target.value }))} />
+                {editCtDraft.teacherId ? (
+                  <select
+                    style={sx.input} value={editCtDraft.teacherId}
+                    onChange={(e) => setEditCtDraft((d) => ({ ...d, teacherId: e.target.value, name: "" }))}
+                  >
+                    {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    <option value="">— Type a name instead —</option>
+                  </select>
+                ) : (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input style={sx.input} value={editCtDraft.name} onChange={(e) => setEditCtDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Full name" />
+                    {teachers.length > 0 && (
+                      <select style={{ ...sx.input, maxWidth: 40 }} value="" title="Pick a teacher instead" onChange={(e) => e.target.value && setEditCtDraft((d) => ({ ...d, teacherId: e.target.value, name: "" }))}>
+                        <option value="">↴</option>
+                        {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
+                <button style={sx.secondaryBtn} onClick={() => saveEditCt(c.id)}>Save</button>
+                <button style={sx.secondaryBtn} onClick={() => setEditingCtId(null)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 12.5, color: C.textMuted, textAlign: "center" }}>#{c.sortOrder}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: C.textPri }}>{c.className}</div>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: C.textPri }}>{c.title}</div>
+                </div>
+                <div style={{ fontSize: 13.5, color: C.textSec }}>
+                  {c.name || <em style={{ color: C.textMuted }}>No name set</em>}
+                  {c.teacherId && <span style={{ marginLeft: 6, fontSize: 11, color: C.textMuted }}>(linked teacher)</span>}
+                </div>
+                <button style={sx.secondaryBtn} onClick={() => startEditCt(c)}>Edit</button>
+                <button style={sx.dangerBtnSm} onClick={() => deleteClassTeacher(c.id)}><Trash2 size={14} /></button>
+              </>
+            )}
+          </div>
+        ))}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8, marginTop: 16 }}>
+          <select style={sx.input} value={newClassTeacher.className} onChange={(e) => setNewClassTeacher((n) => ({ ...n, className: e.target.value }))}>
+            <option value="">Select a class…</option>
+            {classes.map((cn) => <option key={cn} value={cn}>{cn}</option>)}
+          </select>
+          <input style={sx.input} placeholder="Rank / title" value={newClassTeacher.title} onChange={(e) => setNewClassTeacher((n) => ({ ...n, title: e.target.value }))} />
+          {newClassTeacher.teacherId ? (
+            <select style={sx.input} value={newClassTeacher.teacherId} onChange={(e) => setNewClassTeacher((n) => ({ ...n, teacherId: e.target.value, name: "" }))}>
+              {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="">— Type a name instead —</option>
+            </select>
+          ) : (
+            <select
+              style={sx.input} value=""
+              onChange={(e) => e.target.value && setNewClassTeacher((n) => ({ ...n, teacherId: e.target.value, name: "" }))}
+            >
+              <option value="">Select a teacher…</option>
+              {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}{t.subject ? ` — ${t.subject}` : ""}</option>)}
+            </select>
+          )}
+          <button style={sx.primaryBtn} onClick={addClassTeacher}><Plus size={15} /></button>
+        </div>
+        {!newClassTeacher.teacherId && (
+          <input
+            style={{ ...sx.input, marginTop: 8 }} placeholder="…or type a full name instead"
+            value={newClassTeacher.name} onChange={(e) => setNewClassTeacher((n) => ({ ...n, name: e.target.value }))}
+          />
+        )}
       </div>
     </div>
   );
