@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Sun, Moon, X as IconX } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
@@ -188,6 +188,76 @@ export function LifecycleBadge({ status }) {
   const tone = { draft: "neutral", scheduled: "info", active: "success", ended: "neutral", completed: "neutral", published: "info", archived: "neutral" }[s] || "neutral";
   const label = { ended: "Ended", scheduled: "Scheduled", active: "Active", draft: "Draft", completed: "Completed", published: "Published", archived: "Archived" }[s] || s;
   return <Chip text={label} tone={tone} uppercase />;
+}
+
+// Live "Active in Xh Ym" countdown for a subject session that's published
+// (§7's 'scheduled') but hasn't gone active yet — so an admin watching the
+// dashboard can see it's on track instead of wondering whether the
+// scheduler is actually going to fire.
+//
+// start_time is fetched from the API as the "labelled EAT wall-clock"
+// instant the exam scheduler itself now uses (see the timezone note in
+// backend/utils/examScheduler.js) — i.e. `new Date(start_time)` here has
+// the intended EAT digits sitting in its UTC getters, not real UTC. To
+// diff against "now" correctly regardless of the *viewer's own* browser
+// timezone, "now" has to be relabelled into that exact same shape before
+// subtracting — otherwise an admin viewing from outside EAT would see a
+// countdown that's off by their own UTC offset. This mirrors
+// nowAsSchoolWallClock() server-side; the +3h cancels out on both sides
+// of the subtraction, leaving the real remaining time regardless of
+// either machine's timezone.
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000; // East Africa Time is UTC+3, no DST
+function msUntilActive(startTime) {
+  if (!startTime) return null;
+  const target = new Date(startTime);
+  if (Number.isNaN(target.getTime())) return null;
+  const nowAsEatWallClock = new Date(Date.now() + EAT_OFFSET_MS);
+  return target.getTime() - nowAsEatWallClock.getTime();
+}
+
+function formatCountdown(ms) {
+  let total = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(total / 86400); total -= days * 86400;
+  const hours = Math.floor(total / 3600); total -= hours * 3600;
+  const minutes = Math.floor(total / 60); total -= minutes * 60;
+  const seconds = total;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+// Ticks once a second while a start_time is due within the next hour (so
+// the last stretch counts down smoothly), otherwise once a minute — no
+// point re-rendering every second for something 3 days out.
+export function CountdownToActive({ startTime, status, style }) {
+  const [msLeft, setMsLeft] = useState(() => msUntilActive(startTime));
+
+  useEffect(() => {
+    if (status !== "scheduled" || !startTime) return undefined;
+    setMsLeft(msUntilActive(startTime));
+    const tick = () => setMsLeft(msUntilActive(startTime));
+    const fast = msUntilActive(startTime);
+    const intervalMs = fast !== null && fast <= 60 * 60 * 1000 ? 1000 : 30000;
+    const id = setInterval(tick, intervalMs);
+    return () => clearInterval(id);
+  }, [startTime, status]);
+
+  if (status !== "scheduled" || !startTime || msLeft === null) return null;
+
+  return (
+    <span
+      style={{
+        fontSize: 11.5, fontWeight: 700,
+        color: msLeft <= 0 ? "var(--warning)" : "var(--primary)",
+        display: "inline-flex", alignItems: "center", gap: 4,
+        ...style,
+      }}
+      title="Automatically goes active at its scheduled start time — no admin action needed"
+    >
+      {msLeft <= 0 ? "Starting any moment…" : `Active in ${formatCountdown(msLeft)}`}
+    </span>
+  );
 }
 
 // Catches render-time errors in whatever it wraps and shows a message

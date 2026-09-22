@@ -1,12 +1,88 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../api";
+import { useTheme } from "../context/ThemeContext";
 
 /* =========================================================
    ADMIN: PASSWORD RESET
    Lets an admin find any account (Users / Students / Teachers)
    and reset its password back to the system default. The account
    is flagged so it's forced to set its own password on next login.
+
+   BUGFIX (theme): this page used to be hardcoded to a permanent dark
+   navy gradient (`bg-gradient-to-br from-[#070b14] ...`) with plain
+   white text, completely ignoring the app's light/dark theme toggle
+   (ThemeContext) — so it looked jarringly out of place next to every
+   other admin page (Users, Teachers, Students, ...) whenever the app
+   was in light mode, which is the default for a new session. Rewritten
+   to use the same shared CSS-variable design-token system those pages
+   already use (`--bg`, `--card`, `--text`, etc., toggled via
+   `[data-theme='dark']` on <html> by ThemeContext) — see Users.jsx's
+   own `injectDesignTokens()` for the pattern this follows.
 ========================================================= */
+
+// Idempotent (guarded by the "dash-tokens" id), so it's safe to call
+// again here even if another page already injected the same sheet.
+const injectDesignTokens = () => {
+  if (document.getElementById("dash-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "dash-tokens";
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --card-elevated: #FFFFFF;
+      --border: #E2E5EA;
+      --text: #0B0F19;
+      --text-secondary: #384152;
+      --text-muted: #64748B;
+      --primary: #8B1E2D;
+      --primary-dark: #6F1725;
+      --primary-tint: #FBEAEC;
+      --success: #15803D;
+      --success-tint: #ECFDF3;
+      --warning: #B45309;
+      --warning-tint: #FFFBEB;
+      --destructive: #DC2626;
+      --destructive-tint: #FEF2F2;
+      --info: #1D4ED8;
+      --info-tint: #EFF6FF;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
+      --shadow: 0 1px 3px rgba(16,24,40,0.06);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    [data-theme='dark'] {
+      --bg: #0F1115;
+      --card: #171A21;
+      --card-elevated: #1D2129;
+      --border: #323844;
+      --text: #FFFFFF;
+      --text-secondary: #C7CCD6;
+      --text-muted: #9198A6;
+      --primary: #E8A0A8;
+      --primary-dark: #F3C0C6;
+      --primary-tint: rgba(139,30,45,0.28);
+      --success: #4ADE80;
+      --success-tint: rgba(22,163,74,0.18);
+      --warning: #FBBF24;
+      --warning-tint: rgba(217,119,6,0.18);
+      --destructive: #FB7185;
+      --destructive-tint: rgba(220,38,38,0.18);
+      --info: #7DA6FF;
+      --info-tint: rgba(37,99,235,0.18);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    body { background: var(--bg); transition: background-color .2s ease; }
+    .pwreset-row:hover { background: var(--card-elevated) !important; }
+    .pwreset-tab:hover { filter: brightness(0.97); }
+    @keyframes pwresetPulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+    .pwreset-skeleton { background: linear-gradient(90deg, var(--border) 25%, var(--card-elevated) 50%, var(--border) 75%); background-size: 200% 100%; animation: pwresetPulse 1.4s ease-in-out infinite; }
+  `;
+  document.head.appendChild(el);
+};
 
 const TYPES = [
   { key: "users", source: "Users", label: "Users (admin/sub-admin)" },
@@ -15,6 +91,12 @@ const TYPES = [
 ];
 
 export default function AdminPasswordReset() {
+  // Synchronous + idempotent, same as Users.jsx — so the very first
+  // paint is already themed, no flash of the old hardcoded palette.
+  injectDesignTokens();
+
+  const { theme, toggleTheme } = useTheme();
+
   const [type, setType] = useState("users");
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -89,51 +171,51 @@ export default function AdminPasswordReset() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#070b14] to-[#0b1220] text-white p-6">
+    <div style={styles.page}>
 
       {/* HEADER */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">🔑 Password Reset</h1>
-        <p className="text-white/60 text-sm">
-          Reset a forgotten password back to the default. The account will be
-          required to choose a new password the next time it logs in.
-        </p>
+      <div style={styles.header}>
+        <div>
+          <h1 style={styles.title}>🔑 Password Reset</h1>
+          <p style={styles.subtitle}>
+            Reset a forgotten password back to the default. The account will be
+            required to choose a new password the next time it logs in.
+          </p>
+        </div>
+        <button
+          onClick={toggleTheme}
+          style={styles.themeToggle}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? "☀" : "🌙"}
+        </button>
       </div>
 
       {/* RESULT BANNER */}
       {result && (
-        <div className="bg-green-500/15 border border-green-500/30 text-green-200 p-4 rounded-xl mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div style={styles.resultBanner}>
           <div>
-            ✅ Password for <span className="font-semibold">{result.username}</span> reset to{" "}
-            <code className="px-2 py-0.5 bg-black/30 rounded">{result.defaultPassword}</code>
+            ✅ Password for <span style={{ fontWeight: 700 }}>{result.username}</span> reset to{" "}
+            <code style={styles.codeChip}>{result.defaultPassword}</code>
             . Share this with them directly — they'll be asked to change it on next login.
           </div>
-          <button
-            onClick={() => setResult(null)}
-            className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20 self-start sm:self-auto"
-          >
+          <button onClick={() => setResult(null)} style={styles.dismissBtn}>
             Dismiss
           </button>
         </div>
       )}
 
-      {error && (
-        <div className="bg-red-500/20 text-red-300 p-3 rounded-lg mb-4">
-          {error}
-        </div>
-      )}
+      {error && <div style={styles.errorBanner}>{error}</div>}
 
       {/* TYPE TABS */}
-      <div className="flex gap-2 mb-4">
+      <div style={styles.tabRow}>
         {TYPES.map((t) => (
           <button
             key={t.key}
+            className="pwreset-tab"
             onClick={() => { setType(t.key); setSearch(""); }}
-            className={`px-4 py-2 rounded-lg text-sm transition ${
-              type === t.key
-                ? "bg-indigo-500 text-white"
-                : "bg-white/5 text-white/70 hover:bg-white/10"
-            }`}
+            style={type === t.key ? styles.tabActive : styles.tabInactive}
           >
             {t.label}
           </button>
@@ -145,53 +227,53 @@ export default function AdminPasswordReset() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search by name or username..."
-        className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 outline-none w-full md:w-80 mb-4"
+        style={styles.search}
       />
 
       {/* TABLE */}
       {loading ? (
-        <div className="space-y-2">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-14 bg-white/5 animate-pulse rounded-lg border border-white/10" />
+            <div key={i} className="pwreset-skeleton" style={styles.skeletonRow} />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-white/60 text-center mt-10">No accounts found</div>
+        <div style={styles.emptyState}>No accounts found</div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-white/10">
-          <table className="w-full text-sm">
-            <thead className="bg-white/5 text-white/60">
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
               <tr>
-                <th className="text-left p-3">Name / Username</th>
-                <th className="text-left p-3">Role</th>
-                <th className="text-left p-3">Status</th>
-                <th className="text-right p-3">Action</th>
+                <th style={styles.th}>Name / Username</th>
+                <th style={styles.th}>Role</th>
+                <th style={styles.th}>Status</th>
+                <th style={{ ...styles.th, textAlign: "right" }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <tr key={r.id} className="border-t border-white/10 hover:bg-white/5">
-                  <td className="p-3">
-                    <div className="font-medium">{r.name || r.username}</div>
-                    {r.name && <div className="text-white/50 text-xs">{r.username}</div>}
+                <tr key={r.id} className="pwreset-row" style={styles.tr}>
+                  <td style={styles.td}>
+                    <div style={{ fontWeight: 600, color: "var(--text)" }}>{r.name || r.username}</div>
+                    {r.name && <div style={styles.subCell}>{r.username}</div>}
                   </td>
-                  <td className="p-3 text-white/70">{r.role || "—"}</td>
-                  <td className="p-3">
+                  <td style={{ ...styles.td, color: "var(--text-secondary)" }}>{r.role || "—"}</td>
+                  <td style={styles.td}>
                     {r.mustChangePassword ? (
-                      <span className="px-2 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-300">
-                        Pending password change
-                      </span>
+                      <span style={styles.badgeWarn}>Pending password change</span>
                     ) : (
-                      <span className="px-2 py-1 text-xs rounded-full bg-white/10 text-white/50">
-                        Normal
-                      </span>
+                      <span style={styles.badgeNeutral}>Normal</span>
                     )}
                   </td>
-                  <td className="p-3 text-right">
+                  <td style={{ ...styles.td, textAlign: "right" }}>
                     <button
                       onClick={() => resetPassword(r)}
                       disabled={resettingId === r.id}
-                      className="text-xs px-3 py-1.5 rounded bg-red-500/20 text-red-200 hover:bg-red-500/30 disabled:opacity-50"
+                      style={{
+                        ...styles.resetBtn,
+                        opacity: resettingId === r.id ? 0.5 : 1,
+                        cursor: resettingId === r.id ? "default" : "pointer",
+                      }}
                     >
                       {resettingId === r.id ? "Resetting..." : "Reset to default"}
                     </button>
@@ -205,3 +287,169 @@ export default function AdminPasswordReset() {
     </div>
   );
 }
+
+/* ================= STYLES =================
+   All colors reference the shared design-token CSS variables, so this
+   page follows the same light/dark palette as Users, Dashboard, and
+   every other page on the shared "dash-tokens" sheet. */
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background: "var(--bg)",
+    color: "var(--text)",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    padding: 24,
+  },
+  header: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+    marginBottom: 24,
+  },
+  title: { margin: 0, fontSize: 26, fontWeight: 800, color: "var(--text)" },
+  subtitle: { margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)", maxWidth: 560 },
+  themeToggle: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    width: 38,
+    height: 38,
+    borderRadius: "var(--radius-sm)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    fontSize: 15,
+    flexShrink: 0,
+  },
+  resultBanner: {
+    background: "var(--success-tint)",
+    border: "1px solid var(--success)",
+    color: "var(--success)",
+    padding: 14,
+    borderRadius: "var(--radius)",
+    marginBottom: 20,
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    fontSize: 13.5,
+  },
+  codeChip: {
+    padding: "2px 8px",
+    borderRadius: 6,
+    background: "var(--card-elevated)",
+    border: "1px solid var(--border)",
+    color: "var(--text)",
+    fontFamily: "monospace",
+  },
+  dismissBtn: {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: "6px 12px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  errorBanner: {
+    background: "var(--destructive-tint)",
+    color: "var(--destructive)",
+    border: "1px solid var(--destructive)",
+    padding: "10px 14px",
+    borderRadius: "var(--radius-sm)",
+    marginBottom: 16,
+    fontSize: 13.5,
+    fontWeight: 600,
+  },
+  tabRow: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" },
+  tabActive: {
+    padding: "9px 16px",
+    borderRadius: "var(--radius-sm)",
+    fontSize: 13,
+    fontWeight: 700,
+    border: "1px solid var(--primary)",
+    background: "var(--primary)",
+    color: "#FFFFFF",
+    cursor: "pointer",
+  },
+  tabInactive: {
+    padding: "9px 16px",
+    borderRadius: "var(--radius-sm)",
+    fontSize: 13,
+    fontWeight: 600,
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+  },
+  search: {
+    display: "block",
+    padding: "10px 14px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--text)",
+    outline: "none",
+    fontSize: 13.5,
+    width: "100%",
+    maxWidth: 340,
+    marginBottom: 18,
+  },
+  emptyState: { color: "var(--text-muted)", textAlign: "center", marginTop: 40, fontSize: 14 },
+  skeletonRow: { height: 56, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" },
+  tableWrap: {
+    overflowX: "auto",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    background: "var(--card)",
+  },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 13.5 },
+  th: {
+    textAlign: "left",
+    padding: 12,
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    color: "var(--text-muted)",
+    background: "var(--card-elevated)",
+    borderBottom: "1px solid var(--border)",
+  },
+  tr: { borderTop: "1px solid var(--border)", transition: "background 0.15s ease" },
+  td: { padding: 12, color: "var(--text)", verticalAlign: "middle" },
+  subCell: { fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 },
+  badgeWarn: {
+    padding: "4px 10px",
+    fontSize: 11,
+    fontWeight: 700,
+    borderRadius: 999,
+    background: "var(--warning-tint)",
+    color: "var(--warning)",
+    whiteSpace: "nowrap",
+  },
+  badgeNeutral: {
+    padding: "4px 10px",
+    fontSize: 11,
+    fontWeight: 700,
+    borderRadius: 999,
+    background: "var(--card-elevated)",
+    color: "var(--text-muted)",
+    border: "1px solid var(--border)",
+    whiteSpace: "nowrap",
+  },
+  resetBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    padding: "7px 14px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--destructive)",
+    background: "var(--destructive-tint)",
+    color: "var(--destructive)",
+  },
+};

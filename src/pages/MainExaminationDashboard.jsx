@@ -9,7 +9,7 @@ import {
   Table2, PlayCircle, CalendarDays, ChevronLeft, ChevronRight, Printer,
   ChevronDown, Search, UserCircle2, HelpCircle, Gauge, Timer, ClipboardCheck,
   AlertCircle, Target, Download, FileSpreadsheet, Building2, Eye, X,
-  Key, Copy, RotateCw,
+  Key, Copy, RotateCw, Undo2,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -18,7 +18,7 @@ import {
 import {
   injectStyles, useC, extract, ThemeToggle, EmptyState, ActionButton, MiniBtn,
   Modal, ModalInput, ModalSelect, ModalTextarea, SaveButton, FieldLabel,
-  Chip, LifecycleBadge, Th, Td, DetailRow, pageSx, fmtDate, fmtTime,
+  Chip, LifecycleBadge, CountdownToActive, Th, Td, DetailRow, pageSx, fmtDate, fmtTime,
   fmtDateTime, fmtDayName, dateKeyOf, globalStyles, SectionHeader, TabErrorBoundary,
 } from "../components/mainExams/shared";
 import useSchoolSettings from "../hooks/useSchoolSettings";
@@ -324,6 +324,7 @@ function SubjectMiniCard({ s }) {
       <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
         {fmtDate(s.exam_date || s.start_time)} · {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
       </div>
+      <CountdownToActive startTime={s.start_time} status={s.status} style={{ marginTop: 4 }} />
     </div>
   );
 }
@@ -532,7 +533,12 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
 function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
   const C = useC();
   const [attaching, setAttaching] = useState(false);
-  const locked = ["active", "ended", "marking", "completed"].includes(s.status);
+  // Only an actually-live session is protected from removal — a finished
+  // one (ended/marking/completed) can be removed since its results live
+  // entirely on the referenced e_assessment, not on this row (matches the
+  // backend's deleteSubjectSession guard). Editing the schedule has its
+  // own, separate lock (see the "locked" banner in the edit modal above).
+  const deleteLocked = s.status === "active";
 
   return (
     <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px" }}>
@@ -547,6 +553,7 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
             {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
             {s.venue ? ` · ${s.venue}` : ""}
           </div>
+          <CountdownToActive startTime={s.start_time} status={s.status} style={{ marginTop: 4 }} />
           <div style={{ fontSize: 12.5, color: C.textSec, marginTop: 4 }}>
             {s.e_assessment_id
               ? <>Assessment: <strong>{s.assessment_title || `#${s.e_assessment_id}`}</strong></>
@@ -572,7 +579,7 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
             </select>
           )}
           <MiniBtn icon={<Pencil size={12} />} onClick={onEdit}>Edit</MiniBtn>
-          <MiniBtn tone="danger" icon={<Trash2 size={12} />} onClick={onDelete} disabled={locked} title={locked ? `Cannot remove once ${s.status}` : "Remove"} />
+          <MiniBtn tone="danger" icon={<Trash2 size={12} />} onClick={onDelete} disabled={deleteLocked} title={deleteLocked ? "Cannot remove while active — end it first" : "Remove"} />
         </div>
       </div>
     </div>
@@ -662,6 +669,7 @@ function ExamCodeCard({ id, examination, onChanged, showToast }) {
 function TimetableTab({ id, subjects, examination, onChanged, showToast }) {
   const C = useC();
   const [publishing, setPublishing] = useState(false);
+  const [unpublishing, setUnpublishing] = useState(false);
   const [view, setView] = useState("list"); // "list" | "calendar"
 
   const sorted = useMemo(
@@ -699,6 +707,21 @@ function TimetableTab({ id, subjects, examination, onChanged, showToast }) {
     }
   };
 
+  const unpublish = async () => {
+    if (!window.confirm("Revert this timetable to draft? Subjects that haven't started yet will go back to draft and stop being schedule-driven until you publish again.")) return;
+    try {
+      setUnpublishing(true);
+      await API.put(`/main-exams/${id}/unpublish`);
+      showToast("Timetable reverted to draft.");
+      onChanged();
+    } catch (err) {
+      const data = err?.response?.data;
+      showToast(data?.message || "Failed to revert timetable to draft", "error");
+    } finally {
+      setUnpublishing(false);
+    }
+  };
+
   return (
     <div>
       <ExamCodeCard id={id} examination={examination} onChanged={onChanged} showToast={showToast} />
@@ -712,6 +735,11 @@ function TimetableTab({ id, subjects, examination, onChanged, showToast }) {
           {examination?.status === "draft" && (
             <ActionButton primary icon={<CheckCircle2 size={14} />} onClick={publish} disabled={publishing}>
               {publishing ? "Publishing…" : "Publish Timetable"}
+            </ActionButton>
+          )}
+          {examination?.status === "published" && (
+            <ActionButton icon={<Undo2 size={14} />} onClick={unpublish} disabled={unpublishing}>
+              {unpublishing ? "Reverting…" : "Revert to Draft"}
             </ActionButton>
           )}
         </div>
@@ -1666,41 +1694,6 @@ function SummaryReportView({ data }) {
           { key: "mean", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
           { key: "highest", label: "Highest %", fmt: (v) => (v != null ? `${v}%` : "—") },
           { key: "lowest", label: "Lowest %", fmt: (v) => (v != null ? `${v}%` : "—") },
-        ]}
-      />
-
-      {/* Class Performance — one row per class/stream, rolled up from the
-          same per-candidate mean the Overall Performance ranking and the
-          Nominal Roll below both use (§51). */}
-      <SectionHeader title="Class Performance" />
-      <RowsTable
-        rows={data.class_performance}
-        emptyText="No registered candidates found for this examination."
-        columns={[
-          { key: "class", label: "Class", strong: true },
-          { key: "registered", label: "Registered" },
-          { key: "scored", label: "Scored" },
-          { key: "mean", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
-          { key: "highest", label: "Highest %", fmt: (v) => (v != null ? `${v}%` : "—") },
-          { key: "lowest", label: "Lowest %", fmt: (v) => (v != null ? `${v}%` : "—") },
-          { key: "pass_rate", label: "Pass Rate", fmt: (v) => (v != null ? `${v}%` : "—") },
-        ]}
-      />
-
-      {/* Overall Performance — every scored candidate ranked exam-wide
-          (not just within their own class) by the mean, using the exact
-          same average_percentage the Nominal Roll shows for that
-          candidate (§51). */}
-      <SectionHeader title="Overall Performance" />
-      <RowsTable
-        rows={data.overall_ranking}
-        emptyText="No candidates have been scored yet."
-        columns={[
-          { key: "overall_position", label: "Position", strong: true },
-          { key: "admission_no", label: "Admission No" },
-          { key: "name", label: "Name" },
-          { key: "class", label: "Class" },
-          { key: "average_percentage", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
         ]}
       />
 

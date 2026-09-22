@@ -1405,7 +1405,7 @@ export default function TakeEAssessment() {
                 color: "var(--primary)", border: "1px solid var(--primary)", textDecoration: "none",
               }}
             >
-        
+              📄 View Exam Cover Page / Instructions
             </a>
           )}
           <button
