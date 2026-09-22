@@ -221,8 +221,11 @@ const IconRefresh = (p) => (
   </Icon>
 );
 
-/* ================= SUB-COMPONENTS ================= */
-const InfoItem = ({ label, value }) => (
+/* ================= SUB-COMPONENTS =================
+   These are defined at module scope (outside StudentReport), so they
+   have no access to the component's local `styles` variable — it has
+   to be passed in explicitly as a prop from every call site. */
+const InfoItem = ({ label, value, styles }) => (
   <div style={styles.plainInfoItem}>
     <span style={styles.plainInfoLabel}>{label}:</span>{" "}
     <span style={styles.plainInfoValue}>{value ?? "—"}</span>
@@ -253,7 +256,7 @@ const getScoreBadgeStyle = (score, gradingSystem) => {
 };
 
 /* ================= SCREEN-CHROME STATES (loading / error / empty) ================= */
-const ScreenState = ({ icon, title, text, action }) => (
+const ScreenState = ({ icon, title, text, action, styles }) => (
   <div style={styles.stateWrap} className="sr-card">
     <div style={styles.stateIconCircle}>{icon}</div>
     <h3 style={styles.stateTitle}>{title}</h3>
@@ -571,6 +574,7 @@ export default function StudentReport() {
               <IconRefresh size={15} /> Try again
             </button>
           }
+          styles={styles}
         />
       </div>
     );
@@ -589,6 +593,7 @@ export default function StudentReport() {
               <IconRefresh size={15} /> Refresh
             </button>
           }
+          styles={styles}
         />
       </div>
     );
@@ -684,12 +689,12 @@ export default function StudentReport() {
                 <span style={styles.sectionLabel}>Student Information</span>
               </div>
               <div style={styles.plainInfoGrid}>
-                <InfoItem label="Student Name" value={user.name} />
-                <InfoItem label="Admission Number" value={admissionNo} />
-                <InfoItem label="Class / Stream" value={studentClass} />
-                <InfoItem label="Year of Study" value={yearOfStudy || null} />
-                <InfoItem label="Gender" value={user.gender || student?.gender} />
-                <InfoItem label="Centre Code" value={school?.centreCode} />
+                <InfoItem label="Student Name" value={user.name} styles={styles} />
+                <InfoItem label="Admission Number" value={admissionNo} styles={styles} />
+                <InfoItem label="Class / Stream" value={studentClass} styles={styles} />
+                <InfoItem label="Year of Study" value={yearOfStudy || null} styles={styles} />
+                <InfoItem label="Gender" value={user.gender || student?.gender} styles={styles} />
+                <InfoItem label="Centre Code" value={school?.centreCode} styles={styles} />
               </div>
             </div>
 
