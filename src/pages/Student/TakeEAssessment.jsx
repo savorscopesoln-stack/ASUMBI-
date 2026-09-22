@@ -1393,21 +1393,7 @@ export default function TakeEAssessment() {
             safe — you'll need to type it again on the next screen to open your paper, and it will
             lock to whichever device you use first.
           </p>
-          <div style={S.tokenDisplay}>{token}</div>
-          {coverPageUrl && (
-            <a
-              href={resolveFileUrl(coverPageUrl)}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6, margin: "0 0 16px",
-                padding: "8px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
-                color: "var(--primary)", border: "1px solid var(--primary)", textDecoration: "none",
-              }}
-            >
-              📄 View Exam Cover Page / Instructions
-            </a>
-          )}
+          
           <button
             style={{ ...S.primaryBtn, opacity: revealCountdown > 0 ? 0.55 : 1, cursor: revealCountdown > 0 ? "not-allowed" : "pointer" }}
             onClick={confirmSaved}
