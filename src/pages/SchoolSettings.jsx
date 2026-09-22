@@ -80,6 +80,7 @@ const sx = {
 const emptyForm = {
   schoolName: "", shortName: "", motto: "", centreCode: "",
   address: "", phone: "", email: "", website: "", numberOfClasses: "", logoUrl: "",
+  reportTheme: "",
 };
 
 export default function SchoolSettings() {
@@ -91,6 +92,17 @@ export default function SchoolSettings() {
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Fixed catalog of downloaded-PDF-report color palettes — see backend
+  // utils/reportThemes.js. Fetched once; falls back to just the default
+  // "Slate" swatch if the request fails so the picker still renders.
+  const [reportThemes, setReportThemes] = useState([{ key: "slate", name: "Slate (default)", primary: "#2c3e50" }]);
+
+  useEffect(() => {
+    API.get("/school-settings/report-themes")
+      .then((res) => { if (res.data?.themes?.length) setReportThemes(res.data.themes); })
+      .catch(() => {});
+  }, []);
 
   const [newOfficial, setNewOfficial] = useState({ title: "", name: "" });
   const [editingId, setEditingId] = useState(null);
@@ -111,6 +123,7 @@ export default function SchoolSettings() {
         website: settings.website || "",
         numberOfClasses: settings.numberOfClasses ?? "",
         logoUrl: settings.logoUrl || "",
+        reportTheme: settings.reportTheme || "",
       });
     }
   }, [settings]);
@@ -294,6 +307,37 @@ export default function SchoolSettings() {
             <div>
               <label style={sx.fieldLabel}>Number of classes</label>
               <input style={sx.input} type="number" min="0" value={form.numberOfClasses} onChange={handleField("numberOfClasses")} />
+            </div>
+          </div>
+
+          <div style={sx.fieldWrap}>
+            <label style={sx.fieldLabel}>Report theme</label>
+            <p style={{ margin: "-2px 0 10px", fontSize: 11.5, color: C.textMuted }}>
+              Colors every downloaded PDF report (Main Examination Summary, Subject Results,
+              Grade Distribution, Timetable, and every other report export) is drawn in.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {reportThemes.map((t) => {
+                const selected = (form.reportTheme || "slate") === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, reportTheme: t.key }))}
+                    title={t.name}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "8px 12px", borderRadius: 10,
+                      border: `2px solid ${selected ? t.primary : C.border}`,
+                      background: selected ? `${t.primary}14` : C.card,
+                      cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: C.textPri,
+                    }}
+                  >
+                    <span style={{ width: 16, height: 16, borderRadius: "50%", background: t.primary, border: "1px solid rgba(0,0,0,0.1)", flexShrink: 0 }} />
+                    {t.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
