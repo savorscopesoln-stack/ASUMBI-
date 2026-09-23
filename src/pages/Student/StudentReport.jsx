@@ -515,7 +515,7 @@ export default function StudentReport() {
     const fromMarks = marks.find((m) => m.examName)?.examName
       || marks.find((m) => m.exam)?.exam
       || marks.find((m) => m.term)?.term;
-    return fromMarks || school?.examName || school?.currentExam || school?.currentTerm || "End of Term Examination";
+    return fromMarks || school?.examName || school?.currentExam || school?.currentTerm || "Current Exam";
   }, [marks, school]);
 
   const hasResults = marks.length > 0;
