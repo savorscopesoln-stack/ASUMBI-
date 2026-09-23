@@ -506,7 +506,13 @@ export default function StudentReport() {
      every render, in the same order, or React throws the "change
      in the order of Hooks" error. */
   const examName = useMemo(() => {
-    const fromMarks = marks.find((m) => m.examName || m.exam || m.term)?.examName
+    // Each field is searched for independently (rather than finding
+    // one record that has *any* of the three fields and reading
+    // .examName off of it) — a record matching the predicate via
+    // .term isn't guaranteed to also have .examName, which previously
+    // meant a mark row's mere .term could shadow another row's real
+    // .examName and get shown instead of it.
+    const fromMarks = marks.find((m) => m.examName)?.examName
       || marks.find((m) => m.exam)?.exam
       || marks.find((m) => m.term)?.term;
     return fromMarks || school?.examName || school?.currentExam || school?.currentTerm || "End of Term Examination";
