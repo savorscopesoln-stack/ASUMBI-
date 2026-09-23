@@ -4,7 +4,7 @@ import API, { resolvePhotoUrl } from "../api";
 import useSchoolSettings from "../hooks/useSchoolSettings";
 import {
   ArrowLeft, Save, CheckCircle2, XCircle, Building2, Plus, Trash2,
-  Star, Upload,
+  Star, Upload, FileCheck2,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
@@ -80,7 +80,7 @@ const sx = {
 
 const emptyForm = {
   schoolName: "", shortName: "", motto: "", centreCode: "",
-  address: "", phone: "", email: "", website: "", numberOfClasses: "", logoUrl: "",
+  address: "", phone: "", email: "", website: "", numberOfClasses: "", logoUrl: "", stampUrl: "",
   reportTheme: "", reportSubjects: [],
 };
 
@@ -92,7 +92,9 @@ export default function SchoolSettings() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [uploadingStamp, setUploadingStamp] = useState(false);
   const fileInputRef = useRef(null);
+  const stampInputRef = useRef(null);
 
   // Fixed catalog of downloaded-PDF-report color palettes — see backend
   // utils/reportThemes.js. Fetched once; falls back to just the default
@@ -172,6 +174,7 @@ export default function SchoolSettings() {
         website: settings.website || "",
         numberOfClasses: settings.numberOfClasses ?? "",
         logoUrl: settings.logoUrl || "",
+        stampUrl: settings.stampUrl || "",
         reportTheme: settings.reportTheme || "",
         reportSubjects: Array.isArray(settings.reportSubjects) ? settings.reportSubjects : [],
       });
@@ -202,6 +205,26 @@ export default function SchoolSettings() {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleStampPick = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingStamp(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await API.post("/school-settings/stamp", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setForm((f) => ({ ...f, stampUrl: res.data.url }));
+      showToast("success", "Stamp uploaded — remember to save.");
+    } catch (err) {
+      showToast("error", err?.response?.data?.message || "Stamp upload failed");
+    } finally {
+      setUploadingStamp(false);
+      if (stampInputRef.current) stampInputRef.current.value = "";
     }
   };
 
@@ -381,6 +404,23 @@ export default function SchoolSettings() {
                 <Upload size={14} /> {uploading ? "Uploading…" : form.logoUrl ? "Replace logo" : "Upload logo"}
               </button>
               <span style={{ fontSize: 11.5, color: C.textMuted }}>Shown on the login screen and at the top of downloaded reports.</span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 16, marginBottom: 18 }}>
+            <div style={sx.logoBox}>
+              {form.stampUrl ? (
+                <img src={resolvePhotoUrl(form.stampUrl)} alt="Official stamp" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              ) : (
+                <FileCheck2 size={28} color={C.textMuted} />
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 8 }}>
+              <input ref={stampInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: "none" }} onChange={handleStampPick} />
+              <button type="button" style={sx.secondaryBtn} onClick={() => stampInputRef.current?.click()} disabled={uploadingStamp}>
+                <Upload size={14} /> {uploadingStamp ? "Uploading…" : form.stampUrl ? "Replace stamp" : "Upload official stamp"}
+              </button>
+              <span style={{ fontSize: 11.5, color: C.textMuted }}>Embedded next to the signing officials on a downloaded transcript.</span>
             </div>
           </div>
 
