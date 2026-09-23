@@ -245,6 +245,9 @@ const BADGE_COLORS = [
 // tied to specific score numbers, so this stays sensible no matter
 // how an admin configures the bands. Text comes straight from the
 // configured band's label.
+// Round to 1 decimal place, dropping trailing float noise (e.g. 74.3000001).
+const round1 = (n) => Math.round(Number(n) * 10) / 10;
+
 const getScoreBadgeStyle = (score, gradingSystem) => {
   const bands = gradingSystem?.gradeBands?.length ? gradingSystem.gradeBands : [];
   const sorted = [...bands].sort((a, b) => b.minScore - a.minScore);
@@ -269,7 +272,7 @@ const ScreenState = ({ icon, title, text, action, styles }) => (
 export default function StudentReport() {
   useReportGlobalStyles();
   useTheme();
-  const { settings: school, getOfficial, signatory, signatories, getClassTeacher } = useSchoolSettings();
+  const { settings: school, getOfficial, signatory, signatories, getClassTeachers } = useSchoolSettings();
   const { gradingSystem } = useGradingSystem();
   const dean = getOfficial("dean");
   const principal = getOfficial("principal");
@@ -355,7 +358,10 @@ export default function StudentReport() {
   // School Settings (see useSchoolSettings.getClassTeacher) — printed
   // in the "Class Teacher / Lecturer's Remarks" box below in place of
   // a blank hand-signed line when one has been assigned.
-  const classTeacher = getClassTeacher(studentClass);
+  // Every Class Teacher / Lecturer assigned to this class (main +
+  // any assistants), so the report can print one remarks box per
+  // teacher instead of only the single top-ranked one.
+  const classTeachersForClass = getClassTeachers(studentClass);
 
   // Report Theme (School Settings → Report Theme) — resolves the full
   // color palette { primary, onPrimary, zebra, rule } for whatever key
@@ -367,19 +373,72 @@ export default function StudentReport() {
   const reportTheme = useReportTheme(school?.reportTheme);
   const styles = useMemo(() => getStyles(reportTheme), [reportTheme.key]);
 
-  /* ================= POSITION (unchanged ranking logic) ================= */
-  const position = useMemo(() => {
-    if (!students.length) return "-";
-    const ranked = students
+  /* ================= REPORT SUBJECTS (School Settings → Subjects
+     shown on report cards) =================
+     An admin can restrict which subjects appear on the report card
+     via school.reportSubjects (an array of subject ids). Empty/unset
+     means "show everything" — unchanged behaviour for schools that
+     never touch the setting. Filtering here (once) keeps the table,
+     chart, average, highest/lowest and position calc all consistent
+     with what the admin picked, instead of showing a full-subject
+     average next to a partial-subject table. */
+  const reportSubjectIds = school?.reportSubjects;
+  const visibleSubjects = useMemo(() => {
+    if (!Array.isArray(reportSubjectIds) || reportSubjectIds.length === 0) return subjects;
+    return subjects.filter((s) => reportSubjectIds.includes(s.id));
+  }, [subjects, reportSubjectIds]);
+
+  const visibleSubjectNames = useMemo(
+    () => new Set(visibleSubjects.map((s) => s.name)),
+    [visibleSubjects]
+  );
+
+  const visibleMarks = useMemo(() => {
+    if (!Array.isArray(reportSubjectIds) || reportSubjectIds.length === 0) return marks;
+    return marks.filter((m) => visibleSubjectNames.has(m.subjectName));
+  }, [marks, reportSubjectIds, visibleSubjectNames]);
+
+  /* ================= POSITION (unchanged ranking logic) =================
+     Two ranks off the same underlying method: `overallPosition` ranks
+     the student against every student returned by /students (the
+     whole school), and `classPosition` ranks them against just the
+     students who share their class/stream. */
+  const rankAmong = (pool) => {
+    if (!pool.length) return "-";
+    const ranked = pool
       .map((s) => {
-        const sm = marks.filter((m) => m.studentId === s.id);
+        const sm = visibleMarks.filter((m) => m.studentId === s.id);
         const scores = sm.map((x) => Number(x.percentage || 0));
         const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
         return { id: s.id, avg };
       })
       .sort((a, b) => b.avg - a.avg);
     return ranked.findIndex((r) => r.id === admissionNo) + 1;
-  }, [students, marks, admissionNo]);
+  };
+
+  const overallPosition = useMemo(() => rankAmong(students), [students, visibleMarks, admissionNo]);
+
+  const classPosition = useMemo(() => {
+    const classmates = students.filter(
+      (s) => (s?.class || s?.className || s?.studentClass) === studentClass
+    );
+    return rankAmong(classmates);
+  }, [students, visibleMarks, admissionNo, studentClass]);
+
+  /* ================= CRNM PROPAGATION =================
+     If any subject the admin has chosen to show is missing a score
+     (CRNM — "Cannot Report, No Mark"), the report's final grade and
+     overall result are shown as CRNM too, rather than being quietly
+     computed from just the subjects that do have marks. One CRNM
+     subject among the selected ones is enough to flip this. */
+  const visibleMarkedNames = useMemo(
+    () => new Set(visibleMarks.map((m) => m.subjectName)),
+    [visibleMarks]
+  );
+  const hasCrnm = useMemo(
+    () => visibleSubjects.some((s) => !visibleMarkedNames.has(s.name)),
+    [visibleSubjects, visibleMarkedNames]
+  );
 
   /* ================= ANALYTICS =================
      `avg` (and everything derived from it — grade, overall result,
@@ -391,24 +450,25 @@ export default function StudentReport() {
      actually meaningful on their own: average, highest, lowest, and
      how many learning areas were assessed. */
   const analytics = useMemo(() => {
-    const scores = marks.map((m) => Number(m.percentage)).filter((v) => !isNaN(v));
+    const scores = visibleMarks.map((m) => Number(m.percentage)).filter((v) => !isNaN(v));
     const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     return {
-      avg: Math.round(avg),
-      highest: scores.length ? Math.max(...scores) : null,
-      lowest: scores.length ? Math.min(...scores) : null,
+      avg: round1(avg),
+      highest: scores.length ? round1(Math.max(...scores)) : null,
+      lowest: scores.length ? round1(Math.min(...scores)) : null,
       assessedCount: scores.length,
-      grade: getGradeForScore(avg, gradingSystem),
-      result: getOverallResultForScore(avg, gradingSystem),
+      grade: hasCrnm ? { grade: "", label: "CRNM", remark: "" } : getGradeForScore(avg, gradingSystem),
+      result: hasCrnm ? "CRNM" : getOverallResultForScore(avg, gradingSystem),
     };
-  }, [marks, gradingSystem]);
+  }, [visibleMarks, gradingSystem, hasCrnm]);
 
   /* ================= SUBJECT MAP (unchanged) ================= */
   const subjectMap = useMemo(() => {
     const map = {};
-    marks.forEach((m) => { map[m.subjectName] = Number(m.percentage); });
-    return subjects.map((s) => ({ subject: s.name, code: s.code, score: map[s.name] ?? null }));
-  }, [marks, subjects]);
+    visibleMarks.forEach((m) => { map[m.subjectName] = round1(Number(m.percentage)); });
+    return visibleSubjects.map((s) => ({ subject: s.name, code: s.code, score: map[s.name] ?? null }));
+  }, [visibleMarks, visibleSubjects]);
+
 
   const chartData = useMemo(
     () => subjectMap.filter((s) => s.score !== null).map((s) => ({ subject: s.subject, score: s.score })),
@@ -672,10 +732,16 @@ export default function StudentReport() {
                   <div style={styles.metaRow}><span style={styles.metaKey}>Date</span><span style={styles.metaVal}>{new Date().toLocaleDateString("en-KE", { day: "2-digit", month: "short", year: "numeric" })}</span></div>
                   <div style={styles.metaRow}><span style={styles.metaKey}>Class</span><span style={styles.metaVal}>{studentClass}</span></div>
                   <div style={styles.metaRow}><span style={styles.metaKey}>Year</span><span style={styles.metaVal}>{yearOfStudy || "—"}</span></div>
-                  <div style={{ ...styles.metaRow, marginTop: 4 }}>
-                    <span style={styles.positionCircle}>#{position}</span>
+                  <div style={{ ...styles.metaRow, marginTop: 4, gap: 6, justifyContent: "center" }}>
+                    <div style={{ textAlign: "center" }}>
+                      <span style={styles.positionCircle}>#{classPosition}</span>
+                      <p style={{ margin: "3px 0 0", fontSize: 8, color: "#64748b" }}>Class Position</p>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <span style={styles.positionCircle}>#{overallPosition}</span>
+                      <p style={{ margin: "3px 0 0", fontSize: 8, color: "#64748b" }}>Overall Position</p>
+                    </div>
                   </div>
-                  <p style={{ margin: "3px 0 0", fontSize: 8.5, color: "#64748b", textAlign: "center" }}>Class Position</p>
                 </div>
               </div>
               <div style={styles.headerBandFoot} />
@@ -710,7 +776,8 @@ export default function StudentReport() {
                   { label: "Average Score", value: `${analytics.avg}%`, color: "#1d4ed8" },
                   { label: "Overall Grade", value: analytics.grade.label || "—", color: reportTheme.primary },
                   { label: "Overall Result", value: analytics.result || "—", color: "#15803d" },
-                  { label: "Class Position", value: `#${position}`, color: "#b45309" },
+                  { label: "Class Position", value: `#${classPosition}`, color: "#b45309" },
+                  { label: "Overall Position", value: `#${overallPosition}`, color: "#7c3aed" },
                   { label: "Learning Areas", value: analytics.assessedCount, color: "#0f766e" },
                   { label: "Highest Score", value: analytics.highest != null ? `${analytics.highest}%` : "—", color: "#15803d" },
                   { label: "Lowest Score", value: analytics.lowest != null ? `${analytics.lowest}%` : "—", color: "#b91c1c" },
@@ -870,25 +937,47 @@ export default function StudentReport() {
               </div>
               <div style={styles.authGrid}>
 
-                {/* Comments */}
-                <div style={styles.authCard}>
-                  <p style={styles.authCardTitle}>{classTeacher?.title ? `${classTeacher.title}'s Remarks` : "Class Teacher / Lecturer's Remarks"}</p>
-                  <div style={styles.remarksBox}>
-                    <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
-                  </div>
-                  <div style={styles.sigGrid}>
-                    <div style={styles.sigItem}>
-                      <p style={styles.sigLabel}>Name</p>
-                      {classTeacher?.name ? (
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: 11.5, color: "#0f172a" }}>{classTeacher.name}</p>
-                      ) : (
-                        <div style={styles.sigLine} />
-                      )}
+                {/* Comments — one remarks box per Class Teacher / Lecturer
+                    assigned to this class (main + any assistants), so
+                    every teacher present on the report gets their own
+                    remarks + sign-off line instead of only the top-ranked
+                    one. Falls back to a single blank box when nobody has
+                    been assigned yet, exactly like before this feature
+                    existed. */}
+                {classTeachersForClass.length > 0 ? (
+                  classTeachersForClass.map((ct, i) => (
+                    <div style={styles.authCard} key={ct.id ?? i}>
+                      <p style={styles.authCardTitle}>{ct.title ? `${ct.title}'s Remarks` : "Class Teacher / Lecturer's Remarks"}</p>
+                      <div style={styles.remarksBox}>
+                        <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
+                      </div>
+                      <div style={styles.sigGrid}>
+                        <div style={styles.sigItem}>
+                          <p style={styles.sigLabel}>Name</p>
+                          {ct.name ? (
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: 11.5, color: "#0f172a" }}>{ct.name}</p>
+                          ) : (
+                            <div style={styles.sigLine} />
+                          )}
+                        </div>
+                        <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
+                        <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
+                      </div>
                     </div>
-                    <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
-                    <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
+                  ))
+                ) : (
+                  <div style={styles.authCard}>
+                    <p style={styles.authCardTitle}>Class Teacher / Lecturer's Remarks</p>
+                    <div style={styles.remarksBox}>
+                      <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
+                    </div>
+                    <div style={styles.sigGrid}>
+                      <div style={styles.sigItem}><p style={styles.sigLabel}>Name</p><div style={styles.sigLine} /></div>
+                      <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
+                      <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Approval — one card per official flagged as a
                     signatory in School Settings (in rank/order), or the

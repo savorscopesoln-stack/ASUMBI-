@@ -282,7 +282,7 @@ const printPDF = async (ref, name) => {
   pdf.save(name);
 };
 /* ================= MASTER PRINT (CLASS FILTER + EXACT A4 MARGINS) ================= */
-const printAllReports = async () => {
+const printAllReports = async (fileLabel = "REPORTS") => {
   const pdf = new jsPDF("p", "mm", "a4");
 
   const filteredReports =
@@ -324,9 +324,23 @@ const printAllReports = async () => {
 
   pdf.save(
     printClass === "ALL"
-      ? "ALL_STUDENT_REPORTS.pdf"
-      : `${printClass}_REPORTS.pdf`
+      ? `ALL_STUDENT_${fileLabel}.pdf`
+      : `${printClass}_${fileLabel}.pdf`
   );
+};
+
+/* ================= TRANSCRIPTS (same per-student cards as the
+   "Reports" tab, saved with a transcript filename) =================
+   The dashboard's "📄 Transcripts" quick-action lives outside the
+   "reports" tab, so the per-student cards it needs to capture aren't
+   mounted yet — switch to that tab first and give React a moment to
+   render them before reusing the same capture/export logic. */
+const printAllTranscripts = async () => {
+  if (tab !== "reports") {
+    setTab("reports");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  await printAllReports("TRANSCRIPTS");
 };
   /* ================= UI ================= */
   return (
@@ -1242,7 +1256,7 @@ const printAllReports = async () => {
 </div>
 
 <button
-  onClick={printAllReports}
+onClick={() => printAllReports()}
   style={{
     ...styles.masterBtn,
 
@@ -1371,7 +1385,7 @@ const printAllReports = async () => {
 
 
 
-INDIVIDUAL CARDS
+{/* ================= INDIVIDUAL CARDS ================= */}
       {/* ================= REPORT GRID ================= */}
 <div
   style={{
@@ -1382,7 +1396,10 @@ INDIVIDUAL CARDS
     background: "#f1f5f9",
   }}
 >
-  {reports.map((r, index) => (
+  {(printClass === "ALL"
+    ? reports
+    : reports.filter((r) => r.student?.studentClass === printClass)
+  ).map((r, index) => (
     <div
       key={r.studentId}
       ref={(el) => (reportRefs.current[r.studentId] = el)}

@@ -81,7 +81,7 @@ const sx = {
 const emptyForm = {
   schoolName: "", shortName: "", motto: "", centreCode: "",
   address: "", phone: "", email: "", website: "", numberOfClasses: "", logoUrl: "",
-  reportTheme: "",
+  reportTheme: "", reportSubjects: [],
 };
 
 export default function SchoolSettings() {
@@ -133,6 +133,30 @@ export default function SchoolSettings() {
   const [editingCtId, setEditingCtId] = useState(null);
   const [editCtDraft, setEditCtDraft] = useState({});
 
+  // All subjects in the system, so the admin can pick which ones are
+  // allowed to appear on report cards (StudentReport.jsx). An empty
+  // selection means "show every subject" — the same behaviour as
+  // before this feature existed, so nothing breaks for schools that
+  // never touch this setting.
+  const [allSubjects, setAllSubjects] = useState([]);
+  useEffect(() => {
+    API.get("/subjects")
+      .then((res) => setAllSubjects(res.data || []))
+      .catch(() => {});
+  }, []);
+
+  const toggleReportSubject = (id) => {
+    setForm((f) => {
+      const has = f.reportSubjects.includes(id);
+      return {
+        ...f,
+        reportSubjects: has
+          ? f.reportSubjects.filter((x) => x !== id)
+          : [...f.reportSubjects, id],
+      };
+    });
+  };
+
   useEffect(() => injectStyles(), []);
 
   useEffect(() => {
@@ -149,6 +173,7 @@ export default function SchoolSettings() {
         numberOfClasses: settings.numberOfClasses ?? "",
         logoUrl: settings.logoUrl || "",
         reportTheme: settings.reportTheme || "",
+        reportSubjects: Array.isArray(settings.reportSubjects) ? settings.reportSubjects : [],
       });
     }
   }, [settings]);
@@ -436,6 +461,49 @@ export default function SchoolSettings() {
                 );
               })}
             </div>
+          </div>
+
+          <div style={sx.fieldWrap}>
+            <label style={sx.fieldLabel}>Subjects shown on report cards</label>
+            <p style={{ margin: "-2px 0 10px", fontSize: 11.5, color: C.textMuted }}>
+              Choose which subjects appear on the student report card. Leave
+              none selected to show every subject (the default).
+            </p>
+            {allSubjects.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12.5, color: C.textMuted }}>No subjects found.</p>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 220, overflowY: "auto", padding: 2 }}>
+                {allSubjects.map((s) => {
+                  const selected = form.reportSubjects.includes(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleReportSubject(s.id)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "6px 12px", borderRadius: 10,
+                        border: `2px solid ${selected ? C.accent : C.border}`,
+                        background: selected ? "var(--primary-tint)" : C.card,
+                        cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: C.textPri,
+                      }}
+                    >
+                      {selected && <CheckCircle2 size={13} style={{ color: C.accent }} />}
+                      {s.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {form.reportSubjects.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, reportSubjects: [] }))}
+                style={{ ...sx.secondaryBtn, marginTop: 10, padding: "6px 12px", fontSize: 12 }}
+              >
+                Clear selection (show all subjects)
+              </button>
+            )}
           </div>
 
           <button style={{ ...sx.primaryBtn, marginTop: 8 }} onClick={handleSave} disabled={saving || loading}>
