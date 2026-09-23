@@ -514,7 +514,9 @@ export default function StudentReport() {
     // .examName and get shown instead of it.
     const fromMarks = marks.find((m) => m.examName)?.examName
       || marks.find((m) => m.exam)?.exam
-      || marks.find((m) => m.term)?.term;
+      || marks.find((m) => m.term)?.term
+      || marks.find((m) => m.currentExam)?.currentExam
+      || marks.find((m) => m.currentTerm)?.currentTerm;
     return fromMarks || school?.examName || school?.currentExam || school?.currentTerm || "Current Exam";
   }, [marks, school]);
 
