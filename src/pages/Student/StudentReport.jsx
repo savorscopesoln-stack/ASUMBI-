@@ -1129,10 +1129,11 @@ export default function StudentReport() {
                             ) : (
                               <div style={styles.sigLine} />
                             )}
-                            {/* Stamp overlaps the signature line like a
-                                real ink stamp pressed across a signed
-                                document, instead of sitting in its own
-                                separate cell. */}
+                            {/* Stamp sits to the right of the signature line
+                                like a real ink stamp pressed alongside a
+                                signed document, instead of directly on top
+                                of the signature or in its own separate
+                                cell. */}
                             {stampSrc && (
                               <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
                             )}
@@ -1776,10 +1777,10 @@ function getStyles(theme) {
     border: "1.5px dashed #94a3b8",
     borderRadius: 4,
   },
-  // Wrapper that lets the stamp visually overlap the signature —
+  // Wrapper that lets the stamp visually sit beside the signature —
   // relative positioning here, absolute positioning on the stamp
-  // image itself, so the stamp reads as pressed across the
-  // signature the way a real ink stamp does on a signed document.
+  // image itself, so the stamp is pinned to the right edge of this
+  // cell regardless of how wide the signature image is.
   stampSigWrap: {
     position: "relative",
     display: "flex",
@@ -1798,17 +1799,19 @@ function getStyles(theme) {
     position: "relative",
     zIndex: 1,
   },
-  // Official stamp, overlapping the signature: fixed physical
-  // footprint, rotated slightly and semi-transparent so it reads as
-  // an ink stamp pressed across the signature line rather than a
-  // second flat logo sitting beside it.
+  // Official stamp, now anchored to the RIGHT side of the signature
+  // cell (instead of centred over the signature) and enlarged
+  // slightly, still rotated and semi-transparent so it reads as an
+  // ink stamp pressed onto the document rather than a flat logo.
   stampOverlayImage: {
     position: "absolute",
-    width: "1.5in",
-    height: "0.75in",
+    right: "-4px",
+    top: "50%",
+    width: "1.75in",
+    height: "0.85in",
     objectFit: "contain",
     opacity: 0.82,
-    transform: "rotate(-9deg)",
+    transform: "translateY(-50%) rotate(-9deg)",
     mixBlendMode: "multiply",
     pointerEvents: "none",
     zIndex: 2,
