@@ -1165,15 +1165,14 @@ export default function StudentReport() {
                           ) : (
                             <div style={styles.sigLine} />
                           )}
-                          
+                          {stampSrc && (
+                            <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
+                          )}
                         </div>
                       </div>
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Official Stamp</p>
                         {!stampSrc && <div style={styles.stampBox} />}
-                        {stampSrc && (
-                            <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
-                          )}
                         {stampSrc && (
                           <p style={{ margin: 0, fontSize: 8, color: "#94a3b8", fontStyle: "italic" }}>Stamped above</p>
                         )}
@@ -1806,7 +1805,7 @@ function getStyles(theme) {
   // ink stamp pressed onto the document rather than a flat logo.
   stampOverlayImage: {
     position: "absolute",
-    right: "-1",
+    right: "-4px",
     top: "50%",
     width: "1.75in",
     height: "0.85in",
