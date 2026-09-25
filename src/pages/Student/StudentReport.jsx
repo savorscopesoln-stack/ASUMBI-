@@ -780,10 +780,10 @@ export default function StudentReport() {
             </div>
 
             {/* ── ANTI-FORGERY: guilloche-style border frame ──
-                A continuous fine wave-line border traced around the
+                A continuous woven double-wave border traced around the
                 sheet edge, in the style of banknote/certificate
                 guilloche patterns — simple to verify by eye (an even,
-                unbroken line) but fiddly to redraw convincingly by
+                interlocking weave) but fiddly to redraw convincingly by
                 hand or reconstruct from a low-resolution scan. */}
             <svg
               style={styles.guillocheBorder}
@@ -792,11 +792,22 @@ export default function StudentReport() {
               preserveAspectRatio="none"
             >
               <defs>
-                <pattern id="srGuillocheH" width="16" height="10" patternUnits="userSpaceOnUse">
-                  <path d="M0,5 Q4,0 8,5 T16,5" fill="none" stroke={withAlpha(reportTheme.primary, 0.38)} strokeWidth="0.7" />
+                {/* Two phase-offset sine paths woven together per tile —
+                    this is what actually reads as "guilloche" rather
+                    than a single wavy line. Repeated along the top/
+                    bottom edges. */}
+                <pattern id="srGuillocheH" width="24" height="14" patternUnits="userSpaceOnUse">
+                  <path d="M-2,7 C1,1 5,1 8,7 C11,13 15,13 18,7 C21,1 25,1 28,7"
+                        fill="none" stroke={withAlpha(reportTheme.primary, 0.4)} strokeWidth="0.6" />
+                  <path d="M-2,7 C1,13 5,13 8,7 C11,1 15,1 18,7 C21,13 25,13 28,7"
+                        fill="none" stroke={withAlpha(reportTheme.primary, 0.4)} strokeWidth="0.6" />
                 </pattern>
-                <pattern id="srGuillocheV" width="10" height="16" patternUnits="userSpaceOnUse">
-                  <path d="M5,0 Q0,4 5,8 T5,16" fill="none" stroke={withAlpha(reportTheme.primary, 0.38)} strokeWidth="0.7" />
+                {/* Same weave, transposed for the left/right edges. */}
+                <pattern id="srGuillocheV" width="14" height="24" patternUnits="userSpaceOnUse">
+                  <path d="M7,-2 C1,1 1,5 7,8 C13,11 13,15 7,18 C1,21 1,25 7,28"
+                        fill="none" stroke={withAlpha(reportTheme.primary, 0.4)} strokeWidth="0.6" />
+                  <path d="M7,-2 C13,1 13,5 7,8 C1,11 1,15 7,18 C13,21 13,25 7,28"
+                        fill="none" stroke={withAlpha(reportTheme.primary, 0.4)} strokeWidth="0.6" />
                 </pattern>
               </defs>
               <rect x="4" y="4" width="792" height="9" fill="url(#srGuillocheH)" />
@@ -1112,18 +1123,26 @@ export default function StudentReport() {
                       <div style={styles.sigGrid}>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Signature</p>
-                          {s.signatureUrl ? (
-                            <img src={resolveFileUrl(s.signatureUrl)} alt="" style={styles.sigImage} />
-                          ) : (
-                            <div style={styles.sigLine} />
-                          )}
+                          <div style={styles.stampSigWrap}>
+                            {s.signatureUrl ? (
+                              <img src={resolveFileUrl(s.signatureUrl)} alt="" style={styles.sigImage} />
+                            ) : (
+                              <div style={styles.sigLine} />
+                            )}
+                            {/* Stamp overlaps the signature line like a
+                                real ink stamp pressed across a signed
+                                document, instead of sitting in its own
+                                separate cell. */}
+                            {stampSrc && (
+                              <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
+                            )}
+                          </div>
                         </div>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Official Stamp</p>
-                          {stampSrc ? (
-                            <img src={stampSrc} alt="" style={styles.stampImage} />
-                          ) : (
-                            <div style={styles.stampBox} />
+                          {!stampSrc && <div style={styles.stampBox} />}
+                          {stampSrc && (
+                            <p style={{ margin: 0, fontSize: 8, color: "#94a3b8", fontStyle: "italic" }}>Stamped above</p>
                           )}
                         </div>
                       </div>
@@ -1139,18 +1158,22 @@ export default function StudentReport() {
                     <div style={styles.sigGrid}>
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Signature</p>
-                        {(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl) ? (
-                          <img src={resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl)} alt="" style={styles.sigImage} />
-                        ) : (
-                          <div style={styles.sigLine} />
-                        )}
+                        <div style={styles.stampSigWrap}>
+                          {(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl) ? (
+                            <img src={resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl)} alt="" style={styles.sigImage} />
+                          ) : (
+                            <div style={styles.sigLine} />
+                          )}
+                          {stampSrc && (
+                            <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
+                          )}
+                        </div>
                       </div>
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Official Stamp</p>
-                        {stampSrc ? (
-                          <img src={stampSrc} alt="" style={styles.stampImage} />
-                        ) : (
-                          <div style={styles.stampBox} />
+                        {!stampSrc && <div style={styles.stampBox} />}
+                        {stampSrc && (
+                          <p style={{ margin: 0, fontSize: 8, color: "#94a3b8", fontStyle: "italic" }}>Stamped above</p>
                         )}
                       </div>
                     </div>
@@ -1340,7 +1363,10 @@ function getStyles(theme) {
 
   /* ── The literal A4 sheet — 210mm × 297mm, identical for
        screen preview, browser print, and PDF export. Fixed
-       colours by design (official printed document). ── */
+       colours by design (official printed document). Needs
+       position: relative so the pantograph/guilloche overlays
+       (position: absolute) anchor to the sheet itself rather
+       than the nearest positioned ancestor up the tree. ── */
   reportCard: {
     width: "210mm",
     minHeight: "297mm",
@@ -1354,6 +1380,7 @@ function getStyles(theme) {
     boxSizing: "border-box",
     boxShadow: "0 20px 50px rgba(0,0,0,0.45)",
     border: "1px solid #e5e0d8",
+    position: "relative",
   },
 
   watermark: {
@@ -1369,6 +1396,86 @@ function getStyles(theme) {
     pointerEvents: "none",
     userSelect: "none",
     zIndex: 0,
+  },
+
+  /* ── ANTI-FORGERY: tiled pantograph watermark ──
+     Sits behind all content (zIndex 0), spans the full sheet. ── */
+  pantograph: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexWrap: "wrap",
+    alignContent: "space-around",
+    justifyContent: "space-around",
+    padding: "40px 20px",
+    pointerEvents: "none",
+    userSelect: "none",
+    zIndex: 0,
+    opacity: 0.045,
+  },
+  pantographItem: {
+    fontSize: 20,
+    fontWeight: 800,
+    color: primary,
+    transform: "rotate(-28deg)",
+    whiteSpace: "nowrap",
+    letterSpacing: "0.08em",
+  },
+
+  /* ── ANTI-FORGERY: guilloche border SVG overlay ──
+     Sits above the header band (zIndex 2) so the woven frame traces
+     over the sheet edge on top of everything else. ── */
+  guillocheBorder: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    pointerEvents: "none",
+    zIndex: 2,
+  },
+
+  /* ── ANTI-FORGERY: microprint strip under the header band ── */
+  microprint: {
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    fontSize: 3.2,
+    lineHeight: 1,
+    color: withAlpha(onPrimary, 0.55),
+    background: primary,
+    padding: "1.5px 3mm 2.5px",
+    letterSpacing: "0.02em",
+  },
+
+  /* ── ANTI-FORGERY: verification code, header + footer ── */
+  verifyCodeHeader: {
+    marginTop: 6,
+    fontSize: 6.5,
+    fontWeight: 700,
+    color: withAlpha(onPrimary, 0.7),
+    letterSpacing: "0.06em",
+  },
+  securityRow: {
+    marginTop: 8,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  securityBars: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 1.5,
+    height: 14,
+  },
+  securityBar: {
+    display: "inline-block",
+    height: "100%",
+    background: "#0f172a",
+  },
+  verifyCodeFooter: {
+    margin: 0,
+    fontSize: 8.5,
+    color: "#64748b",
   },
 
   /* ── Header band (flat fill, no gradient) ── */
@@ -1660,36 +1767,51 @@ function getStyles(theme) {
     margin: "0 auto",
   },
   // Placeholder shown when no stamp has been uploaded yet. Sized to
-  // match stampImage below (2in × 1in) so the layout doesn't shift
-  // once a real stamp image is added from School Settings.
+  // roughly match the overlay stamp footprint so layout doesn't
+  // shift once a real stamp image is added from School Settings.
   stampBox: {
-    width: "2in",
-    height: "1in",
+    width: "1.4in",
+    height: "0.7in",
     margin: "0 auto",
     border: "1.5px dashed #94a3b8",
     borderRadius: 4,
   },
-  // Real signature/stamp images, shown in place of sigLine/stampBox
-  // above whenever the person (or the school, for the stamp) has
-  // actually uploaded one from School Settings.
+  // Wrapper that lets the stamp visually overlap the signature —
+  // relative positioning here, absolute positioning on the stamp
+  // image itself, so the stamp reads as pressed across the
+  // signature the way a real ink stamp does on a signed document.
+  stampSigWrap: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 40,
+  },
+  // Real signature images, shown in place of sigLine above whenever
+  // the person has actually uploaded one from School Settings.
   sigImage: {
     display: "block",
     maxWidth: "80%",
     maxHeight: 32,
     margin: "0 auto",
     objectFit: "contain",
+    position: "relative",
+    zIndex: 1,
   },
-  // Official stamp: fixed 2in × 1in footprint (rather than a
-  // percentage/px cap) so the stamp prints and exports at a
-  // consistent physical size regardless of the uploaded image's own
-  // resolution or aspect ratio. objectFit keeps it undistorted
-  // within that box.
-  stampImage: {
-    display: "block",
-    width: "2in",
-    height: "1in",
-    margin: "0 auto",
+  // Official stamp, overlapping the signature: fixed physical
+  // footprint, rotated slightly and semi-transparent so it reads as
+  // an ink stamp pressed across the signature line rather than a
+  // second flat logo sitting beside it.
+  stampOverlayImage: {
+    position: "absolute",
+    width: "1.5in",
+    height: "0.75in",
     objectFit: "contain",
+    opacity: 0.82,
+    transform: "rotate(-9deg)",
+    mixBlendMode: "multiply",
+    pointerEvents: "none",
+    zIndex: 2,
   },
 
   /* ── Footer ── */
