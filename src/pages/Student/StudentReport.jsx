@@ -1805,7 +1805,7 @@ function getStyles(theme) {
   // ink stamp pressed onto the document rather than a flat logo.
   stampOverlayImage: {
     position: "absolute",
-    right: "-4px",
+    right: "-1",
     top: "50%",
     width: "1.75in",
     height: "0.85in",
