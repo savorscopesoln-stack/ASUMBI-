@@ -669,6 +669,11 @@ export default function StudentReport() {
 
   /* ================= UI ================= */
   const logoSrc = resolveFileUrl(school?.logoUrl);
+  // Official school stamp — embedded here (and each signatory's own
+  // signatureUrl below) so the on-screen/downloaded report card
+  // actually shows the uploaded images instead of leaving the
+  // "Signature" / "Official Stamp" boxes permanently blank.
+  const stampSrc = resolveFileUrl(school?.stampUrl);
   const contactLine = [school?.address, school?.phone && `Tel: ${school.phone}`, school?.email]
     .filter(Boolean)
     .join(" | ");
@@ -968,7 +973,14 @@ export default function StudentReport() {
                             <div style={styles.sigLine} />
                           )}
                         </div>
-                        <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
+                        <div style={styles.sigItem}>
+                          <p style={styles.sigLabel}>Signature</p>
+                          {ct.signatureUrl ? (
+                            <img src={resolveFileUrl(ct.signatureUrl)} alt="" style={styles.sigImage} />
+                          ) : (
+                            <div style={styles.sigLine} />
+                          )}
+                        </div>
                         <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
                       </div>
                     </div>
@@ -999,8 +1011,22 @@ export default function StudentReport() {
                         <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{s.title || "—"}</p>
                       </div>
                       <div style={styles.sigGrid}>
-                        <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
-                        <div style={styles.sigItem}><p style={styles.sigLabel}>Official Stamp</p><div style={styles.stampBox} /></div>
+                        <div style={styles.sigItem}>
+                          <p style={styles.sigLabel}>Signature</p>
+                          {s.signatureUrl ? (
+                            <img src={resolveFileUrl(s.signatureUrl)} alt="" style={styles.sigImage} />
+                          ) : (
+                            <div style={styles.sigLine} />
+                          )}
+                        </div>
+                        <div style={styles.sigItem}>
+                          <p style={styles.sigLabel}>Official Stamp</p>
+                          {stampSrc ? (
+                            <img src={stampSrc} alt="" style={styles.stampImage} />
+                          ) : (
+                            <div style={styles.stampBox} />
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))
@@ -1012,8 +1038,22 @@ export default function StudentReport() {
                       <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{dean?.title || principal?.title || signatory?.title || "—"}</p>
                     </div>
                     <div style={styles.sigGrid}>
-                      <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
-                      <div style={styles.sigItem}><p style={styles.sigLabel}>Official Stamp</p><div style={styles.stampBox} /></div>
+                      <div style={styles.sigItem}>
+                        <p style={styles.sigLabel}>Signature</p>
+                        {(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl) ? (
+                          <img src={resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl)} alt="" style={styles.sigImage} />
+                        ) : (
+                          <div style={styles.sigLine} />
+                        )}
+                      </div>
+                      <div style={styles.sigItem}>
+                        <p style={styles.sigLabel}>Official Stamp</p>
+                        {stampSrc ? (
+                          <img src={stampSrc} alt="" style={styles.stampImage} />
+                        ) : (
+                          <div style={styles.stampBox} />
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1508,6 +1548,23 @@ function getStyles(theme) {
     margin: "0 auto",
     border: "1.5px dashed #94a3b8",
     borderRadius: 4,
+  },
+  // Real signature/stamp images, shown in place of sigLine/stampBox
+  // above whenever the person (or the school, for the stamp) has
+  // actually uploaded one from School Settings.
+  sigImage: {
+    display: "block",
+    maxWidth: "80%",
+    maxHeight: 32,
+    margin: "0 auto",
+    objectFit: "contain",
+  },
+  stampImage: {
+    display: "block",
+    maxWidth: "65%",
+    maxHeight: 60,
+    margin: "0 auto",
+    objectFit: "contain",
   },
 
   /* ── Footer ── */
