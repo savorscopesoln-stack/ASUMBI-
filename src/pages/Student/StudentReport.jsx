@@ -787,7 +787,6 @@ export default function StudentReport() {
               <div style={styles.summaryRow}>
                 {[
                   { label: "Average Score", value: `${analytics.avg}%`, color: "#1d4ed8" },
-                  { label: "Overall Grade", value: analytics.grade.label || "—", color: reportTheme.primary },
                   { label: "Overall Result", value: analytics.result || "—", color: "#15803d" },
                   { label: "Class Position", value: `#${classPosition}`, color: "#b45309" },
                   { label: "Overall Position", value: `#${overallPosition}`, color: "#7c3aed" },
