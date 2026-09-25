@@ -573,24 +573,15 @@ export default function StudentReport() {
   }, [verificationCode, documentId]);
 
   /* ================= PDF DOWNLOAD =================
-     Always full-bleed width. The report card is an A4 document, so
-     the target render width is a flat 210mm — the captured image is
-     never shrunk to "fit one page", because that shrink is exactly
-     what used to leave white margins down both sides of the PDF (the
-     image would get narrower along with getting shorter, then get
-     centered on the page).
-
-     Instead: draw the canvas at full page width always. If the
-     content is short enough to fit one A4 page at that width, it's a
-     single page, edge to edge. If the content is taller than one
-     page (extra subjects, longer remarks, more signatories, etc.),
-     it's sliced into successive full-width pages instead of being
-     squeezed down to fit — a real second page beats a shrunk, unequal
-     document.
-
+     Always exactly one PDF page. The report card is an A4 document,
+     so the target is 210mm × 297mm; if the captured content is
+     slightly taller than 297mm (extra subjects, longer remarks,
+     etc.) it's scaled down to fit the page in full rather than
+     spilling onto a second page — a single-page document is more
+     useful here than a second page holding a sliver of content.
      The on-screen-only chart is hidden for this capture (see
-     ".sr-exporting .no-print" above) so it never eats into page
-     budget in the first place.
+     ".sr-exporting .no-print" above) so it never eats into that
+     page budget in the first place.
 
      Screen display runs at a scaled-down size for readability, so
      export first flips the sheet back to true scale(1), waits for
@@ -649,51 +640,22 @@ export default function StudentReport() {
       logging: false,
       imageTimeout: 15000,
     });
-
+    const imgData = canvas.toDataURL("image/png");
     const pdf = new jsPDF("p", "mm", "a4");
     const pdfWidth = 210;
     const pdfHeight = 297;
+    const naturalWidth = pdfWidth;
+    const naturalHeight = (canvas.height * naturalWidth) / canvas.width;
 
-    // Full-bleed conversion: canvas pixels → mm, always at the full
-    // page width. No xOffset, no centering, no shrink-then-center —
-    // that combination is what produced the side gutters before.
-    const pxToMm = pdfWidth / canvas.width;
-    const fullHeightMm = canvas.height * pxToMm;
+    // Fit-to-page: only shrink (never stretch) when the natural
+    // height overruns one A4 page. Width scales down to match so
+    // the image never distorts, and stays centred horizontally.
+    const fitScale = naturalHeight > pdfHeight ? pdfHeight / naturalHeight : 1;
+    const renderWidth = naturalWidth * fitScale;
+    const renderHeight = naturalHeight * fitScale;
+    const xOffset = (pdfWidth - renderWidth) / 2;
 
-    if (fullHeightMm <= pdfHeight) {
-      // Fits on a single page — draw it edge to edge at full width.
-      const imgData = canvas.toDataURL("image/png");
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, fullHeightMm, "", "FAST");
-    } else {
-      // Taller than one A4 page: paginate at full width rather than
-      // shrinking the whole document down to squeeze it onto one page.
-      const pageHeightPx = pdfHeight / pxToMm;
-      let renderedPx = 0;
-      let pageIndex = 0;
-
-      while (renderedPx < canvas.height) {
-        const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
-
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceHeightPx;
-        const ctx = pageCanvas.getContext("2d");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        ctx.drawImage(
-          canvas,
-          0, renderedPx, canvas.width, sliceHeightPx,
-          0, 0, canvas.width, sliceHeightPx
-        );
-
-        const pageImgData = pageCanvas.toDataURL("image/png");
-        if (pageIndex > 0) pdf.addPage();
-        pdf.addImage(pageImgData, "PNG", 0, 0, pdfWidth, sliceHeightPx * pxToMm, "", "FAST");
-
-        renderedPx += sliceHeightPx;
-        pageIndex += 1;
-      }
-    }
+    pdf.addImage(imgData, "PNG", xOffset, 0, renderWidth, renderHeight, "", "FAST");
 
     // Dynamic, professional filename — never leaves a literal
     // "undefined" in the saved file name if the student's name is
