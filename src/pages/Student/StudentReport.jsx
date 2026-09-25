@@ -1541,9 +1541,12 @@ function getStyles(theme) {
     width: "80%",
     margin: "0 auto",
   },
+  // Placeholder shown when no stamp has been uploaded yet. Sized to
+  // match stampImage below (2in × 1in) so the layout doesn't shift
+  // once a real stamp image is added from School Settings.
   stampBox: {
-    width: "70%",
-    height: 2,
+    width: "2in",
+    height: "1in",
     margin: "0 auto",
     border: "1.5px dashed #94a3b8",
     borderRadius: 4,
@@ -1558,10 +1561,15 @@ function getStyles(theme) {
     margin: "0 auto",
     objectFit: "contain",
   },
+  // Official stamp: fixed 2in × 1in footprint (rather than a
+  // percentage/px cap) so the stamp prints and exports at a
+  // consistent physical size regardless of the uploaded image's own
+  // resolution or aspect ratio. objectFit keeps it undistorted
+  // within that box.
   stampImage: {
     display: "block",
-    maxWidth: "65%",
-    maxHeight: 60,
+    width: "2in",
+    height: "1in",
     margin: "0 auto",
     objectFit: "contain",
   },
