@@ -248,6 +248,30 @@ const BADGE_COLORS = [
 // Round to 1 decimal place, dropping trailing float noise (e.g. 74.3000001).
 const round1 = (n) => Math.round(Number(n) * 10) / 10;
 
+/* ================= ANTI-FORGERY: DETERMINISTIC CHECKSUM =================
+   A small FNV-1a style hash used purely to derive a printed, human
+   re-typeable verification code (and a stable document ID) from the
+   student's own result fields. It is NOT cryptographic security —
+   it's a tamper-evidence aid: if any field it's derived from is
+   altered on a photocopy/edit, the printed code stops matching a
+   re-computation done from the visible fields, which is enough to
+   flag a report card for a manual check against the source system. */
+function checksumHash(input) {
+  let h = 0x811c9dc5;
+  const str = String(input);
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36).toUpperCase();
+}
+function formatCode(raw, groupSize = 4) {
+  const clean = raw.replace(/[^A-Z0-9]/g, "");
+  const groups = [];
+  for (let i = 0; i < clean.length; i += groupSize) groups.push(clean.slice(i, i + groupSize));
+  return groups.join("-");
+}
+
 const getScoreBadgeStyle = (score, gradingSystem) => {
   const bands = gradingSystem?.gradeBands?.length ? gradingSystem.gradeBands : [];
   const sorted = [...bands].sort((a, b) => b.minScore - a.minScore);
@@ -522,6 +546,32 @@ export default function StudentReport() {
 
   const hasResults = marks.length > 0;
 
+  /* ================= ANTI-FORGERY: VERIFICATION CODE + DOCUMENT ID =================
+     Printed on the sheet (header meta + footer security strip) and
+     embedded in the QR payload. Anyone checking a physical/PDF copy
+     can re-derive this from the visible fields — if the printed code
+     doesn't match what the source system computes for that student,
+     exam and average, the document has been altered since issue. */
+  const verificationCode = useMemo(() => {
+    const seed = [admissionNo, examName, analytics.avg, analytics.result, studentClass, classPosition].join("|");
+    return formatCode(checksumHash(seed));
+  }, [admissionNo, examName, analytics.avg, analytics.result, studentClass, classPosition]);
+
+  const documentId = useMemo(() => {
+    const seed = [school?.schoolName, admissionNo, examName].join("|");
+    return `DOC-${checksumHash(seed).slice(0, 8)}`;
+  }, [school?.schoolName, admissionNo, examName]);
+
+  // Purely visual "security strip" of bars derived from the same
+  // checksum — mimics a barcode look next to the QR code so the
+  // footer reads like other tamper-evident certificates. It is not a
+  // scannable barcode; the QR code remains the actual verification
+  // payload.
+  const securityBars = useMemo(() => {
+    const digits = checksumHash(verificationCode + documentId).split("");
+    return digits.map((c) => 2 + (parseInt(c, 36) % 5));
+  }, [verificationCode, documentId]);
+
   /* ================= PDF DOWNLOAD =================
      Always exactly one PDF page. The report card is an A4 document,
      so the target is 210mm × 297mm; if the captured content is
@@ -714,8 +764,46 @@ export default function StudentReport() {
             className={`sr-sheet sr-card${isExporting ? " sr-exporting" : ""}`}
           >
 
-            {/* Faint diagonal authenticity watermark */}
-            <div style={styles.watermark} aria-hidden="true">OFFICIAL COPY</div>
+            {/* ── ANTI-FORGERY: tiled security pantograph ──
+                A grid of repeated, low-opacity watermarks rather than
+                one centred mark. Tiling (a) survives cropping/partial
+                photocopies better than a single watermark, and (b) is
+                the same technique used on cheques/certificates where a
+                faint repeating pattern is deliberately hard for a
+                photocopier to reproduce at matching contrast. */}
+            <div style={styles.pantograph} aria-hidden="true">
+              {Array.from({ length: 24 }).map((_, i) => (
+                <span key={i} style={styles.pantographItem}>
+                  {school?.schoolName ? school.schoolName.toUpperCase() : "OFFICIAL COPY"}
+                </span>
+              ))}
+            </div>
+
+            {/* ── ANTI-FORGERY: guilloche-style border frame ──
+                A continuous fine wave-line border traced around the
+                sheet edge, in the style of banknote/certificate
+                guilloche patterns — simple to verify by eye (an even,
+                unbroken line) but fiddly to redraw convincingly by
+                hand or reconstruct from a low-resolution scan. */}
+            <svg
+              style={styles.guillocheBorder}
+              aria-hidden="true"
+              viewBox="0 0 800 1131"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <pattern id="srGuillocheH" width="16" height="10" patternUnits="userSpaceOnUse">
+                  <path d="M0,5 Q4,0 8,5 T16,5" fill="none" stroke={withAlpha(reportTheme.primary, 0.38)} strokeWidth="0.7" />
+                </pattern>
+                <pattern id="srGuillocheV" width="10" height="16" patternUnits="userSpaceOnUse">
+                  <path d="M5,0 Q0,4 5,8 T5,16" fill="none" stroke={withAlpha(reportTheme.primary, 0.38)} strokeWidth="0.7" />
+                </pattern>
+              </defs>
+              <rect x="4" y="4" width="792" height="9" fill="url(#srGuillocheH)" />
+              <rect x="4" y="1118" width="792" height="9" fill="url(#srGuillocheH)" />
+              <rect x="4" y="4" width="9" height="1123" fill="url(#srGuillocheV)" />
+              <rect x="791" y="4" width="9" height="1123" fill="url(#srGuillocheV)" />
+            </svg>
 
             {/* ══════════════════════════════════════════════
                 OFFICIAL HEADER BAND
@@ -755,9 +843,21 @@ export default function StudentReport() {
                       <p style={{ margin: "3px 0 0", fontSize: 8, color: "#64748b" }}>Overall Position</p>
                     </div>
                   </div>
+                  <p style={styles.verifyCodeHeader}>VERIFY: {verificationCode}</p>
                 </div>
               </div>
               <div style={styles.headerBandFoot} />
+              {/* ── ANTI-FORGERY: microprint line ──
+                  Tiny repeated text reads as a plain rule at normal
+                  viewing distance, but a photocopier or phone-camera
+                  rescan cannot resolve it — it turns to a grey smear
+                  or drops out entirely, which is an easy naked-eye
+                  authenticity check on the original. */}
+              <div style={styles.microprint} aria-hidden="true">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <span key={i}>{documentId} • AUTHENTIC ORIGINAL DOCUMENT • DO NOT PHOTOCOPY • </span>
+                ))}
+              </div>
             </div>
 
             {/* ══════════════════════════════════════════════
@@ -1073,6 +1173,8 @@ export default function StudentReport() {
                       class: studentClass,
                       average: analytics.avg,
                       grade: analytics.grade.label,
+                      documentId,
+                      verificationCode,
                     })}
                     size={64}
                   />
@@ -1089,6 +1191,22 @@ export default function StudentReport() {
                 <p style={styles.footerCredits}>
                   Generated via the Doravo Core Student Portal
                 </p>
+                {/* ── ANTI-FORGERY: verification code + security strip ──
+                    The code is re-derivable from the visible result
+                    fields (see checksumHash above); the bar strip is a
+                    visual companion to the QR, in the style of a
+                    certificate serial/barcode, making the document read
+                    unmistakably as a controlled, numbered original. */}
+                <div style={styles.securityRow}>
+                  <div style={styles.securityBars} aria-hidden="true">
+                    {securityBars.map((w, i) => (
+                      <span key={i} style={{ ...styles.securityBar, width: w }} />
+                    ))}
+                  </div>
+                  <p style={styles.verifyCodeFooter}>
+                    Doc ID {documentId} &nbsp;·&nbsp; Verification Code <strong>{verificationCode}</strong>
+                  </p>
+                </div>
               </div>
               <div style={styles.footerRight}>
                 <div style={styles.resultRibbon}>
