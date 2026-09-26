@@ -1965,8 +1965,8 @@ function getStyles(theme) {
   // roughly match the stamp image footprint so layout doesn't
   // shift once a real stamp is added from School Settings.
   stampBox: {
-    width: "0.9in",
-    height: "0.45in",
+    width: "1.4in",
+    height: "0.7in",
     margin: "0 auto",
     border: "1.5px dashed #94a3b8",
     borderRadius: 4,
@@ -1981,29 +1981,29 @@ function getStyles(theme) {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 22,
+    minHeight: 40,
   },
   // Real signature images, shown in place of sigLine above whenever
   // the person has actually uploaded one from School Settings.
   sigImage: {
     display: "block",
     maxWidth: "80%",
-    maxHeight: 20,
+    maxHeight: 32,
     margin: "0 auto",
     objectFit: "contain",
     position: "relative",
     zIndex: 1,
   },
-  // Official stamp, overlapping the signature: a fixed, compact
-  // footprint sized to the smaller authorisation block, rotated
-  // slightly and semi-transparent so it still reads as an ink
-  // stamp pressed across the signature line rather than a second
-  // flat logo — sized down from the original so it never forces
-  // the block taller than the rest of the compact authorisation row.
+  // Official stamp, overlapping the signature: kept at its original
+  // fixed physical footprint and placement (unchanged by the layout
+  // compaction), rotated slightly and semi-transparent so it reads
+  // as an ink stamp pressed across the signature line rather than a
+  // second flat logo. The authCard/sigGrid around it simply allows
+  // for its size rather than the stamp being shrunk to fit.
   stampOverlayImage: {
     position: "absolute",
-    width: "0.95in",
-    height: "0.48in",
+    width: "1.5in",
+    height: "0.75in",
     objectFit: "contain",
     opacity: 0.82,
     transform: "rotate(-9deg)",
