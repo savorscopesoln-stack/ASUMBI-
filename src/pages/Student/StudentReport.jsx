@@ -1115,6 +1115,17 @@ export default function StudentReport() {
                 {signatories.length > 0 ? (
                   signatories.map((s) => (
                     <div style={styles.authCard} key={s.id}>
+                      {/* Stamp floats large over the card's previously-
+                          empty upper-right space (between the name/title
+                          and the Signature/Official Stamp row), rather
+                          than sitting small and confined to its own
+                          column. It's deliberately on top (high z-index)
+                          so it reads like a real stamp pressed onto the
+                          printed page — overlapping the title text is
+                          fine and expected. */}
+                      {stampSrc && (
+                        <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
+                      )}
                       <p style={styles.authCardTitle}>Approved By</p>
                       <div style={{ padding: "4px 0" }}>
                         <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{s.name || "—"}</p>
@@ -1131,23 +1142,16 @@ export default function StudentReport() {
                         </div>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Official Stamp</p>
-                          {/* The stamp now renders directly in its own
-                              column (previously italic "Stamped above"
-                              text pointing back at the signature) so
-                              the visual actually sits in this open
-                              space instead of overlapping the
-                              signature. */}
-                          {stampSrc ? (
-                            <img src={stampSrc} alt="" style={styles.stampDisplayImage} />
-                          ) : (
-                            <div style={styles.stampBox} />
-                          )}
+                          {!stampSrc && <div style={styles.stampBox} />}
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
                   <div style={styles.authCard}>
+                    {stampSrc && (
+                      <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
+                    )}
                     <p style={styles.authCardTitle}>Approved By</p>
                     <div style={{ padding: "4px 0" }}>
                       <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{dean?.name || principal?.name || signatory?.name || "—"}</p>
@@ -1164,11 +1168,7 @@ export default function StudentReport() {
                       </div>
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Official Stamp</p>
-                        {stampSrc ? (
-                          <img src={stampSrc} alt="" style={styles.stampDisplayImage} />
-                        ) : (
-                          <div style={styles.stampBox} />
-                        )}
+                        {!stampSrc && <div style={styles.stampBox} />}
                       </div>
                     </div>
                   </div>
@@ -1724,6 +1724,8 @@ function getStyles(theme) {
     border: "1px solid #e2e8f0",
     borderRadius: 10,
     padding: "8px 12px",
+    position: "relative",
+    overflow: "visible",
   },
   authCardTitle: {
     margin: "0 0 9px",
@@ -1779,22 +1781,25 @@ function getStyles(theme) {
     margin: "0 auto",
     objectFit: "contain",
   },
-  // Official stamp, rendered directly in its own "Official Stamp"
-  // column (previously overlapped the signature image and was
-  // replaced there by italic "Stamped above" text). Sized to fill
-  // roughly the same footprint as the dashed stampBox placeholder so
-  // layout doesn't jump once a real stamp is uploaded, with a slight
-  // rotation and multiply blend so it still reads as a pressed ink
-  // stamp rather than a flat logo.
-  stampDisplayImage: {
-    display: "block",
-    width: "1.6in",
-    height: "0.78in",
-    margin: "0 auto",
+  // Official stamp — floats large over the card's previously-empty
+  // upper-right area (name/title down to the Signature row), instead
+  // of being squeezed into its own small column. High z-index brings
+  // it in front of the title/name text (overlapping is intentional —
+  // it's meant to read like a real stamp pressed onto the page), with
+  // a slight rotation and multiply blend so it still looks like ink
+  // rather than a flat logo sitting on top.
+  stampOverlayImage: {
+    position: "absolute",
+    top: 2,
+    right: 4,
+    width: "2in",
+    height: "1in",
     objectFit: "contain",
-    opacity: 0.88,
-    transform: "rotate(-6deg)",
+    opacity: 0.85,
+    transform: "rotate(-8deg)",
     mixBlendMode: "multiply",
+    pointerEvents: "none",
+    zIndex: 5,
   },
 
   /* ── Footer ── */
