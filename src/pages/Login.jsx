@@ -552,7 +552,7 @@ export default function Login() {
         )}
 
         <p style={S.footerNote}>
-          © {new Date().getFullYear()} {schoolSettings?.schoolName || "DORAVO"}. All rights reserved.
+          © {new Date().getFullYear()} {schoolSettings?.schoolName || "Asumbi Teachers Training College"}
         </p>
         </div>
       </div>
