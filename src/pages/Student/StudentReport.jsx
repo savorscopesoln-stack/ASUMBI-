@@ -900,7 +900,7 @@ export default function StudentReport() {
                 <div style={styles.crestBox}>
                   {logoSrc
                     ? <img src={logoSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: "50%" }} />
-                    : <IconCap size={26} style={{ color: "#fff" }} />}
+                    : <IconCap size={52} style={{ color: "#fff" }} />}
                 </div>
 
                 {/* Centre text */}
@@ -1215,10 +1215,10 @@ export default function StudentReport() {
                           </div>
                         </div>
                         <div style={styles.sigItem}>
-                          <p style={styles.sigLabel}>Official Stamp</p>
-                          {!stampSrc && <div style={styles.stampBox} />}
-                          {stampSrc && (
-                            <p style={styles.stampedNote}>Stamped above</p>
+                          {stampSrc ? (
+                            <img src={stampSrc} alt="" style={styles.stampImageStandalone} />
+                          ) : (
+                            <div style={styles.stampBox} />
                           )}
                         </div>
                       </div>
@@ -1246,10 +1246,10 @@ export default function StudentReport() {
                         </div>
                       </div>
                       <div style={styles.sigItem}>
-                        <p style={styles.sigLabel}>Official Stamp</p>
-                        {!stampSrc && <div style={styles.stampBox} />}
-                        {stampSrc && (
-                          <p style={styles.stampedNote}>Stamped above</p>
+                        {stampSrc ? (
+                          <img src={stampSrc} alt="" style={styles.stampImageStandalone} />
+                        ) : (
+                          <div style={styles.stampBox} />
                         )}
                       </div>
                     </div>
@@ -1610,12 +1610,12 @@ function getStyles(theme) {
     background: rule,
   },
   crestBox: {
-    width: 48,
-    height: 48,
-    minWidth: 48,
+    width: 96,
+    height: 96,
+    minWidth: 96,
     borderRadius: "50%",
     background: "rgba(255,255,255,0.14)",
-    border: "2px solid rgba(255,255,255,0.4)",
+    border: "3px solid rgba(255,255,255,0.4)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1955,11 +1955,17 @@ function getStyles(theme) {
     color: "#64748b",
     fontSize: 8.5,
   },
-  stampedNote: {
-    margin: 0,
-    fontSize: 6.5,
-    color: "#94a3b8",
-    fontStyle: "italic",
+  // A clear, non-overlapping rendering of the stamp shown in its own
+  // column — this is in addition to the semi-transparent stampOverlayImage
+  // pressed across the signature, giving a legible, unobstructed view
+  // of the stamp itself instead of the "Official Stamp" / "Stamped
+  // above" text labels that used to sit here.
+  stampImageStandalone: {
+    display: "block",
+    width: "1.4in",
+    height: "0.7in",
+    margin: "0 auto",
+    objectFit: "contain",
   },
   // Placeholder shown when no stamp has been uploaded yet. Sized to
   // roughly match the stamp image footprint so layout doesn't
