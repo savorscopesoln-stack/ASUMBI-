@@ -181,14 +181,7 @@ const IconCap = (p) => (
     <path d="M21.5 8.1v6" />
   </Icon>
 );
-const IconPrinter = (p) => (
-  <Icon {...p}>
-    <path d="M7 8.5V4h10v4.5" />
-    <rect x="4" y="8.5" width="16" height="7.5" rx="1.3" />
-    <rect x="7" y="13.5" width="10" height="6.5" rx="0.8" />
-    <path d="M7.5 12h1.2" />
-  </Icon>
-);
+
 const IconDownload = (p) => (
   <Icon {...p}>
     <path d="M12 4v11.5M8 12l4 4 4-4" />
