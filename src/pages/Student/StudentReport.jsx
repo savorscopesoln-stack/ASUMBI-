@@ -354,6 +354,7 @@ export default function StudentReport() {
      to scale(1) during export so the PDF is never distorted. */
   const [screenScale, setScreenScale] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
+  const [overflowWarning, setOverflowWarning] = useState(null);
 
   useEffect(() => {
     const computeScale = () => {
@@ -572,27 +573,65 @@ export default function StudentReport() {
     return digits.map((c) => 2 + (parseInt(c, 36) % 5));
   }, [verificationCode, documentId]);
 
+  /* ================= OVERFLOW DETECTION =================
+     After the sheet renders (and whenever the content that drives its
+     height changes), measure the actual DOM height against the true
+     A4 printable height (297mm, converted to the same CSS px the
+     browser is laying the sheet out in via getBoundingClientRect,
+     which is resolution-independent). If a tenant's data genuinely
+     doesn't fit on one page at this compact layout (e.g. an unusually
+     long subject list plus long remarks plus many signatories), this
+     surfaces a visible, honest warning instead of silently clipping
+     content in print/PDF the way the old fit-to-page image scaling
+     did. Purely a screen-only diagnostic — it does not affect layout,
+     print, or export. */
+  useEffect(() => {
+    if (loading || loadError || !hasResults) return;
+    const node = reportRef.current;
+    if (!node) return;
+    const check = () => {
+      const rect = node.getBoundingClientRect();
+      // rect includes the live CSS transform scale — divide it back
+      // out to get the sheet's true, unscaled height in px.
+      const trueHeightPx = rect.height / (effectiveScale || 1);
+      // 297mm at the browser's 96dpi CSS reference (matches A4_HEIGHT_PX).
+      const pageHeightPx = A4_HEIGHT_PX;
+      if (trueHeightPx > pageHeightPx + 2) {
+        const overBy = Math.round(((trueHeightPx - pageHeightPx) / pageHeightPx) * 100);
+        setOverflowWarning(`This report's content is about ${overBy}% taller than one A4 page and will continue onto a second page when printed or downloaded.`);
+      } else {
+        setOverflowWarning(null);
+      }
+    };
+    // Wait one frame for layout (fonts, images) to settle before measuring.
+    const raf = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(raf);
+  }, [loading, loadError, hasResults, effectiveScale, subjectMap, classTeachersForClass, signatories]);
+
   /* ================= PDF DOWNLOAD =================
-     Always exactly one PDF page. The report card is an A4 document,
-     so the target is 210mm × 297mm; if the captured content is
-     slightly taller than 297mm (extra subjects, longer remarks,
-     etc.) it's scaled down to fit the page in full rather than
-     spilling onto a second page — a single-page document is more
-     useful here than a second page holding a sliver of content.
+     Full-bleed width, always. The report card is an A4 document, so
+     the target render width is a flat 210mm — the captured image is
+     never shrunk to force it onto one page, because that shrink is
+     exactly what used to leave white margins down both sides of the
+     PDF (the image got narrower along with getting shorter, then got
+     centered on the page).
+
+     Instead: draw the canvas at full page width. With the compacted
+     layout below, the common case (including the supplied 18-subject
+     report) now fits one A4 page at full width with no shrink at all.
+     If a tenant's content still doesn't fit (see the overflow
+     detector above), it's sliced into successive full-width pages
+     rather than being squeezed down — a real second page beats a
+     shrunk, illegible document.
+
      The on-screen-only chart is hidden for this capture (see
-     ".sr-exporting .no-print" above) so it never eats into that
-     page budget in the first place.
+     ".sr-exporting .no-print" above) so it never eats into page
+     budget in the first place.
 
      Screen display runs at a scaled-down size for readability, so
      export first flips the sheet back to true scale(1), waits for
      web fonts to finish loading and two animation frames for layout
-     to settle, captures, then restores scale.
-
-     Previously this only waited two rAF ticks with no font check —
-     if the Google Fonts (Playfair Display / Inter) hadn't finished
-     loading yet, html2canvas would rasterize with the fallback
-     system font mid-swap, which is what produced the thin/"washed
-     out" look in the exported PDF versus the on-screen preview. */
+     to settle, captures, then restores scale. */
   const downloadPDF = async () => {
     setIsExporting(true);
 
@@ -640,22 +679,52 @@ export default function StudentReport() {
       logging: false,
       imageTimeout: 15000,
     });
-    const imgData = canvas.toDataURL("image/png");
+
     const pdf = new jsPDF("p", "mm", "a4");
     const pdfWidth = 210;
     const pdfHeight = 297;
-    const naturalWidth = pdfWidth;
-    const naturalHeight = (canvas.height * naturalWidth) / canvas.width;
 
-    // Fit-to-page: only shrink (never stretch) when the natural
-    // height overruns one A4 page. Width scales down to match so
-    // the image never distorts, and stays centred horizontally.
-    const fitScale = naturalHeight > pdfHeight ? pdfHeight / naturalHeight : 1;
-    const renderWidth = naturalWidth * fitScale;
-    const renderHeight = naturalHeight * fitScale;
-    const xOffset = (pdfWidth - renderWidth) / 2;
+    // Full-bleed conversion: canvas pixels → mm, always at the full
+    // page width. No xOffset, no centering, no shrink-then-center —
+    // that combination is what produced side gutters before.
+    const pxToMm = pdfWidth / canvas.width;
+    const fullHeightMm = canvas.height * pxToMm;
 
-    pdf.addImage(imgData, "PNG", xOffset, 0, renderWidth, renderHeight, "", "FAST");
+    if (fullHeightMm <= pdfHeight + 0.5) {
+      // Fits on a single page (the expected case with the compact
+      // layout) — draw it edge to edge at full width, exactly once.
+      const imgData = canvas.toDataURL("image/png");
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, Math.min(fullHeightMm, pdfHeight), "", "FAST");
+    } else {
+      // Taller than one A4 page: paginate at full width rather than
+      // shrinking the whole document down to squeeze it onto one page.
+      const pageHeightPx = pdfHeight / pxToMm;
+      let renderedPx = 0;
+      let pageIndex = 0;
+
+      while (renderedPx < canvas.height) {
+        const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeightPx;
+        const ctx = pageCanvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(
+          canvas,
+          0, renderedPx, canvas.width, sliceHeightPx,
+          0, 0, canvas.width, sliceHeightPx
+        );
+
+        const pageImgData = pageCanvas.toDataURL("image/png");
+        if (pageIndex > 0) pdf.addPage();
+        pdf.addImage(pageImgData, "PNG", 0, 0, pdfWidth, sliceHeightPx * pxToMm, "", "FAST");
+
+        renderedPx += sliceHeightPx;
+        pageIndex += 1;
+      }
+    }
 
     // Dynamic, professional filename — never leaves a literal
     // "undefined" in the saved file name if the student's name is
@@ -748,6 +817,12 @@ export default function StudentReport() {
         </div>
       </div>
 
+      {overflowWarning && (
+        <p style={styles.overflowNotice} className="no-print">
+          <IconAlert size={13} style={{ color: "#b45309", flexShrink: 0 }} /> {overflowWarning}
+        </p>
+      )}
+
       <p style={styles.scrollHint} className="no-print sr-scroll-hint">
         ↔ Scroll to view the full report card
       </p>
@@ -772,7 +847,7 @@ export default function StudentReport() {
                 faint repeating pattern is deliberately hard for a
                 photocopier to reproduce at matching contrast. */}
             <div style={styles.pantograph} aria-hidden="true">
-              {Array.from({ length: 24 }).map((_, i) => (
+              {Array.from({ length: 18 }).map((_, i) => (
                 <span key={i} style={styles.pantographItem}>
                   {school?.schoolName ? school.schoolName.toUpperCase() : "OFFICIAL COPY"}
                 </span>
@@ -817,7 +892,7 @@ export default function StudentReport() {
             </svg>
 
             {/* ══════════════════════════════════════════════
-                OFFICIAL HEADER BAND
+                OFFICIAL HEADER BAND (compact letterhead)
             ══════════════════════════════════════════════ */}
             <div style={styles.headerBand}>
               <div style={styles.headerBandInner}>
@@ -825,7 +900,7 @@ export default function StudentReport() {
                 <div style={styles.crestBox}>
                   {logoSrc
                     ? <img src={logoSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: "50%" }} />
-                    : <IconCap size={34} style={{ color: "#fff" }} />}
+                    : <IconCap size={26} style={{ color: "#fff" }} />}
                 </div>
 
                 {/* Centre text */}
@@ -844,14 +919,14 @@ export default function StudentReport() {
                   <div style={styles.metaRow}><span style={styles.metaKey}>Date</span><span style={styles.metaVal}>{new Date().toLocaleDateString("en-KE", { day: "2-digit", month: "short", year: "numeric" })}</span></div>
                   <div style={styles.metaRow}><span style={styles.metaKey}>Class</span><span style={styles.metaVal}>{studentClass}</span></div>
                   <div style={styles.metaRow}><span style={styles.metaKey}>Year</span><span style={styles.metaVal}>{yearOfStudy || "—"}</span></div>
-                  <div style={{ ...styles.metaRow, marginTop: 4, gap: 6, justifyContent: "center" }}>
+                  <div style={{ ...styles.metaRow, marginTop: 3, gap: 5, justifyContent: "center" }}>
                     <div style={{ textAlign: "center" }}>
                       <span style={styles.positionCircle}>#{classPosition}</span>
-                      <p style={{ margin: "3px 0 0", fontSize: 8, color: "#64748b" }}>Class Position</p>
+                      <p style={styles.positionCaption}>Class Pos.</p>
                     </div>
                     <div style={{ textAlign: "center" }}>
                       <span style={styles.positionCircle}>#{overallPosition}</span>
-                      <p style={{ margin: "3px 0 0", fontSize: 8, color: "#64748b" }}>Overall Position</p>
+                      <p style={styles.positionCaption}>Overall Pos.</p>
                     </div>
                   </div>
                   <p style={styles.verifyCodeHeader}>VERIFY: {verificationCode}</p>
@@ -872,12 +947,9 @@ export default function StudentReport() {
             </div>
 
             {/* ══════════════════════════════════════════════
-                STUDENT INFORMATION GRID
+                STUDENT INFORMATION GRID (compact)
             ══════════════════════════════════════════════ */}
-            <div style={styles.section}>
-              <div style={styles.sectionLabelBar}>
-                <span style={styles.sectionLabel}>Student Information</span>
-              </div>
+            <div style={styles.sectionTight}>
               <div style={styles.plainInfoGrid}>
                 <InfoItem label="Student Name" value={user.name} styles={styles} />
                 <InfoItem label="Admission Number" value={admissionNo} styles={styles} />
@@ -889,12 +961,11 @@ export default function StudentReport() {
             </div>
 
             {/* ══════════════════════════════════════════════
-                PERFORMANCE SUMMARY
+                PERFORMANCE SUMMARY (compact strip — highest/
+                lowest score moved into Performance Analysis below
+                to avoid repeating the same two figures twice)
             ══════════════════════════════════════════════ */}
-            <div style={styles.section}>
-              <div style={styles.sectionLabelBar}>
-                <span style={styles.sectionLabel}>Performance Summary</span>
-              </div>
+            <div style={styles.sectionTight}>
               <div style={styles.summaryRow}>
                 {[
                   { label: "Average Score", value: `${analytics.avg}%`, color: "#1d4ed8" },
@@ -902,8 +973,6 @@ export default function StudentReport() {
                   { label: "Class Position", value: `#${classPosition}`, color: "#b45309" },
                   { label: "Overall Position", value: `#${overallPosition}`, color: "#7c3aed" },
                   { label: "Learning Areas", value: analytics.assessedCount, color: "#0f766e" },
-                  { label: "Highest Score", value: analytics.highest != null ? `${analytics.highest}%` : "—", color: "#15803d" },
-                  { label: "Lowest Score", value: analytics.lowest != null ? `${analytics.lowest}%` : "—", color: "#b91c1c" },
                 ].map((m, i, arr) => (
                   <div
                     key={m.label}
@@ -917,10 +986,11 @@ export default function StudentReport() {
             </div>
 
             {/* ══════════════════════════════════════════════
-                RESULTS TABLE
+                RESULTS TABLE (compact rows, all 18 subjects,
+                nothing truncated)
             ══════════════════════════════════════════════ */}
-            <div style={styles.section}>
-              <div style={styles.sectionLabelBar}>
+            <div style={styles.sectionTight}>
+              <div style={styles.sectionLabelBarTight}>
                 <span style={styles.sectionLabel}>Academic Performance</span>
               </div>
               <table style={styles.table}>
@@ -940,13 +1010,13 @@ export default function StudentReport() {
                     const remark = valid ? getRemarkForScore(s.score, gradingSystem) : "";
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : reportTheme.zebra }}>
-                        <td style={{ ...styles.td, color: "#64748b", fontSize: 8 }}>{s.code || `L/A-${i + 1}`}</td>
+                        <td style={{ ...styles.td, color: "#64748b", fontSize: 7 }}>{s.code || `L/A-${i + 1}`}</td>
                         <td style={{ ...styles.td, textAlign: "left", fontWeight: 500 }}>{s.subject}</td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
                           {valid ? (
                             <span style={{
                               fontWeight: 700,
-                              fontSize: 8,
+                              fontSize: 7.5,
                               color: s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c"
                             }}>{s.score}%</span>
                           ) : <span style={styles.crnmTag}>CRNM</span>}
@@ -956,10 +1026,10 @@ export default function StudentReport() {
                             <span style={{
                               background: badge.bg,
                               color: badge.color,
-                              padding: "3px 12px",
+                              padding: "2px 9px",
                               borderRadius: 20,
                               fontWeight: 600,
-                              fontSize: 8,
+                              fontSize: 7.5,
                               display: "inline-block",
                               letterSpacing: "0.02em",
                             }}>{badge.text}</span>
@@ -979,10 +1049,10 @@ export default function StudentReport() {
                       <span style={{
                         background: "#dbeafe",
                         color: "#1e3a8a",
-                        padding: "3px 12px",
+                        padding: "2px 9px",
                         borderRadius: 20,
                         fontWeight: 700,
-                        fontSize: 8,
+                        fontSize: 7.5,
                         display: "inline-block",
                       }}>{analytics.grade.label || "—"}</span>
                     </td>
@@ -993,37 +1063,38 @@ export default function StudentReport() {
             </div>
 
             {/* ══════════════════════════════════════════════
-                PERFORMANCE ANALYSIS
+                PERFORMANCE ANALYSIS — one compact horizontal
+                strip (highest / lowest / attention count) instead
+                of two large cards; carries the highest/lowest
+                figures previously repeated in the summary above.
             ══════════════════════════════════════════════ */}
             {(highestSubject || lowestSubject) && (
-              <div style={styles.section}>
-                <div style={styles.sectionLabelBar}>
+              <div style={styles.sectionTight}>
+                <div style={styles.sectionLabelBarTight}>
                   <span style={styles.sectionLabel}>Performance Analysis</span>
                 </div>
-                <div style={styles.authGrid}>
-                  <div style={styles.authCard}>
-                    <p style={styles.authCardTitle}>Highest Performing Area</p>
-                    {highestSubject ? (
-                      <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
-                        {highestSubject.subject} — {highestSubject.score}%
-                      </p>
-                    ) : <p style={{ margin: "4px 0 0", fontSize: 12, color: "#94a3b8" }}>Not enough data</p>}
+                <div style={styles.analysisStrip}>
+                  <div style={styles.analysisItem}>
+                    <p style={styles.analysisLabel}>Highest Performing Area</p>
+                    <p style={styles.analysisValue}>
+                      {highestSubject ? `${highestSubject.subject} — ${highestSubject.score}%` : "Not enough data"}
+                    </p>
                   </div>
-                  <div style={styles.authCard}>
-                    <p style={styles.authCardTitle}>Area Requiring Attention</p>
-                    {lowestSubject ? (
-                      <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
-                        {lowestSubject.subject} — {lowestSubject.score}%
-                      </p>
-                    ) : <p style={{ margin: "4px 0 0", fontSize: 12, color: "#94a3b8" }}>Not enough data</p>}
+                  <div style={{ ...styles.analysisItem, borderLeft: "1px solid #e2e8f0", borderRight: "1px solid #e2e8f0" }}>
+                    <p style={styles.analysisLabel}>Area Requiring Attention</p>
+                    <p style={styles.analysisValue}>
+                      {lowestSubject ? `${lowestSubject.subject} — ${lowestSubject.score}%` : "Not enough data"}
+                    </p>
+                  </div>
+                  <div style={styles.analysisItem}>
+                    <p style={styles.analysisLabel}>Pass-Mark Check</p>
+                    <p style={styles.analysisValue}>
+                      {attentionSubjects.length > 0
+                        ? `${attentionSubjects.length} of ${analytics.assessedCount} below ${passMark}%`
+                        : `All ${analytics.assessedCount} met the ${passMark}% pass mark`}
+                    </p>
                   </div>
                 </div>
-                <p style={{ margin: "8px 2px 0", fontSize: 9.5, color: "#64748b" }}>
-                  {analytics.assessedCount} learning area{analytics.assessedCount === 1 ? "" : "s"} assessed, average {analytics.avg}%.
-                  {attentionSubjects.length > 0
-                    ? ` ${attentionSubjects.length} learning area${attentionSubjects.length === 1 ? "" : "s"} fell below the ${passMark}% pass mark.`
-                    : " All assessed learning areas met the configured pass mark."}
-                </p>
               </div>
             )}
 
@@ -1033,12 +1104,12 @@ export default function StudentReport() {
                 clean, predictable single page)
             ══════════════════════════════════════════════ */}
             {chartData.length > 0 && (
-              <div style={styles.section} className="no-print">
-                <div style={styles.sectionLabelBar}>
+              <div style={styles.sectionTight} className="no-print">
+                <div style={styles.sectionLabelBarTight}>
                   <span style={styles.sectionLabel}>Score Overview (screen only)</span>
                 </div>
                 <div style={styles.chartWrap}>
-                  <ResponsiveContainer width="100%" height={Math.max(80, chartData.length * 26)}>
+                  <ResponsiveContainer width="100%" height={Math.max(80, chartData.length * 22)}>
                     <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 4 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                       <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9 }} stroke="#94a3b8" />
@@ -1052,33 +1123,38 @@ export default function StudentReport() {
             )}
 
             {/* ══════════════════════════════════════════════
-                REMARKS & APPROVAL
+                OFFICIAL AUTHORISATION — compact two-column grid.
+                Every Class Teacher / Lecturer assigned to this
+                class, plus every configured signatory (Assessment
+                Officer, Dean of Curriculum, Chief Principal, etc.
+                — whatever School Settings has configured), each as
+                a compact block rather than a large independent
+                card. Items simply flow into the 2-column grid, so
+                any number of teachers/signatories wraps cleanly
+                without clipping.
             ══════════════════════════════════════════════ */}
-            <div style={styles.section}>
-              <div style={styles.sectionLabelBar}>
+            <div style={styles.sectionTight}>
+              <div style={styles.sectionLabelBarTight}>
                 <span style={styles.sectionLabel}>Official Authorisation</span>
               </div>
               <div style={styles.authGrid}>
 
-                {/* Comments — one remarks box per Class Teacher / Lecturer
-                    assigned to this class (main + any assistants), so
-                    every teacher present on the report gets their own
-                    remarks + sign-off line instead of only the top-ranked
-                    one. Falls back to a single blank box when nobody has
-                    been assigned yet, exactly like before this feature
-                    existed. */}
+                {/* Comments — one compact remarks block per Class
+                    Teacher / Lecturer assigned to this class (main +
+                    any assistants). Falls back to a single blank
+                    block when nobody has been assigned yet. */}
                 {classTeachersForClass.length > 0 ? (
                   classTeachersForClass.map((ct, i) => (
                     <div style={styles.authCard} key={ct.id ?? i}>
                       <p style={styles.authCardTitle}>{ct.title ? `${ct.title}'s Remarks` : "Class Teacher / Lecturer's Remarks"}</p>
                       <div style={styles.remarksBox}>
-                        <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
+                        <p style={{ color: "#94a3b8", fontSize: 7, margin: 0 }}>&nbsp;</p>
                       </div>
                       <div style={styles.sigGrid}>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Name</p>
                           {ct.name ? (
-                            <p style={{ margin: 0, fontWeight: 700, fontSize: 11.5, color: "#0f172a" }}>{ct.name}</p>
+                            <p style={styles.sigNameText}>{ct.name}</p>
                           ) : (
                             <div style={styles.sigLine} />
                           )}
@@ -1099,7 +1175,7 @@ export default function StudentReport() {
                   <div style={styles.authCard}>
                     <p style={styles.authCardTitle}>Class Teacher / Lecturer's Remarks</p>
                     <div style={styles.remarksBox}>
-                      <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
+                      <p style={{ color: "#94a3b8", fontSize: 7, margin: 0 }}>&nbsp;</p>
                     </div>
                     <div style={styles.sigGrid}>
                       <div style={styles.sigItem}><p style={styles.sigLabel}>Name</p><div style={styles.sigLine} /></div>
@@ -1109,66 +1185,72 @@ export default function StudentReport() {
                   </div>
                 )}
 
-                {/* Approval — one card per official flagged as a
-                    signatory in School Settings (in rank/order), or the
-                    single dean/principal fallback if none are set. */}
+                {/* Approval — one compact block per official flagged
+                    as a signatory in School Settings (Assessment
+                    Officer, Dean of Curriculum, Chief Principal, in
+                    whatever order/rank is configured there), or the
+                    single dean/principal fallback if none are set.
+                    Stamp is sized to fit the compact card without
+                    forcing the card taller than its content. */}
                 {signatories.length > 0 ? (
                   signatories.map((s) => (
                     <div style={styles.authCard} key={s.id}>
-                      {/* Stamp floats large over the card's previously-
-                          empty upper-right space (between the name/title
-                          and the Signature/Official Stamp row), rather
-                          than sitting small and confined to its own
-                          column. It's deliberately on top (high z-index)
-                          so it reads like a real stamp pressed onto the
-                          printed page — overlapping the title text is
-                          fine and expected. */}
-                      {stampSrc && (
-                        <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
-                      )}
-                      <p style={styles.authCardTitle}>Approved By</p>
-                      <div style={{ padding: "4px 0" }}>
-                        <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{s.name || "—"}</p>
-                        <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{s.title || "—"}</p>
+                      <p style={styles.authCardTitle}>{s.title || "Approved By"}</p>
+                      <div style={{ padding: "1px 0" }}>
+                        <p style={styles.sigNameHeadline}>{s.name || "—"}</p>
+                        {s.title && <p style={styles.sigRoleText}>{s.title}</p>}
                       </div>
                       <div style={styles.sigGrid}>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Signature</p>
-                          {s.signatureUrl ? (
-                            <img src={resolveFileUrl(s.signatureUrl)} alt="" style={styles.sigImage} />
-                          ) : (
-                            <div style={styles.sigLine} />
-                          )}
+                          <div style={styles.stampSigWrap}>
+                            {s.signatureUrl ? (
+                              <img src={resolveFileUrl(s.signatureUrl)} alt="" style={styles.sigImage} />
+                            ) : (
+                              <div style={styles.sigLine} />
+                            )}
+                            {stampSrc && (
+                              <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
+                            )}
+                          </div>
                         </div>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Official Stamp</p>
                           {!stampSrc && <div style={styles.stampBox} />}
+                          {stampSrc && (
+                            <p style={styles.stampedNote}>Stamped above</p>
+                          )}
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
                   <div style={styles.authCard}>
-                    {stampSrc && (
-                      <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
-                    )}
                     <p style={styles.authCardTitle}>Approved By</p>
-                    <div style={{ padding: "4px 0" }}>
-                      <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{dean?.name || principal?.name || signatory?.name || "—"}</p>
-                      <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: 12 }}>{dean?.title || principal?.title || signatory?.title || "—"}</p>
+                    <div style={{ padding: "1px 0" }}>
+                      <p style={styles.sigNameHeadline}>{dean?.name || principal?.name || signatory?.name || "—"}</p>
+                      <p style={styles.sigRoleText}>{dean?.title || principal?.title || signatory?.title || "—"}</p>
                     </div>
                     <div style={styles.sigGrid}>
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Signature</p>
-                        {(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl) ? (
-                          <img src={resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl)} alt="" style={styles.sigImage} />
-                        ) : (
-                          <div style={styles.sigLine} />
-                        )}
+                        <div style={styles.stampSigWrap}>
+                          {(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl) ? (
+                            <img src={resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl)} alt="" style={styles.sigImage} />
+                          ) : (
+                            <div style={styles.sigLine} />
+                          )}
+                          {stampSrc && (
+                            <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
+                          )}
+                        </div>
                       </div>
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Official Stamp</p>
                         {!stampSrc && <div style={styles.stampBox} />}
+                        {stampSrc && (
+                          <p style={styles.stampedNote}>Stamped above</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1178,7 +1260,7 @@ export default function StudentReport() {
             </div>
 
             {/* ══════════════════════════════════════════════
-                FOOTER + QR
+                FOOTER + QR (compact verification strip)
             ══════════════════════════════════════════════ */}
             <div style={styles.footerSection}>
               <div style={styles.footerLeft}>
@@ -1193,20 +1275,17 @@ export default function StudentReport() {
                       documentId,
                       verificationCode,
                     })}
-                    size={64}
+                    size={56}
                   />
                 </div>
-                <p style={{ fontSize: 8.5, color: "#94a3b8", marginTop: 5, display: "flex", alignItems: "center", gap: 4 }}>
-                  <IconScan size={11} style={{ color: "#94a3b8" }} /> Scan to verify
+                <p style={styles.scanCaption}>
+                  <IconScan size={10} style={{ color: "#94a3b8" }} /> Scan to verify
                 </p>
               </div>
               <div style={styles.footerCenter}>
                 <p style={styles.footerDisclaimer}>
                   This report card is computer-generated and reflects the results on record at the time of printing.
                   It is valid without a handwritten signature unless otherwise indicated by the institution.
-                </p>
-                <p style={styles.footerCredits}>
-                  Generated via the Doravo Core Student Portal
                 </p>
                 {/* ── ANTI-FORGERY: verification code + security strip ──
                     The code is re-derivable from the visible result
@@ -1224,6 +1303,9 @@ export default function StudentReport() {
                     Doc ID {documentId} &nbsp;·&nbsp; Verification Code <strong>{verificationCode}</strong>
                   </p>
                 </div>
+                <p style={styles.footerCredits}>
+                  Generated via the Doravo Core Student Portal
+                </p>
               </div>
               <div style={styles.footerRight}>
                 <div style={styles.resultRibbon}>
@@ -1248,6 +1330,27 @@ export default function StudentReport() {
    its children below) intentionally keeps its own fixed
    maroon/blue/green/amber palette — it's an official document
    that gets printed and exported to PDF, not a themed UI.
+
+   COMPACTION NOTES (why these numbers, not the old ones):
+   The supplied two-page PDF overflowed by roughly one extra
+   header's worth of height. Auditing the rendered sections, the
+   vertical cost was spread thin across many places rather than
+   concentrated in one: the header band's generous padding and
+   large 66px crest: ~10mm; seven separate performance-summary
+   cards where five plus the analysis strip carry the same
+   information: ~8mm; ~6px of table row padding × 18 rows plus
+   the average row: ~14mm; two large, independently-bordered
+   performance-analysis cards instead of one three-item strip:
+   ~9mm; and the biggest single cost, the Official Authorisation
+   cards — each signatory card carried its own title, name block,
+   3-column signature grid and (for Dean + Chief Principal) a
+   1.5in-tall stamp overlapping a nearly-as-tall signature area,
+   stacked as four full cards: roughly ~28-32mm depending on the
+   number of teachers/signatories. That authorisation block alone
+   was enough to push the last ~15-20% of content onto page two.
+   The changes below trim each of those areas proportionally
+   rather than applying one blanket scale-down, so text stays a
+   legible 7-8px throughout instead of being shrunk further.
 ═══════════════════════════════════════════════════════════ */
 /* ================= REPORT THEME COLOR HELPERS =================
    The printed report card's palette now follows the school's chosen
@@ -1347,6 +1450,24 @@ function getStyles(theme) {
     margin: "0 4px 8px",
   },
 
+  // Screen-only diagnostic banner shown when a tenant's content
+  // genuinely doesn't fit one A4 page at this compact layout (see
+  // the overflow-detection effect above). Never rendered in print
+  // or PDF export.
+  overflowNotice: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 6,
+    margin: "0 4px 10px",
+    padding: "8px 12px",
+    background: "#fffbeb",
+    border: "1px solid #fde68a",
+    borderRadius: 8,
+    fontSize: 12.5,
+    color: "#92400e",
+    lineHeight: 1.4,
+  },
+
   /* ── A4 stage: centers the (scaled) sheet ── */
   a4Stage: {
     display: "flex",
@@ -1443,14 +1564,14 @@ function getStyles(theme) {
 
   /* ── ANTI-FORGERY: verification code, header + footer ── */
   verifyCodeHeader: {
-    marginTop: 6,
-    fontSize: 6.5,
+    marginTop: 4,
+    fontSize: 6,
     fontWeight: 700,
     color: withAlpha(onPrimary, 0.7),
     letterSpacing: "0.06em",
   },
   securityRow: {
-    marginTop: 8,
+    marginTop: 5,
     display: "flex",
     alignItems: "center",
     gap: 8,
@@ -1459,7 +1580,7 @@ function getStyles(theme) {
     display: "flex",
     alignItems: "flex-end",
     gap: 1.5,
-    height: 14,
+    height: 12,
   },
   securityBar: {
     display: "inline-block",
@@ -1468,11 +1589,11 @@ function getStyles(theme) {
   },
   verifyCodeFooter: {
     margin: 0,
-    fontSize: 8.5,
+    fontSize: 8,
     color: "#64748b",
   },
 
-  /* ── Header band (flat fill, no gradient) ── */
+  /* ── Header band (flat fill, no gradient) — compact letterhead ── */
   headerBand: {
     position: "relative",
     zIndex: 1,
@@ -1480,18 +1601,18 @@ function getStyles(theme) {
   headerBandInner: {
     display: "flex",
     alignItems: "center",
-    gap: 14,
-    padding: "2mm 3mm 2px",
+    gap: 10,
+    padding: "3px 3mm 2px",
     background: primary,
   },
   headerBandFoot: {
-    height: 3,
+    height: 2.5,
     background: rule,
   },
   crestBox: {
-    width: 66,
-    height: 66,
-    minWidth: 66,
+    width: 48,
+    height: 48,
+    minWidth: 48,
     borderRadius: "50%",
     background: "rgba(255,255,255,0.14)",
     border: "2px solid rgba(255,255,255,0.4)",
@@ -1501,48 +1622,49 @@ function getStyles(theme) {
     overflow: "hidden",
   },
   collegeTagline: {
-    margin: "0 0 2px",
-    fontSize: 9.5,
-    letterSpacing: "0.1em",
+    margin: "0 0 1px",
+    fontSize: 8,
+    letterSpacing: "0.09em",
     color: tagline,
     fontWeight: 600,
     textTransform: "uppercase",
   },
   collegeName: {
-    margin: "0 0 3px",
-    fontSize: 18,
+    margin: "0 0 2px",
+    fontSize: 15,
     fontWeight: 800,
     color: onPrimary,
-    letterSpacing: "0.015em",
-    lineHeight: 1.15,
+    letterSpacing: "0.01em",
+    lineHeight: 1.1,
     fontFamily: "'Playfair Display', 'Georgia', serif",
   },
   collegeAddress: {
-    margin: "0 0 8px",
-    fontSize: 10.5,
+    margin: "0 0 4px",
+    fontSize: 8.5,
     color: subtitleTint,
   },
   slipTitleBox: {
     background: "rgba(0,0,0,0.22)",
     border: "1px solid rgba(255,255,255,0.14)",
-    borderRadius: 6,
-    padding: "6px 12px",
+    borderRadius: 5,
+    padding: "3px 10px",
+    display: "inline-block",
   },
   slipTitle: {
     margin: 0,
-    fontSize: 11.5,
+    fontSize: 9.5,
     fontWeight: 800,
     color: onPrimary,
-    letterSpacing: "0.05em",
+    letterSpacing: "0.04em",
     textTransform: "uppercase",
   },
   slipSubtitle: {
-    margin: "2px 0 0",
-    fontSize: 11,
+    margin: "1px 0 0",
+    fontSize: 9,
     color: onPrimary,
     fontWeight: 700,
     textTransform: "uppercase",
-    letterSpacing: "0.04em",
+    letterSpacing: "0.03em",
   },
   headerMeta: {
     minWidth: 50,
@@ -1553,26 +1675,26 @@ function getStyles(theme) {
     justifyContent: "flex-end",
     alignItems: "center",
     gap: 0.5,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   metaKey: {
-    fontSize: 10.5,
+    fontSize: 8.5,
     color: subtitleTint,
     fontWeight: 600,
     textTransform: "uppercase",
-    letterSpacing: "0.06em",
+    letterSpacing: "0.05em",
   },
   metaVal: {
-    fontSize: 8,
+    fontSize: 7,
     color: onPrimary,
     fontWeight: 700,
     background: "rgba(255,255,255,0.12)",
-    padding: "2px 7px",
+    padding: "1.5px 6px",
     borderRadius: 4,
   },
   positionCircle: {
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     borderRadius: "50%",
     background: "#fff",
     color: primary,
@@ -1580,27 +1702,47 @@ function getStyles(theme) {
     alignItems: "center",
     justifyContent: "center",
     fontWeight: 900,
-    fontSize: 14,
-    border: "3px solid rgba(255,255,255,0.55)",
+    fontSize: 11,
+    border: "2.5px solid rgba(255,255,255,0.55)",
     letterSpacing: "-0.02em",
   },
+  positionCaption: {
+    margin: "2px 0 0",
+    fontSize: 6.5,
+    color: "#64748b",
+  },
 
-  /* ── Sections ── */
+  /* ── Sections ──
+     `section` kept for compatibility; `sectionTight` is the
+     compacted spacing used throughout the redesigned sheet
+     (roughly half the old top/bottom padding). */
   section: {
     position: "relative",
     zIndex: 1,
     padding: "0 12mm 8px",
     marginTop: 1,
   },
+  sectionTight: {
+    position: "relative",
+    zIndex: 1,
+    padding: "0 10mm 4px",
+    marginTop: 0,
+  },
   sectionLabelBar: {
     borderLeft: `4px solid ${primary}`,
     paddingLeft: 9,
     marginBottom: 8,
   },
+  sectionLabelBarTight: {
+    borderLeft: `3px solid ${primary}`,
+    paddingLeft: 7,
+    marginBottom: 4,
+    marginTop: 5,
+  },
   sectionLabel: {
-    fontSize: 9.5,
+    fontSize: 8.5,
     fontWeight: 800,
-    letterSpacing: "0.12em",
+    letterSpacing: "0.1em",
     color: primary,
     textTransform: "uppercase",
   },
@@ -1611,20 +1753,20 @@ function getStyles(theme) {
   plainInfoGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
-    rowGap: 7,
-    columnGap: 16,
-    paddingBottom: 8,
+    rowGap: 4,
+    columnGap: 14,
+    padding: "5px 0 6px",
     borderBottom: "1px solid #e2e8f0",
   },
   plainInfoItem: {
-    fontSize: 10.5,
+    fontSize: 9.5,
   },
   plainInfoLabel: {
     fontWeight: 700,
     color: "#64748b",
-    fontSize: 9,
+    fontSize: 8,
     textTransform: "uppercase",
-    letterSpacing: "0.05em",
+    letterSpacing: "0.04em",
   },
   plainInfoValue: {
     fontWeight: 600,
@@ -1638,9 +1780,8 @@ function getStyles(theme) {
   summaryRow: {
     display: "flex",
     flexWrap: "wrap",
-    borderTop: "1px solid #e2e8f0",
     borderBottom: "1px solid #e2e8f0",
-    padding: "8px 0",
+    padding: "5px 0",
   },
   summaryItem: {
     flex: "1 1 0",
@@ -1649,18 +1790,46 @@ function getStyles(theme) {
     padding: "0 6px",
   },
   summaryLabel: {
-    margin: "0 0 4px",
-    fontSize: 7.5,
+    margin: "0 0 2px",
+    fontSize: 6.5,
     fontWeight: 700,
     color: "#64748b",
     textTransform: "uppercase",
-    letterSpacing: "0.06em",
+    letterSpacing: "0.05em",
   },
   summaryValue: {
     margin: 0,
-    fontSize: 12.5,
+    fontSize: 11,
     fontWeight: 800,
-    lineHeight: 1.3,
+    lineHeight: 1.2,
+  },
+
+  /* ── Performance analysis: one compact three-item strip
+     replacing the old two large bordered cards. ── */
+  analysisStrip: {
+    display: "flex",
+    border: "1px solid #e2e8f0",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  analysisItem: {
+    flex: 1,
+    padding: "5px 10px",
+    textAlign: "center",
+  },
+  analysisLabel: {
+    margin: "0 0 2px",
+    fontSize: 6.5,
+    fontWeight: 700,
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  },
+  analysisValue: {
+    margin: 0,
+    fontSize: 9.5,
+    fontWeight: 700,
+    color: "#0f172a",
   },
 
   /* ── Chart ── */
@@ -1671,38 +1840,41 @@ function getStyles(theme) {
     padding: "6px 8px",
   },
 
-  /* ── Table ── */
+  /* ── Table — compact rows (~3px vertical cell padding), all
+     18 subjects fit without truncating names; long names wrap
+     naturally since the subject column has no whiteSpace: nowrap. ── */
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    fontSize: 8,
+    fontSize: 7.5,
     tableLayout: "fixed",
   },
   theadRow: {
     background: primary,
   },
   th: {
-    padding: "7px 6px",
-    fontSize: 9.5,
+    padding: "4px 6px",
+    fontSize: 8,
     fontWeight: 700,
     color: withAlpha(onPrimary, 0.72),
     textTransform: "uppercase",
-    letterSpacing: "0.08em",
+    letterSpacing: "0.06em",
     textAlign: "center",
     borderBottom: "2px solid rgba(0,0,0,0.18)",
   },
   td: {
-    padding: "5px 10px",
+    padding: "3px 8px",
     borderBottom: "1px solid #f1f5f9",
     color: "#334155",
-    fontSize: 8,
+    fontSize: 7.5,
     textAlign: "center",
     verticalAlign: "middle",
+    lineHeight: 1.25,
   },
   crnmTag: {
     background: "#fee2e2",
     color: "#991b1b",
-    padding: "3px 9px",
+    padding: "2px 8px",
     borderRadius: 12,
     fontWeight: 700,
     fontSize: 5,
@@ -1711,35 +1883,38 @@ function getStyles(theme) {
     background: primary,
     color: onPrimary,
     fontWeight: 700,
-    fontSize: 8,
+    fontSize: 7.5,
   },
 
-  /* ── Auth grid ── */
+  /* ── Auth grid — compact two-column blocks. Any number of
+     class-teacher / signatory blocks simply flows into new rows
+     of this grid, so more signatories never clip content — they
+     just add another row at the same compact height. ── */
   authGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: 6,
+    gap: 5,
   },
   authCard: {
     border: "1px solid #e2e8f0",
-    borderRadius: 10,
-    padding: "8px 12px",
+    borderRadius: 8,
+    padding: "5px 9px 6px",
     position: "relative",
     overflow: "visible",
   },
   authCardTitle: {
-    margin: "0 0 9px",
-    fontSize: 10.5,
+    margin: "0 0 4px",
+    fontSize: 8.5,
     fontWeight: 800,
     color: primary,
     textTransform: "uppercase",
-    letterSpacing: "0.1em",
+    letterSpacing: "0.08em",
   },
   remarksBox: {
     border: "1px dashed #cbd5e1",
-    borderRadius: 8,
-    minHeight: 22,
-    padding: 8,
+    borderRadius: 6,
+    minHeight: 14,
+    padding: 5,
     background: "#f8fafc",
     display: "flex",
     alignItems: "center",
@@ -1747,13 +1922,13 @@ function getStyles(theme) {
   sigGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 6,
-    marginTop: 6,
+    gap: 5,
+    marginTop: 4,
   },
   sigItem: { textAlign: "center" },
   sigLabel: {
-    margin: "0 0 5px",
-    fontSize: 9.5,
+    margin: "0 0 3px",
+    fontSize: 7.5,
     color: "#64748b",
     fontWeight: 600,
   },
@@ -1761,55 +1936,90 @@ function getStyles(theme) {
     borderBottom: "1px solid #334155",
     width: "80%",
     margin: "0 auto",
+    minHeight: 14,
+  },
+  sigNameText: {
+    margin: 0,
+    fontWeight: 700,
+    fontSize: 9.5,
+    color: "#0f172a",
+  },
+  sigNameHeadline: {
+    margin: "0 0 1px",
+    fontWeight: 700,
+    fontSize: 11,
+    color: "#0f172a",
+  },
+  sigRoleText: {
+    margin: 0,
+    color: "#64748b",
+    fontSize: 8.5,
+  },
+  stampedNote: {
+    margin: 0,
+    fontSize: 6.5,
+    color: "#94a3b8",
+    fontStyle: "italic",
   },
   // Placeholder shown when no stamp has been uploaded yet. Sized to
   // roughly match the stamp image footprint so layout doesn't
   // shift once a real stamp is added from School Settings.
   stampBox: {
-    width: "1.4in",
-    height: "0.7in",
+    width: "0.9in",
+    height: "0.45in",
     margin: "0 auto",
     border: "1.5px dashed #94a3b8",
     borderRadius: 4,
+  },
+  // Wrapper that lets the stamp visually overlap the signature —
+  // relative positioning here, absolute positioning on the stamp
+  // image itself, so the stamp reads as pressed across the
+  // signature the way a real ink stamp does on a signed document,
+  // without forcing the compact card taller than its content.
+  stampSigWrap: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 22,
   },
   // Real signature images, shown in place of sigLine above whenever
   // the person has actually uploaded one from School Settings.
   sigImage: {
     display: "block",
     maxWidth: "80%",
-    maxHeight: 32,
+    maxHeight: 20,
     margin: "0 auto",
     objectFit: "contain",
+    position: "relative",
+    zIndex: 1,
   },
-  // Official stamp — floats large over the card's previously-empty
-  // upper-right area (name/title down to the Signature row), instead
-  // of being squeezed into its own small column. High z-index brings
-  // it in front of the title/name text (overlapping is intentional —
-  // it's meant to read like a real stamp pressed onto the page), with
-  // a slight rotation and multiply blend so it still looks like ink
-  // rather than a flat logo sitting on top.
+  // Official stamp, overlapping the signature: a fixed, compact
+  // footprint sized to the smaller authorisation block, rotated
+  // slightly and semi-transparent so it still reads as an ink
+  // stamp pressed across the signature line rather than a second
+  // flat logo — sized down from the original so it never forces
+  // the block taller than the rest of the compact authorisation row.
   stampOverlayImage: {
     position: "absolute",
-    top: 2,
-    right: 4,
-    width: "2in",
-    height: "1in",
+    width: "0.95in",
+    height: "0.48in",
     objectFit: "contain",
-    opacity: 0.85,
-    transform: "rotate(-8deg)",
+    opacity: 0.82,
+    transform: "rotate(-9deg)",
     mixBlendMode: "multiply",
     pointerEvents: "none",
-    zIndex: 5,
+    zIndex: 2,
   },
 
-  /* ── Footer ── */
+  /* ── Footer (compact) ── */
   footerSection: {
     position: "relative",
     zIndex: 1,
     display: "flex",
     alignItems: "flex-start",
-    gap: 12,
-    padding: "10px 12mm 10mm",
+    gap: 10,
+    padding: "6px 10mm 6mm",
     borderTop: `2px solid ${primary}`,
     marginTop: "auto",
   },
@@ -1817,53 +2027,61 @@ function getStyles(theme) {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    minWidth: 74,
+    minWidth: 66,
   },
   qrFrame: {
-    padding: 7,
+    padding: 5,
     background: "#fff",
     border: "1px solid #e2e8f0",
-    borderRadius: 8,
+    borderRadius: 7,
+  },
+  scanCaption: {
+    fontSize: 7.5,
+    color: "#94a3b8",
+    marginTop: 3,
+    display: "flex",
+    alignItems: "center",
+    gap: 3,
   },
   footerCenter: {
     flex: 1,
   },
   footerDisclaimer: {
-    margin: "0 0 6px",
-    fontSize: 9.5,
+    margin: "0 0 3px",
+    fontSize: 8,
     color: "#64748b",
-    lineHeight: 1.5,
+    lineHeight: 1.35,
     fontStyle: "italic",
   },
   footerCredits: {
-    margin: 0,
-    fontSize: 9.5,
+    margin: "3px 0 0",
+    fontSize: 8,
     color: "#94a3b8",
     fontWeight: 600,
   },
   footerRight: {
-    minWidth: 100,
+    minWidth: 90,
   },
   resultRibbon: {
     background: primary,
-    borderRadius: 8,
-    padding: "8px 12px",
+    borderRadius: 7,
+    padding: "5px 10px",
     textAlign: "center",
   },
   ribbonLabel: {
-    margin: "0 0 3px",
-    fontSize: 8.5,
+    margin: "0 0 2px",
+    fontSize: 7,
     color: subtitleTint,
     fontWeight: 700,
     textTransform: "uppercase",
-    letterSpacing: "0.1em",
+    letterSpacing: "0.08em",
   },
   ribbonValue: {
     margin: 0,
-    fontSize: 10.5,
+    fontSize: 9.5,
     fontWeight: 900,
     color: onPrimary,
-    lineHeight: 1.3,
+    lineHeight: 1.2,
   },
 
   /* ── Loading ── */
