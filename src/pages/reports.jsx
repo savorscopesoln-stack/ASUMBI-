@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import API from "../api";
+import API, { resolveFileUrl } from "../api";
 import QRCode from "qrcode";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -1162,9 +1162,20 @@ const printAllTranscripts = async () => {
                 </div>
               )}
             </div>
-          <div style={styles.stampBox}>
-          OFFICIAL<br />COLLEGE<br />STAMP
-        </div>
+          {(() => {
+            // Individual stamp uploaded for a signatory in School
+            // Settings (dean/principal/first configured signatory, in
+            // that order) — falls back to the plain placeholder only
+            // when nobody has uploaded one yet.
+            const meritStampSrc = resolveFileUrl(dean?.stampUrl || principal?.stampUrl || signatory?.stampUrl);
+            return meritStampSrc ? (
+              <img src={meritStampSrc} alt="Official stamp" style={styles.stampImage} />
+            ) : (
+              <div style={styles.stampBox}>
+                OFFICIAL<br />COLLEGE<br />STAMP
+              </div>
+            );
+          })()}
 {/* 🔥 SECURITY LINE (adds authenticity feel) */}
     <div style={styles.securityLine}>
       This document is system-generated and valid only when verified by {school?.shortName || "Asumbi TTC"} Examination Office
@@ -2060,29 +2071,43 @@ onClick={() => printAllReports()}
           }}
         >
 
-          {/* STAMP */}
-          <div
-            style={{
-              width: 160,
-              height: 160,
-              border: "50%",
-              border: "5px dashed #7f1d1d21",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              color: "#7f1d1d3b",
-              fontWeight: 900,
-              fontSize: 16,
-              letterSpacing: 1,
-            }}
-          >
-            OFFICIAL
-            <br />
-            COLLEGE
-            <br />
-            STAMP
-          </div>
+          {/* STAMP — the same individual-official stamp uploaded in
+              School Settings that the "Approval & Authentication"
+              box above credits (dean, falling back to principal /
+              first configured signatory); the dashed placeholder
+              only shows while nobody has uploaded one yet. */}
+          {(() => {
+            const transcriptStampSrc = resolveFileUrl(dean?.stampUrl || principal?.stampUrl || signatory?.stampUrl);
+            return transcriptStampSrc ? (
+              <img
+                src={transcriptStampSrc}
+                alt="Official stamp"
+                style={{ width: 160, height: 160, objectFit: "contain" }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 160,
+                  height: 160,
+                  border: "5px dashed #7f1d1d21",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  color: "#7f1d1d3b",
+                  fontWeight: 900,
+                  fontSize: 16,
+                  letterSpacing: 1,
+                }}
+              >
+                OFFICIAL
+                <br />
+                COLLEGE
+                <br />
+                STAMP
+              </div>
+            );
+          })()}
 
           {/* SECURITY TEXT */}
           <div
@@ -2350,6 +2375,18 @@ const styles = {
     marginLeft: "40%",
   marginRight: "50%",
     color: "#7f1d1d75",
+  },
+
+  // Real uploaded-stamp image, sized/positioned to match stampBox above
+  // so swapping between the placeholder and the actual image doesn't
+  // shift the merit list's layout.
+  stampImage: {
+    width: 200,
+    height: 160,
+    objectFit: "contain",
+    marginTop: 25,
+    marginLeft: "40%",
+    marginRight: "50%",
   },
 
   /* ================= REPORT GRID ================= */
