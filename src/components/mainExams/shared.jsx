@@ -404,13 +404,15 @@ export function Modal({ title, children, onClose, maxWidth = 520 }) {
   );
 }
 
-export function SaveButton({ onClick, loading, label, icon }) {
+export function SaveButton({ onClick, loading, label, icon, disabled }) {
+  const isDisabled = loading || disabled;
   return (
-    <button onClick={onClick} disabled={loading} style={{
+    <button onClick={onClick} disabled={isDisabled} style={{
       width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
       padding: 13, border: "none", borderRadius: 9,
-      background: loading ? C.textMuted : C.accent, color: C.white,
-      fontWeight: 700, fontSize: 14, cursor: loading ? "not-allowed" : "pointer", marginTop: 8,
+      background: isDisabled ? C.textMuted : C.accent, color: C.white,
+      fontWeight: 700, fontSize: 14, cursor: isDisabled ? "not-allowed" : "pointer", marginTop: 8,
+      opacity: disabled && !loading ? 0.6 : 1,
     }}>
       {loading ? "Please wait…" : <>{icon}{label}</>}
     </button>

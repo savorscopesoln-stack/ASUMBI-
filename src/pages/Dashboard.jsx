@@ -12,7 +12,7 @@ import {
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
   Award, Activity, Inbox, KeyRound, Bell, Settings, Vote, SlidersHorizontal,
-  UserRoundCog, Globe, Building2, Plus,
+  UserRoundCog, Globe, Building2, Plus, Wallet,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
@@ -179,6 +179,14 @@ const NAV_GROUPS = [
       // like Website, since it's this school's own data, not a
       // Doravo Core platform-level setting.
       { name: "School Settings", Icon: Building2 },
+      // The institution's examination credit wallet — balances,
+      // transaction history, "Request Credits via Email/WhatsApp",
+      // and bulk-allocating credits to eligible students for a Main
+      // Examination. See backend routes/wallet.js. Grantable like any
+      // other sub-admin page: an institution admin can view and
+      // distribute their own credits, but never mint them (that's
+      // Doravo Finance's separate, stricter financeOnly dashboard).
+      { name: "Wallet", Icon: Wallet },
       // Not part of the grantable sub-admin PAGE_KEYS list (see
       // permissions.js) on purpose — hasPage() only returns true for
       // this key when role === "admin" (its unconditional bypass), so
@@ -208,6 +216,7 @@ const ROUTES = {
   "Portal Pages":"/portal-pages",
   Website:"/website",
   "School Settings":"/school-settings",
+  Wallet:"/wallet",
 };
 
 const formatYear = (y) => {

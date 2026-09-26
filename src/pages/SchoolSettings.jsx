@@ -4,7 +4,7 @@ import API, { resolvePhotoUrl } from "../api";
 import useSchoolSettings from "../hooks/useSchoolSettings";
 import {
   ArrowLeft, Save, CheckCircle2, XCircle, Building2, Plus, Trash2,
-  Star, Upload, FileCheck2,
+  Star, Upload, FileCheck2, Stamp,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
@@ -73,7 +73,7 @@ const sx = {
   primaryBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px 20px", borderRadius: 12, border: "none", background: C.accent, color: C.white, fontSize: 13.5, fontWeight: 700, cursor: "pointer" },
   secondaryBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "9px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textSec, fontSize: 13, fontWeight: 700, cursor: "pointer" },
   dangerBtnSm: { display: "flex", alignItems: "center", justifyContent: "center", padding: "8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "var(--destructive-tint)", color: C.danger, cursor: "pointer" },
-  officialRow: { display: "grid", gridTemplateColumns: "auto 50px 1fr 1fr 44px auto auto", gap: 8, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` },
+  officialRow: { display: "grid", gridTemplateColumns: "auto 50px 1fr 1fr 44px 44px auto auto", gap: 8, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` },
   sigThumb: { width: 40, height: 40, borderRadius: 8, border: `1px dashed ${C.border}`, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", cursor: "pointer", padding: 0, flexShrink: 0 },
   rankInput: { width: 50, padding: "10px 8px", borderRadius: 10, border: `1px solid ${C.border}`, background: "var(--bg)", color: C.textPri, fontSize: 13, fontFamily: "inherit", textAlign: "center", boxSizing: "border-box" },
   logoBox: { width: 96, height: 96, borderRadius: 12, border: `1px dashed ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", overflow: "hidden", flexShrink: 0 },
@@ -108,7 +108,7 @@ export default function SchoolSettings() {
       .catch(() => {});
   }, []);
 
-  const [newOfficial, setNewOfficial] = useState({ title: "", name: "", teacherId: "", signatureUrl: "" });
+  const [newOfficial, setNewOfficial] = useState({ title: "", name: "", teacherId: "", signatureUrl: "", stampUrl: "" });
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({});
 
@@ -171,6 +171,65 @@ export default function SchoolSettings() {
     </button>
   );
 
+  // Personalised STAMP-image upload — same shared two-step pattern as
+  // the signature upload above (its own hidden input + "who am I
+  // uploading for" ref), but posting to the .../stamp endpoints and
+  // writing stampUrl instead of signatureUrl. Kept as a separate ref/
+  // state pair from the signature one above (and from the single
+  // school-wide stampInputRef further up) so a signature pick and a
+  // stamp pick for the same row never race each other.
+  const personalStampInputRef = useRef(null);
+  const pendingPersonalStampTargetRef = useRef(null); // { kind: "official" | "classTeacher", target: "new" | <id> }
+  const [uploadingPersonalStampFor, setUploadingPersonalStampFor] = useState(null); // `${kind}:${target}` while in flight
+
+  const triggerPersonalStampUpload = (kind, target) => {
+    pendingPersonalStampTargetRef.current = { kind, target };
+    personalStampInputRef.current?.click();
+  };
+
+  const handlePersonalStampFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    const pending = pendingPersonalStampTargetRef.current;
+    if (!file || !pending) return;
+    const { kind, target } = pending;
+    setUploadingPersonalStampFor(`${kind}:${target}`);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const endpoint = kind === "official"
+        ? "/school-settings/officials/stamp"
+        : "/school-settings/class-teachers/stamp";
+      const res = await API.post(endpoint, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const url = res.data.url;
+      if (kind === "official") {
+        if (target === "new") setNewOfficial((n) => ({ ...n, stampUrl: url }));
+        else setEditDraft((d) => ({ ...d, stampUrl: url }));
+      } else {
+        if (target === "new") setNewClassTeacher((n) => ({ ...n, stampUrl: url }));
+        else setEditCtDraft((d) => ({ ...d, stampUrl: url }));
+      }
+      showToast("success", "Stamp uploaded — remember to save.");
+    } catch (err) {
+      showToast("error", err?.response?.data?.message || "Stamp upload failed");
+    } finally {
+      setUploadingPersonalStampFor(null);
+      pendingPersonalStampTargetRef.current = null;
+      if (personalStampInputRef.current) personalStampInputRef.current.value = "";
+    }
+  };
+
+  // Same clickable-thumbnail pattern as SignatureThumb above, for this
+  // individual's own stamp instead of their signature.
+  const StampThumb = ({ url, uploading, onClick, title }) => (
+    <button type="button" onClick={onClick} disabled={uploading} title={title || (url ? "Replace stamp" : "Upload stamp")} style={sx.sigThumb}>
+      {url ? (
+        <img src={resolvePhotoUrl(url)} alt="Stamp" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      ) : (
+        <Stamp size={14} color={C.textMuted} />
+      )}
+    </button>
+  );
+
   // Teachers to pick from instead of hand-typing a name — see
   // GET /school-settings/officials/teachers.
   const [teachers, setTeachers] = useState([]);
@@ -191,7 +250,7 @@ export default function SchoolSettings() {
       .catch(() => {});
   }, []);
 
-  const [newClassTeacher, setNewClassTeacher] = useState({ className: "", title: "Class Teacher / Lecturer", name: "", teacherId: "", signatureUrl: "" });
+  const [newClassTeacher, setNewClassTeacher] = useState({ className: "", title: "Class Teacher / Lecturer", name: "", teacherId: "", signatureUrl: "", stampUrl: "" });
   const [editingCtId, setEditingCtId] = useState(null);
   const [editCtDraft, setEditCtDraft] = useState({});
 
@@ -319,8 +378,9 @@ export default function SchoolSettings() {
         sortOrder: officials.length + 1,
         isSignatory: false,
         signatureUrl: newOfficial.signatureUrl || null,
+        stampUrl: newOfficial.stampUrl || null,
       });
-      setNewOfficial({ title: "", name: "", teacherId: "", signatureUrl: "" });
+      setNewOfficial({ title: "", name: "", teacherId: "", signatureUrl: "", stampUrl: "" });
       await refresh();
     } catch (err) {
       showToast("error", err?.response?.data?.message || "Failed to add official");
@@ -336,6 +396,7 @@ export default function SchoolSettings() {
       sortOrder: o.sortOrder,
       isSignatory: !!o.isSignatory,
       signatureUrl: o.signatureUrl || "",
+      stampUrl: o.stampUrl || "",
     });
   };
 
@@ -382,8 +443,9 @@ export default function SchoolSettings() {
         teacherId: newClassTeacher.teacherId || null,
         sortOrder: sameClassCount + 1,
         signatureUrl: newClassTeacher.signatureUrl || null,
+        stampUrl: newClassTeacher.stampUrl || null,
       });
-      setNewClassTeacher({ className: "", title: "Class Teacher / Lecturer", name: "", teacherId: "", signatureUrl: "" });
+      setNewClassTeacher({ className: "", title: "Class Teacher / Lecturer", name: "", teacherId: "", signatureUrl: "", stampUrl: "" });
       await refresh();
     } catch (err) {
       showToast("error", err?.response?.data?.message || "Failed to add class teacher");
@@ -399,6 +461,7 @@ export default function SchoolSettings() {
       teacherId: c.teacherId || "",
       sortOrder: c.sortOrder,
       signatureUrl: c.signatureUrl || "",
+      stampUrl: c.stampUrl || "",
     });
   };
 
@@ -452,6 +515,10 @@ export default function SchoolSettings() {
       <input
         ref={signatureInputRef} type="file" accept="image/png,image/jpeg,image/webp"
         style={{ display: "none" }} onChange={handleSignatureFileChange}
+      />
+      <input
+        ref={personalStampInputRef} type="file" accept="image/png,image/jpeg,image/webp"
+        style={{ display: "none" }} onChange={handlePersonalStampFileChange}
       />
 
       <div style={sx.grid} className="ss-grid">
@@ -672,6 +739,11 @@ export default function SchoolSettings() {
                     uploading={uploadingSignatureFor === `official:${o.id}`}
                     onClick={() => triggerSignatureUpload("official", o.id)}
                   />
+                  <StampThumb
+                    url={editDraft.stampUrl}
+                    uploading={uploadingPersonalStampFor === `official:${o.id}`}
+                    onClick={() => triggerPersonalStampUpload("official", o.id)}
+                  />
                   <button style={sx.secondaryBtn} onClick={() => saveEdit(o.id)}>Save</button>
                   <button style={sx.secondaryBtn} onClick={() => setEditingId(null)}>Cancel</button>
                 </>
@@ -691,6 +763,11 @@ export default function SchoolSettings() {
                     uploading={uploadingSignatureFor === `official:${o.id}`}
                     onClick={() => triggerSignatureUpload("official", o.id)}
                   />
+                  <StampThumb
+                    url={o.stampUrl}
+                    uploading={uploadingPersonalStampFor === `official:${o.id}`}
+                    onClick={() => triggerPersonalStampUpload("official", o.id)}
+                  />
                   <button style={sx.secondaryBtn} onClick={() => startEdit(o)}>Edit</button>
                   <button style={sx.dangerBtnSm} onClick={() => deleteOfficial(o.id)}><Trash2 size={14} /></button>
                 </>
@@ -698,7 +775,7 @@ export default function SchoolSettings() {
             </div>
           ))}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto", gap: 8, marginTop: 16, alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto auto", gap: 8, marginTop: 16, alignItems: "center" }}>
             <input style={sx.input} placeholder="Rank / title (e.g. Dean of Students)" value={newOfficial.title} onChange={(e) => setNewOfficial((n) => ({ ...n, title: e.target.value }))} />
             {newOfficial.teacherId ? (
               <select style={sx.input} value={newOfficial.teacherId} onChange={(e) => setNewOfficial((n) => ({ ...n, teacherId: e.target.value, name: "" }))}>
@@ -719,6 +796,12 @@ export default function SchoolSettings() {
               uploading={uploadingSignatureFor === "official:new"}
               onClick={() => triggerSignatureUpload("official", "new")}
               title="Upload signature (optional)"
+            />
+            <StampThumb
+              url={newOfficial.stampUrl}
+              uploading={uploadingPersonalStampFor === "official:new"}
+              onClick={() => triggerPersonalStampUpload("official", "new")}
+              title="Upload stamp (optional)"
             />
             <button style={sx.primaryBtn} onClick={addOfficial}><Plus size={15} /></button>
           </div>
@@ -782,6 +865,11 @@ export default function SchoolSettings() {
                   uploading={uploadingSignatureFor === `classTeacher:${c.id}`}
                   onClick={() => triggerSignatureUpload("classTeacher", c.id)}
                 />
+                <StampThumb
+                  url={editCtDraft.stampUrl}
+                  uploading={uploadingPersonalStampFor === `classTeacher:${c.id}`}
+                  onClick={() => triggerPersonalStampUpload("classTeacher", c.id)}
+                />
                 <button style={sx.secondaryBtn} onClick={() => saveEditCt(c.id)}>Save</button>
                 <button style={sx.secondaryBtn} onClick={() => setEditingCtId(null)}>Cancel</button>
               </>
@@ -801,6 +889,11 @@ export default function SchoolSettings() {
                   uploading={uploadingSignatureFor === `classTeacher:${c.id}`}
                   onClick={() => triggerSignatureUpload("classTeacher", c.id)}
                 />
+                <StampThumb
+                  url={c.stampUrl}
+                  uploading={uploadingPersonalStampFor === `classTeacher:${c.id}`}
+                  onClick={() => triggerPersonalStampUpload("classTeacher", c.id)}
+                />
                 <button style={sx.secondaryBtn} onClick={() => startEditCt(c)}>Edit</button>
                 <button style={sx.dangerBtnSm} onClick={() => deleteClassTeacher(c.id)}><Trash2 size={14} /></button>
               </>
@@ -808,7 +901,7 @@ export default function SchoolSettings() {
           </div>
         ))}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto", gap: 8, marginTop: 16, alignItems: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto auto", gap: 8, marginTop: 16, alignItems: "center" }}>
           <select style={sx.input} value={newClassTeacher.className} onChange={(e) => setNewClassTeacher((n) => ({ ...n, className: e.target.value }))}>
             <option value="">Select a class…</option>
             {classes.map((cn) => <option key={cn} value={cn}>{cn}</option>)}
@@ -833,6 +926,12 @@ export default function SchoolSettings() {
             uploading={uploadingSignatureFor === "classTeacher:new"}
             onClick={() => triggerSignatureUpload("classTeacher", "new")}
             title="Upload signature (optional)"
+          />
+          <StampThumb
+            url={newClassTeacher.stampUrl}
+            uploading={uploadingPersonalStampFor === "classTeacher:new"}
+            onClick={() => triggerPersonalStampUpload("classTeacher", "new")}
+            title="Upload stamp (optional)"
           />
           <button style={sx.primaryBtn} onClick={addClassTeacher}><Plus size={15} /></button>
         </div>

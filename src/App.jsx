@@ -13,6 +13,8 @@ import useSessionTimeout from "./hooks/useSessionTimeout";
    ADMIN PAGES
 ========================================================= */
 import Dashboard from "./pages/Dashboard";
+import InstitutionWallet from "./pages/InstitutionWallet";
+import FinanceDashboard from "./pages/finance/FinanceDashboard";
 import Students from "./pages/Students";
 import Teachers from "./pages/Teachers";
 import Users from "./pages/Users";
@@ -121,6 +123,7 @@ const ROLES = {
   SUB_ADMIN_2: "sub_admin_2",
   TEACHER: "teacher",
   STUDENT: "student",
+  FINANCE: "finance",
 };
 
 /* =========================================================
@@ -416,6 +419,34 @@ export default function App() {
             page="Dashboard"
           >
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/wallet"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="Wallet"
+          >
+            <InstitutionWallet />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* =====================================================
+          DORAVO FINANCE
+          Its own role, not layered on the admin/sub-admin page-
+          permission system above — see middleware/financeAuth.js
+          on the backend for why "finance" is checked strictly,
+          with no admin bypass.
+      ===================================================== */}
+      <Route
+        path="/finance"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.FINANCE]}>
+            <FinanceDashboard />
           </ProtectedRoute>
         }
       />

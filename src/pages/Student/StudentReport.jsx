@@ -595,7 +595,13 @@ export default function StudentReport() {
       // out to get the sheet's true, unscaled height in px.
       const trueHeightPx = rect.height / (effectiveScale || 1);
       // 297mm at the browser's 96dpi CSS reference (matches A4_HEIGHT_PX).
-      
+      const pageHeightPx = A4_HEIGHT_PX;
+      if (trueHeightPx > pageHeightPx + 2) {
+        const overBy = Math.round(((trueHeightPx - pageHeightPx) / pageHeightPx) * 100);
+        setOverflowWarning(`This report's content is about ${overBy}% taller than one A4 page and will continue onto a second page when printed or downloaded.`);
+      } else {
+        setOverflowWarning(null);
+      }
     };
     // Wait one frame for layout (fonts, images) to settle before measuring.
     const raf = requestAnimationFrame(check);
@@ -782,11 +788,6 @@ export default function StudentReport() {
 
   /* ================= UI ================= */
   const logoSrc = resolveFileUrl(school?.logoUrl);
-  // Official school stamp — embedded here (and each signatory's own
-  // signatureUrl below) so the on-screen/downloaded report card
-  // actually shows the uploaded images instead of leaving the
-  // "Signature" / "Official Stamp" boxes permanently blank.
-  const stampSrc = resolveFileUrl(school?.stampUrl);
   const contactLine = [school?.address, school?.phone && `Tel: ${school.phone}`, school?.email]
     .filter(Boolean)
     .join(" | ");
@@ -802,7 +803,7 @@ export default function StudentReport() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button onClick={printReportCard} className="sr-btn sr-btn-outline" style={styles.printBtn}>
-            
+            <IconPrinter size={15} /> Print Report Card
           </button>
           <button onClick={downloadPDF} className="sr-btn sr-btn-primary" style={styles.downloadBtn}>
             <IconDownload size={15} /> Download PDF
@@ -1113,29 +1114,48 @@ export default function StudentReport() {
                     any assistants). Falls back to a single blank
                     block when nobody has been assigned yet. */}
                 {classTeachersForClass.length > 0 ? (
-                  classTeachersForClass.map((ct, i) => (
-                    <div style={styles.authCard} key={ct.id ?? i}>
-                      <p style={styles.authCardTitle}>{ct.title ? `${ct.title}'s Remarks` : "Class Teacher / Lecturer's Remarks"}</p>
-                      <div style={styles.remarksBox}>
-                        <p style={{ color: "#94a3b8", fontSize: 7, margin: 0 }}>&nbsp;</p>
-                      </div>
-                      <div style={styles.sigGrid}>
-                        <div style={styles.sigItem}>
-                          <p style={styles.sigLabel}>Name</p>
-                          {ct.name ? (
-                            <p style={styles.sigNameText}>{ct.name}</p>
-                          ) : (
-                            <div style={styles.sigLine} />
-                          )}
+                  classTeachersForClass.map((ct, i) => {
+                    const ctSignatureSrc = resolveFileUrl(ct.signatureUrl);
+                    const ctStampSrc = resolveFileUrl(ct.stampUrl);
+                    return (
+                      <div style={styles.authCard} key={ct.id ?? i}>
+                        <p style={styles.authCardTitle}>{ct.title ? `${ct.title}'s Remarks` : "Class Teacher / Lecturer's Remarks"}</p>
+                        <div style={styles.remarksBox}>
+                          <p style={{ color: "#94a3b8", fontSize: 7, margin: 0 }}>&nbsp;</p>
                         </div>
-                        <div style={styles.sigItem}>
-                          <p style={styles.sigLabel}>Signature</p>
-                          <div style={styles.sigLine} />
+                        <div style={styles.sigGrid}>
+                          <div style={styles.sigItem}>
+                            <p style={styles.sigLabel}>Name</p>
+                            {ct.name ? (
+                              <p style={styles.sigNameText}>{ct.name}</p>
+                            ) : (
+                              <div style={styles.sigLine} />
+                            )}
+                          </div>
+                          <div style={styles.sigItem}>
+                            <p style={styles.sigLabel}>Signature</p>
+                            <div style={styles.stampSigWrap}>
+                              {ctSignatureSrc ? (
+                                <img src={ctSignatureSrc} alt="" style={styles.sigImage} />
+                              ) : (
+                                <div style={styles.sigLine} />
+                              )}
+                              {ctStampSrc && (
+                                <img src={ctStampSrc} alt="" style={styles.stampOverlayImage} />
+                              )}
+                            </div>
+                          </div>
+                          <div style={styles.sigItem}>
+                            {ctStampSrc ? (
+                              <img src={ctStampSrc} alt="" style={styles.stampImageStandalone} />
+                            ) : (
+                              <div style={styles.stampBox} />
+                            )}
+                          </div>
                         </div>
-                        <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div style={styles.authCard}>
                     <p style={styles.authCardTitle}>Class Teacher / Lecturer's Remarks</p>
@@ -1145,7 +1165,7 @@ export default function StudentReport() {
                     <div style={styles.sigGrid}>
                       <div style={styles.sigItem}><p style={styles.sigLabel}>Name</p><div style={styles.sigLine} /></div>
                       <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
-                      <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
+                      <div style={styles.sigItem}><div style={styles.stampBox} /></div>
                     </div>
                   </div>
                 )}
@@ -1155,36 +1175,46 @@ export default function StudentReport() {
                     Officer, Dean of Curriculum, Chief Principal, in
                     whatever order/rank is configured there), or the
                     single dean/principal fallback if none are set.
-                    Stamp is sized to fit the compact card without
-                    forcing the card taller than its content. */}
+                    Each signatory's OWN uploaded signature and OWN
+                    uploaded stamp are shown — no two officials share
+                    the same image, and the school-wide SchoolSettings
+                    stamp is no longer used here at all. */}
                 {signatories.length > 0 ? (
-                  signatories.map((s) => (
-                    <div style={styles.authCard} key={s.id}>
-                      <p style={styles.authCardTitle}>{s.title || "Approved By"}</p>
-                      <div style={{ padding: "1px 0" }}>
-                        <p style={styles.sigNameHeadline}>{s.name || "—"}</p>
-                        {s.title && <p style={styles.sigRoleText}>{s.title}</p>}
-                      </div>
-                      <div style={styles.sigGrid}>
-                        <div style={styles.sigItem}>
-                          <p style={styles.sigLabel}>Signature</p>
-                          <div style={styles.stampSigWrap}>
-                            <div style={styles.sigLine} />
-                            {stampSrc && (
-                              <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
+                  signatories.map((s) => {
+                    const sSignatureSrc = resolveFileUrl(s.signatureUrl);
+                    const sStampSrc = resolveFileUrl(s.stampUrl);
+                    return (
+                      <div style={styles.authCard} key={s.id}>
+                        <p style={styles.authCardTitle}>{s.title || "Approved By"}</p>
+                        <div style={{ padding: "1px 0" }}>
+                          <p style={styles.sigNameHeadline}>{s.name || "—"}</p>
+                          {s.title && <p style={styles.sigRoleText}>{s.title}</p>}
+                        </div>
+                        <div style={styles.sigGrid}>
+                          <div style={styles.sigItem}>
+                            <p style={styles.sigLabel}>Signature</p>
+                            <div style={styles.stampSigWrap}>
+                              {sSignatureSrc ? (
+                                <img src={sSignatureSrc} alt="" style={styles.sigImage} />
+                              ) : (
+                                <div style={styles.sigLine} />
+                              )}
+                              {sStampSrc && (
+                                <img src={sStampSrc} alt="" style={styles.stampOverlayImage} />
+                              )}
+                            </div>
+                          </div>
+                          <div style={styles.sigItem}>
+                            {sStampSrc ? (
+                              <img src={sStampSrc} alt="" style={styles.stampImageStandalone} />
+                            ) : (
+                              <div style={styles.stampBox} />
                             )}
                           </div>
                         </div>
-                        <div style={styles.sigItem}>
-                          {stampSrc ? (
-                            <img src={stampSrc} alt="" style={styles.stampImageStandalone} />
-                          ) : (
-                            <div style={styles.stampBox} />
-                          )}
-                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div style={styles.authCard}>
                     <p style={styles.authCardTitle}>Approved By</p>
@@ -1196,18 +1226,31 @@ export default function StudentReport() {
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Signature</p>
                         <div style={styles.stampSigWrap}>
-                          <div style={styles.sigLine} />
-                          {stampSrc && (
-                            <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
-                          )}
+                          {(() => {
+                            const fbSignatureSrc = resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl);
+                            return fbSignatureSrc ? (
+                              <img src={fbSignatureSrc} alt="" style={styles.sigImage} />
+                            ) : (
+                              <div style={styles.sigLine} />
+                            );
+                          })()}
+                          {(() => {
+                            const fbStampSrc = resolveFileUrl(dean?.stampUrl || principal?.stampUrl || signatory?.stampUrl);
+                            return fbStampSrc ? (
+                              <img src={fbStampSrc} alt="" style={styles.stampOverlayImage} />
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                       <div style={styles.sigItem}>
-                        {stampSrc ? (
-                          <img src={stampSrc} alt="" style={styles.stampImageStandalone} />
-                        ) : (
-                          <div style={styles.stampBox} />
-                        )}
+                        {(() => {
+                          const fbStampSrc = resolveFileUrl(dean?.stampUrl || principal?.stampUrl || signatory?.stampUrl);
+                          return fbStampSrc ? (
+                            <img src={fbStampSrc} alt="" style={styles.stampImageStandalone} />
+                          ) : (
+                            <div style={styles.stampBox} />
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -1937,6 +1980,17 @@ function getStyles(theme) {
     alignItems: "center",
     justifyContent: "center",
     minHeight: 40,
+  },
+  // Each person's own uploaded signature image, shown in place of
+  // sigLine whenever they've uploaded one from School Settings.
+  sigImage: {
+    display: "block",
+    maxWidth: "80%",
+    maxHeight: 32,
+    margin: "0 auto",
+    objectFit: "contain",
+    position: "relative",
+    zIndex: 1,
   },
   // Official stamp, overlapping the signature: kept at its original
   // fixed physical footprint and placement (unchanged by the layout

@@ -8,6 +8,7 @@ import axios from "axios";
 // e.g. VITE_API_URL=https://your-backend.onrender.com/api
 // ================================
 const BASE_URL = import.meta.env.VITE_API_URL || "/api";
+export { BASE_URL };
 
 // ================================
 // FILE BASE URL

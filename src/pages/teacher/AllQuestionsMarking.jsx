@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import API from "../../api";
+import API, { BASE_URL } from "../../api";
 import {
   ClipboardCheck,
   AlertTriangle,
@@ -9,6 +9,12 @@ import {
   BookOpen,
   Loader2,
   CheckCircle2,
+  LayoutDashboard,
+  TrendingUp,
+  ListChecks,
+  Users,
+  ArrowRight,
+  Inbox,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════
@@ -41,6 +47,39 @@ function initials(name) {
   const parts = str.split(/\s+/);
   if (parts.length === 1) return str.slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MARKING SESSION CACHE (local half) — see the server half in
+   controllers/eAssessment.controller.js (getMarkingSession /
+   saveMarkingSession). One draft per (assessment, browser); the server
+   copy is what actually makes "continue on another device" possible —
+   this local copy just makes the common case (same tab, refresh, or a
+   brief connectivity blip) instant and offline-safe.
+═══════════════════════════════════════════════════════════ */
+const SESSION_CACHE_PREFIX = "mkp_session_";
+
+function readLocalMarkingCache(assessmentId) {
+  try {
+    const raw = localStorage.getItem(SESSION_CACHE_PREFIX + assessmentId);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function writeLocalMarkingCache(assessmentId, snapshot) {
+  try {
+    localStorage.setItem(SESSION_CACHE_PREFIX + assessmentId, JSON.stringify(snapshot));
+  } catch {
+    /* storage full/unavailable/private-mode — the 60s server push still covers it */
+  }
+}
+function clearLocalMarkingCache(assessmentId) {
+  try {
+    localStorage.removeItem(SESSION_CACHE_PREFIX + assessmentId);
+  } catch {
+    /* nothing to do */
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -177,9 +216,12 @@ function injectMarkingStyles() {
 
     .mkp-essay-readonly { user-select: text; caret-color: transparent; outline: none; }
     .mkp-essay-readonly:focus { outline: none; }
-    .hl-mark { color: inherit; background: rgba(251,191,36,.32); border-bottom: 2px solid var(--warning); border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
-    .hl-mark:hover { background: rgba(251,191,36,.55); }
-    .hl-mark::after { content: "+" attr(data-mark); position: absolute; top: -9px; right: -6px; background: var(--warning); color: #fff; font-size: 9px; font-weight: 800; border-radius: 5px; padding: 0 4px; line-height: 13px; pointer-events: none; }
+    .hl-mark { color: inherit; background: rgba(239,68,68,.20); border-bottom: 2px solid #ef4444; border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
+    .hl-mark:hover { background: rgba(239,68,68,.35); }
+    .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; cursor: pointer; vertical-align: middle; color: #fff; user-select: none; }
+    .hl-status[data-status="correct"] { background: var(--success, #22c55e); }
+    .hl-status[data-status="wrong"] { background: #ef4444; }
+    .hl-status:hover { filter: brightness(1.1); }
 
     .mkp-btn { transition: transform .15s ease, box-shadow .2s ease, background .2s ease, opacity .2s ease, filter .2s ease; cursor: pointer; font-family: inherit; }
     .mkp-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(0.95); box-shadow: var(--shadow); }
@@ -279,8 +321,15 @@ function injectMarkingStyles() {
        DashBoard / MarkingProgress / Review / Live Marking / Flags row ── */
     .mkp-tabstrip { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
     .mkp-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 12px 18px; font-size: 13.5px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; font-family: inherit; }
+    .mkp-tab { cursor: pointer; }
     .mkp-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 800; }
     .mkp-tab:hover:not(.active) { color: var(--text); }
+
+    .mkp-dash-grid { grid-template-columns: repeat(4, 1fr); }
+    @media (max-width: 780px) { .mkp-dash-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .mkp-dash-grid { grid-template-columns: 1fr; } }
+    .mkp-dash-secondary { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 720px) { .mkp-dash-secondary { grid-template-columns: 1fr; } }
 
     @media (prefers-reduced-motion: reduce) {
       .mkp-progress-fill::after, .mkp-dot.mkp-dot-current, .mkp-rail-chip.current { animation: none; }
@@ -469,6 +518,78 @@ function RichEditor({ value, onChange, placeholder }) {
 /* ═══════════════════════════════════════════════════════════
    READ-ONLY RICH ESSAY VIEWER — highlight-to-mark
 ═══════════════════════════════════════════════════════════ */
+// Block-level tags a contentEditable box may use for its own line breaks
+// (Chrome wraps each typed line in its own <div>; other editors may use
+// <p> or <li>). Each one is treated as a whole line on its own.
+const HL_BLOCK_TAGS = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "TR", "TD"]);
+
+// Split the answer box into an ordered list of "lines" — each one just an
+// array of the DOM sibling nodes that make it up, broken at a <br> or a
+// block-level child. Keeping the exact node list (rather than guessing
+// from coordinates) means every line's Range always starts/ends on a
+// clean node edge, so it can always be wrapped safely.
+function getLineGroups(container) {
+  const groups = [];
+  const pushRun = (nodes) => { if (nodes.length) groups.push(nodes); };
+  const walkFlat = (parent) => {
+    let run = [];
+    for (const child of Array.from(parent.childNodes)) {
+      if (child.nodeType === 1 && child.tagName === "BR") {
+        pushRun(run); run = [];
+      } else if (child.nodeType === 1 && HL_BLOCK_TAGS.has(child.tagName)) {
+        pushRun(run); run = [];
+        walkFlat(child); // recurse in case this block has its own soft <br>
+      } else {
+        run.push(child);
+      }
+    }
+    pushRun(run);
+  };
+  walkFlat(container);
+  return groups;
+}
+
+function nodesToRange(nodes) {
+  if (!nodes.length) return null;
+  const r = document.createRange();
+  r.setStartBefore(nodes[0]);
+  r.setEndAfter(nodes[nodes.length - 1]);
+  return r;
+}
+
+// Inclusive overlap test between two Ranges.
+function rangesOverlap(a, b) {
+  try {
+    return (
+      a.compareBoundaryPoints(Range.END_TO_START, b) <= 0 &&
+      a.compareBoundaryPoints(Range.START_TO_END, b) >= 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Clip a whole-line Range down to just the part the drag actually
+// covered, so a highlight wraps exactly what was selected (a single
+// word included) instead of snapping outward to the whole sentence
+// or line. Picks the later of the two start points and the earlier
+// of the two end points, using each Range's own boundary — no need to
+// re-derive character offsets, so it can't misalign with rich markup.
+function intersectRanges(lineRange, rawRange) {
+  const startCmp = lineRange.compareBoundaryPoints(Range.START_TO_START, rawRange);
+  const startContainer = startCmp < 0 ? rawRange.startContainer : lineRange.startContainer;
+  const startOffset = startCmp < 0 ? rawRange.startOffset : lineRange.startOffset;
+
+  const endCmp = lineRange.compareBoundaryPoints(Range.END_TO_END, rawRange);
+  const endContainer = endCmp < 0 ? lineRange.endContainer : rawRange.endContainer;
+  const endOffset = endCmp < 0 ? lineRange.endOffset : rawRange.endOffset;
+
+  const r = document.createRange();
+  r.setStart(startContainer, startOffset);
+  r.setEnd(endContainer, endOffset);
+  return r;
+}
+
 function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onLimitReached }) {
   const containerRef = useRef(null);
   const totalMarks = highlights.reduce((sum, h) => sum + (h.mark || 0), 0);
@@ -479,6 +600,8 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       if (!container) return;
       const el = container.querySelector(`[data-hid="${hid}"]`);
       if (el) {
+        const badge = el.querySelector(".hl-status");
+        if (badge) badge.remove();
         const parent = el.parentNode;
         while (el.firstChild) parent.insertBefore(el.firstChild, el);
         parent.removeChild(el);
@@ -489,12 +612,19 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
     [onRemove]
   );
 
+  // Wrapping the raw, arbitrary drag range as-is broke layout whenever it
+  // crossed a line break or paragraph boundary, so a selection is first
+  // grouped by which line(s) it overlaps, then — line by line — clipped
+  // back down to exactly what was dragged (via intersectRanges) before
+  // being wrapped. A drag spanning several lines still gets one mark per
+  // line (each a separately awarded point), but within a single line the
+  // highlight is exactly the selected words, nothing wider.
   const handleMouseUp = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) return;
-    const range = sel.getRangeAt(0);
+    const rawRange = sel.getRangeAt(0);
     const container = containerRef.current;
-    if (!container || !container.contains(range.commonAncestorContainer)) return;
+    if (!container || !container.contains(rawRange.commonAncestorContainer)) return;
 
     const selectedText = sel.toString().trim();
     if (!selectedText || selectedText.length < 3) {
@@ -504,46 +634,102 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
 
     const existingMarks = container.querySelectorAll(".hl-mark");
     for (const el of existingMarks) {
-      if (range.intersectsNode(el)) {
+      if (rawRange.intersectsNode(el)) {
         sel.removeAllRanges();
         return;
       }
     }
 
-    const remaining = Math.max(0, (maxMarks || 1) - totalMarks);
-    if (remaining <= 0) {
-      sel.removeAllRanges();
-      onLimitReached && onLimitReached();
-      return;
-    }
-    const markValue = Math.min(1, remaining);
+    const lineGroups = getLineGroups(container);
+    const lineData = lineGroups
+      .map((nodes) => ({ nodes, range: nodesToRange(nodes) }))
+      .filter(({ range }) => range && rangesOverlap(range, rawRange));
 
-    const hid = `hl_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-    const markEl = document.createElement("mark");
-    markEl.className = "hl-mark";
-    markEl.dataset.hid = hid;
-    markEl.dataset.mark = String(markValue);
-    markEl.title = "Click to remove this highlight";
-
-    try {
-      range.surroundContents(markEl);
-    } catch (e) {
-      const frag = range.extractContents();
-      markEl.appendChild(frag);
-      range.insertNode(markEl);
-    }
     sel.removeAllRanges();
+    if (lineData.length === 0) return;
 
-    onAdd({ id: hid, text: selectedText, mark: markValue, createdAt: Date.now(), confirmed: true }, container.innerHTML);
+    let remaining = Math.max(0, (maxMarks || 1) - totalMarks);
+    const targets = lineData.map((l) => intersectRanges(l.range, rawRange));
+
+    for (const targetRange of targets) {
+      if (remaining <= 0) { onLimitReached && onLimitReached(); break; }
+      const text = targetRange.toString().trim();
+      if (!text) continue;
+
+      const markValue = Math.min(1, remaining);
+      remaining -= markValue;
+
+      const hid = `hl_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const markEl = document.createElement("mark");
+      markEl.className = "hl-mark";
+      markEl.dataset.hid = hid;
+      markEl.dataset.mark = String(markValue);
+      markEl.dataset.fullmark = String(markValue);
+      markEl.dataset.status = "correct";
+      markEl.title = "Click the highlight to remove it";
+
+      try {
+        targetRange.surroundContents(markEl);
+      } catch (e) {
+        // Clean ranges should always be safe to wrap; if the browser still
+        // balks (e.g. a selection edge lands inside other inline markup),
+        // skip this one segment instead of falling back to the old
+        // flatten-and-reinsert approach that broke layout.
+        continue;
+      }
+
+      // Small tick/✗ toggle appended right after the highlighted words —
+      // a real element (not a ::after) so it can be clicked on its own,
+      // separately from clicking the highlight itself to remove it.
+      const badge = document.createElement("span");
+      badge.className = "hl-status";
+      badge.dataset.status = "correct";
+      badge.textContent = "✓";
+      badge.title = "Tap to mark this point wrong";
+      markEl.appendChild(badge);
+
+      onAdd({ id: hid, text, mark: markValue, createdAt: Date.now(), confirmed: true }, container.innerHTML);
+    }
   }, [highlights, maxMarks, totalMarks, onAdd, onLimitReached]);
+
+  // Flips a highlight between "correct" (its full mark) and "wrong" (0),
+  // without touching the highlight's own remove/adjust plumbing — the
+  // toggle state and the original mark value both live on the mark
+  // element's dataset, the same place its text and id already live.
+  const toggleStatus = useCallback(
+    (hid) => {
+      const container = containerRef.current;
+      const el = container && container.querySelector(`[data-hid="${hid}"]`);
+      if (!el) return;
+      const fullMark = Number(el.dataset.fullmark ?? el.dataset.mark ?? 1);
+      const nowWrong = el.dataset.status !== "wrong";
+      const newMark = nowWrong ? 0 : fullMark;
+
+      el.dataset.status = nowWrong ? "wrong" : "correct";
+      el.dataset.mark = String(newMark);
+      const badge = el.querySelector(".hl-status");
+      if (badge) {
+        badge.dataset.status = el.dataset.status;
+        badge.textContent = nowWrong ? "✗" : "✓";
+      }
+      onAdjust(hid, newMark, container.innerHTML);
+    },
+    [onAdjust]
+  );
 
   const handleContainerClick = useCallback(
     (e) => {
+      const statusEl = e.target.closest && e.target.closest(".hl-status");
+      if (statusEl) {
+        const markEl = statusEl.closest(".hl-mark");
+        if (markEl) toggleStatus(markEl.dataset.hid);
+        return;
+      }
       const markEl = e.target.closest && e.target.closest(".hl-mark");
       if (!markEl) return;
       removeMark(markEl.dataset.hid);
     },
-    [removeMark]
+    [removeMark, toggleStatus]
   );
 
   const adjust = (hlId, delta) => {
@@ -566,7 +752,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       <div style={s.essayHeaderRow}>
         <div style={s.essayHint}>
           <Pencil size={13} color="var(--primary)" />
-          Select the parts of the answer worth credit — a highlight is added automatically. Tap a highlight to remove it.
+          Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong, or tap the highlight itself to remove it.
         </div>
         {maxMarks != null && (
           <div style={s.markMeter}>
@@ -641,8 +827,28 @@ export default function Marking() {
   const [allDone, setAllDone]         = useState(false);
   const [pendingJump, setPendingJump] = useState(null);
 
+  // Which orientation-strip tab is showing. "Live Marking" is the original
+  // question-by-question flow; the other four are read-only overview panels
+  // built from the same state (see the tab components below).
+  const [activeTab, setActiveTab] = useState("Live Marking");
+
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
+
+  // ── Marking-session cache (autosave / resume-anywhere) ──
+  // sessionLoadedRef guards the local-cache/dirty-tracking effect below so
+  // it doesn't fire while the initial load/restore is still assembling
+  // state. sessionDirtyRef flips true whenever working state changes and
+  // is cleared once a server push succeeds — the 60s interval only pushes
+  // when there's something new to send. latestStateRef always holds the
+  // freshest working state so the interval (set up once) and the
+  // unload/visibility flush can read current values without resetting on
+  // every keystroke.
+  const sessionLoadedRef = useRef(false);
+  const sessionDirtyRef = useRef(false);
+  const latestStateRef = useRef({});
+  const latestCurrentIdRef = useRef(null);
+  latestStateRef.current = { scores, remarks, highlights, essayHTML, flags, dismissed };
 
   const showToast = useCallback((message, type = "info", action) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -718,6 +924,12 @@ export default function Marking() {
               // present only if the backend query selects it — used to skip
               // questions that were already graded in a previous session
               marks_awarded: a.marks_awarded,
+              // persisted highlight-to-mark data from a previous marking
+              // session (see saveMarking) — a JSON array + the marked-up
+              // HTML, so reopening a graded answer shows the same
+              // highlights instead of plain text
+              highlights: a.highlights,
+              highlighted_html: a.highlighted_html,
               _submission_id: sub.submission?.id,
               _student_id: sub.submission?.student_id,
             }))
@@ -732,21 +944,89 @@ export default function Marking() {
         const preDismissed = new Set();
 
         for (const item of interleaved) {
-          initialHTML[item.id] = toDisplayHTML(item.essay_answer);
           // already graded in an earlier session — surface it as done, don't re-queue it
           if (item.marks_awarded != null) {
+            // Prefer the teacher's actual saved highlights (real, editable
+            // spans) over the old "Previously marked" placeholder — the
+            // placeholder is only a fallback for answers that were graded
+            // via the plain override box, with no highlight data to show.
+            let savedHls = null;
+            try {
+              const parsed = item.highlights ? JSON.parse(item.highlights) : null;
+              if (Array.isArray(parsed) && parsed.length) savedHls = parsed;
+            } catch {
+              /* malformed/legacy value — fall back to the placeholder below */
+            }
+
+            initialHTML[item.id] = savedHls && item.highlighted_html
+              ? item.highlighted_html
+              : toDisplayHTML(item.essay_answer);
             initialScores[item.id] = item.marks_awarded;
-            initialHighlights[item.id] = [
+            initialHighlights[item.id] = savedHls || [
               { id: `prior_${item.id}`, text: "Previously marked", mark: item.marks_awarded, confirmed: true, prior: true },
             ];
             preDismissed.add(item.id);
+          } else {
+            initialHTML[item.id] = toDisplayHTML(item.essay_answer);
           }
+        }
+
+        // ── Resume from a cached working draft ──────────────────────────
+        // Two sources: this browser's local cache (instant, survives an
+        // accidental refresh even offline) and the server-side draft the
+        // 60s autosave pushes (see saveMarkingSession) — which is what
+        // makes logging in on another device pick up where this one left
+        // off. Whichever was saved more recently wins; either can be
+        // missing (first time marking this batch, or never got past the
+        // committed-marks_awarded data above).
+        let restoredCurrentId = null;
+        let restored = false;
+        const idSet = new Set(interleaved.map((it) => it.id));
+        const localSnap = readLocalMarkingCache(assessmentId);
+        let serverSnap = null;
+        let serverUpdatedAtMs = 0;
+        try {
+          const sessRes = await API.get(`/e-assessments/marking-session/${assessmentId}`);
+          serverSnap = sessRes.data?.state || null;
+          serverUpdatedAtMs = sessRes.data?.updatedAt ? new Date(sessRes.data.updatedAt).getTime() : 0;
+        } catch {
+          /* no draft yet, or offline right now — local cache (if any) still applies below */
+        }
+        const localSavedAtMs = localSnap?.savedAt || 0;
+        const winningSnap = serverUpdatedAtMs >= localSavedAtMs ? serverSnap : localSnap;
+
+        const pickOwnIds = (obj) => {
+          const out = {};
+          for (const [k, v] of Object.entries(obj || {})) {
+            if (idSet.has(k) || idSet.has(Number(k))) out[k] = v;
+          }
+          return out;
+        };
+
+        let restoredRemarks = {};
+        let restoredFlags = {};
+        if (winningSnap && isMounted) {
+          Object.assign(initialScores, pickOwnIds(winningSnap.scores));
+          Object.assign(initialHighlights, pickOwnIds(winningSnap.highlights));
+          Object.assign(initialHTML, pickOwnIds(winningSnap.essayHTML));
+          restoredRemarks = pickOwnIds(winningSnap.remarks);
+          restoredFlags = pickOwnIds(winningSnap.flags);
+          (winningSnap.dismissed || []).forEach((id) => {
+            if (idSet.has(id)) preDismissed.add(id);
+            else if (idSet.has(Number(id))) preDismissed.add(Number(id));
+          });
+          if (winningSnap.currentAnswerId != null && idSet.has(winningSnap.currentAnswerId)) {
+            restoredCurrentId = winningSnap.currentAnswerId;
+          }
+          restored = true;
         }
 
         setEssayHTML(initialHTML);
         setScores(initialScores);
         setHighlights(initialHighlights);
         setDismissed(preDismissed);
+        setRemarks(restoredRemarks);
+        setFlags(restoredFlags);
 
         if (interleaved.length === 0 || interleaved.every((it) => preDismissed.has(it.id))) {
           setAllDone(true);
@@ -754,8 +1034,19 @@ export default function Marking() {
         } else {
           setAllDone(false);
           setQueue(interleaved);
-          setCurrentIdx(0);
+          if (restoredCurrentId != null && !preDismissed.has(restoredCurrentId)) {
+            setPendingJump(restoredCurrentId);
+          } else {
+            setCurrentIdx(0);
+          }
         }
+
+        if (restored) {
+          showToast("Picked up right where you left off", "info");
+        }
+        // Local cache/dirty-tracking can start reacting to state changes now
+        // that the restore is done — see the effect below.
+        sessionLoadedRef.current = true;
       } catch (err) {
         console.error("MARKING FETCH ERROR:", err.response?.data || err);
         if (isMounted) {
@@ -769,20 +1060,6 @@ export default function Marking() {
 
     return () => { isMounted = false; };
   }, [assessmentId]);
-
-  /* ── Sync confirmed highlight marks → scores ── */
-  useEffect(() => {
-    setScores((prev) => {
-      const next = { ...prev };
-      for (const [aId, hls] of Object.entries(highlights)) {
-        const confirmed = hls.filter((h) => h.confirmed);
-        if (confirmed.length > 0) {
-          next[aId] = confirmed.reduce((sum, h) => sum + (h.mark || 0), 0);
-        }
-      }
-      return next;
-    });
-  }, [highlights]);
 
   /* ── warn on unsaved changes before leaving ── */
   useEffect(() => {
@@ -799,6 +1076,7 @@ export default function Marking() {
   /* ── DERIVED ── */
   const remaining = useMemo(() => queue.filter((q) => !dismissed.has(q.id)), [queue, dismissed]);
   const current    = remaining[currentIdx] ?? null;
+  latestCurrentIdRef.current = current?.id ?? null;
   const totalScore =
     Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0) +
     Object.values(mcqScores).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -832,19 +1110,132 @@ export default function Marking() {
     }
   }, [remaining, pendingJump]);
 
-  /* ── HIGHLIGHT HANDLERS ── */
+  /* ── MARKING SESSION CACHE — write-through + periodic server autosave ──
+     Local cache is debounced and written on every meaningful change, so a
+     refresh or brief connectivity blip never loses work. The 60s interval
+     is what actually reaches the server (and therefore other devices) —
+     it's set up once (stable deps) and reads the always-current
+     latestStateRef so it isn't reset by every keystroke. */
+  useEffect(() => {
+    if (!sessionLoadedRef.current || !assessmentId) return;
+    sessionDirtyRef.current = true;
+    const t = setTimeout(() => {
+      writeLocalMarkingCache(assessmentId, {
+        scores, remarks, highlights, essayHTML, flags,
+        dismissed: Array.from(dismissed),
+        currentAnswerId: current?.id ?? null,
+        savedAt: Date.now(),
+      });
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scores, remarks, highlights, essayHTML, flags, dismissed, current?.id, assessmentId]);
+
+  const pushSessionSnapshot = useCallback(async () => {
+    if (!assessmentId) return;
+    const { scores: s2, remarks: r2, highlights: h2, essayHTML: e2, flags: f2, dismissed: d2 } = latestStateRef.current;
+    const snapshot = {
+      scores: s2, remarks: r2, highlights: h2, essayHTML: e2, flags: f2,
+      dismissed: Array.from(d2 || []),
+      currentAnswerId: latestCurrentIdRef.current,
+      savedAt: Date.now(),
+    };
+    writeLocalMarkingCache(assessmentId, snapshot);
+    try {
+      await API.put(`/e-assessments/marking-session/${assessmentId}`, { state: snapshot });
+      sessionDirtyRef.current = false;
+    } catch {
+      /* best-effort — local cache already has it, the next tick (or another
+         device's own push) will pick things up once connectivity returns */
+    }
+  }, [assessmentId]);
+
+  // Autosave every 60s, but only when there's something new since the last
+  // successful push.
+  useEffect(() => {
+    if (!assessmentId) return;
+    const interval = setInterval(() => {
+      if (sessionDirtyRef.current) pushSessionSnapshot();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [assessmentId, pushSessionSnapshot]);
+
+  // Best-effort final flush on tab close / backgrounding — uses fetch with
+  // keepalive (not the axios instance) so the request can outlive the page.
+  useEffect(() => {
+    if (!assessmentId) return;
+    const flush = () => {
+      if (!sessionDirtyRef.current) return;
+      const { scores: s2, remarks: r2, highlights: h2, essayHTML: e2, flags: f2, dismissed: d2 } = latestStateRef.current;
+      const snapshot = {
+        scores: s2, remarks: r2, highlights: h2, essayHTML: e2, flags: f2,
+        dismissed: Array.from(d2 || []),
+        currentAnswerId: latestCurrentIdRef.current,
+        savedAt: Date.now(),
+      };
+      writeLocalMarkingCache(assessmentId, snapshot);
+      try {
+        const token = localStorage.getItem("token");
+        fetch(`${BASE_URL}/e-assessments/marking-session/${assessmentId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ state: snapshot }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch {
+        /* nothing more we can do at unload time */
+      }
+    };
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [assessmentId]);
+
+  /* ── HIGHLIGHT HANDLERS ──
+     Each of these updates that ONE answer's score at the same time it
+     updates its highlight list, scoped to just that answerId. This used
+     to be a single global useEffect keyed on `highlights` — but since
+     `highlights` is one shared object for the whole queue, ANY edit
+     anywhere re-ran it for EVERY answer that had highlights, silently
+     stomping a manually-typed "Override score" on a totally different
+     question the moment you highlighted something elsewhere. It also
+     never reset a score back to 0 when the last highlight on an answer
+     was removed (it only wrote a new total when `confirmed.length > 0`).
+     Recomputing right here, per answerId, on the specific change that
+     just happened fixes both. */
+  const recomputeScoreFor = (answerId, list) => {
+    const total = list.filter((h) => h.confirmed).reduce((sum, h) => sum + (h.mark || 0), 0);
+    setScores((prev) => ({ ...prev, [answerId]: total }));
+  };
+
   const addHighlight = useCallback((answerId, hl) => {
-    setHighlights((prev) => ({ ...prev, [answerId]: [...(prev[answerId] || []), { ...hl, confirmed: true }] }));
+    setHighlights((prev) => {
+      const list = [...(prev[answerId] || []), { ...hl, confirmed: true }];
+      recomputeScoreFor(answerId, list);
+      return { ...prev, [answerId]: list };
+    });
     setSaved(false);
   }, []);
 
   const removeHighlight = useCallback((answerId, hlId) => {
-    setHighlights((prev) => ({ ...prev, [answerId]: (prev[answerId] || []).filter((h) => h.id !== hlId) }));
+    setHighlights((prev) => {
+      const list = (prev[answerId] || []).filter((h) => h.id !== hlId);
+      recomputeScoreFor(answerId, list);
+      return { ...prev, [answerId]: list };
+    });
     setSaved(false);
   }, []);
 
   const adjustHighlight = useCallback((answerId, hlId, newMark) => {
-    setHighlights((prev) => ({ ...prev, [answerId]: (prev[answerId] || []).map((h) => (h.id === hlId ? { ...h, mark: newMark } : h)) }));
+    setHighlights((prev) => {
+      const list = (prev[answerId] || []).map((h) => (h.id === hlId ? { ...h, mark: newMark } : h));
+      recomputeScoreFor(answerId, list);
+      return { ...prev, [answerId]: list };
+    });
     setSaved(false);
   }, []);
 
@@ -908,6 +1299,20 @@ export default function Marking() {
     setPendingJump(answer.id);
   }, []);
 
+  // Used by the Review and Flags tabs: jump straight to a given answer in
+  // Live Marking, un-marking it first if it was already dismissed.
+  const goToAnswer = useCallback((answer) => {
+    setDismissed((prev) => {
+      if (!prev.has(answer.id)) return prev;
+      const next = new Set(prev);
+      next.delete(answer.id);
+      return next;
+    });
+    setAllDone(false);
+    setPendingJump(answer.id);
+    setActiveTab("Live Marking");
+  }, []);
+
   /* ── NAV ── */
   const goNext = useCallback(() => setCurrentIdx((i) => Math.min(i + 1, remaining.length - 1)), [remaining.length]);
   const goPrev = useCallback(() => setCurrentIdx((i) => Math.max(i - 1, 0)), []);
@@ -945,20 +1350,46 @@ export default function Marking() {
       // mcqScores (see the load effect above) — they must be included here
       // too, or the backend never re-persists/finalizes them and the
       // submission can end up "marked" with a 0 (or understated) score.
+      //
+      // `scores[q.id]` (not a fresh highlight recompute) is the source of
+      // truth here: the highlight handlers above already keep it in sync
+      // with confirmed highlights as they're added/removed/adjusted, AND
+      // it's the only place a manually-typed "Override score" lives. This
+      // used to recompute straight from `highlights` at save time, which
+      // meant an answer marked purely via the override box (no
+      // highlighting at all) got sent to the server as 0 — silently
+      // discarding the teacher's manual mark.
       const computedScores = {
         ...mcqScores,
         ...queue.reduce((acc, q) => {
-          const hls = highlights[q.id] || [];
-          acc[q.id] = hls.reduce((sum, h) => sum + (Number(h.mark) || 0), 0);
+          acc[q.id] = Number(scores[q.id]) || 0;
           return acc;
         }, {}),
       };
 
-      const payload = { submission_id: submissionId, scores: computedScores, remarks: remarks || {}, highlights: highlights || {} };
+      const payload = {
+        submission_id: submissionId,
+        scores: computedScores,
+        remarks: remarks || {},
+        highlights: highlights || {},
+        // the marked-up HTML (the <mark> spans) for each answer — needed
+        // alongside `highlights` so a reopened answer shows the actual
+        // highlighted text, not just its score
+        essayHTML: essayHTML || {},
+      };
       await API.post("/e-assessments/save-marking/bulk", payload);
 
       setSaved(true);
       showToast("Marks saved", "success");
+
+      // Once the whole batch is committed there's no draft left worth
+      // keeping — clear it so a future visit doesn't pull back stale
+      // working state instead of the (now authoritative) saved marks.
+      if (allDone) {
+        sessionDirtyRef.current = false;
+        clearLocalMarkingCache(assessmentId);
+        API.delete(`/e-assessments/marking-session/${assessmentId}`).catch(() => {});
+      }
     } catch (err) {
       console.error("SAVE ERROR:", err);
       showToast(err?.response?.data?.message || err?.message || "Couldn't save — try again", "error");
@@ -988,13 +1419,9 @@ export default function Marking() {
       </div>
     );
 
-  /* ══════════════════════════════════════════ RENDER: all done ══ */
-  if (allDone)
-    return (
-      <div className="mkp-root">
-        <Toast toast={toast} onDismiss={dismissToast} />
-        <MarkingTabStrip />
-
+  /* ══════════════════════════════════════════ RENDER: Live Marking — all done ══ */
+  const liveMarkingDoneView = (
+      <>
         <div className="mkp-topbar">
           <div style={s.headingRow}>
             <ClipboardCheck size={20} color="var(--primary)" />
@@ -1050,15 +1477,12 @@ export default function Marking() {
             {saving ? "Saving…" : saved ? "✓ Marks saved" : "Save & finish"}
           </button>
         </div>
-      </div>
-    );
+      </>
+  );
 
-  /* ══════════════════════════════════════════ RENDER: main ══ */
-  return (
-    <div className="mkp-root">
-      <Toast toast={toast} onDismiss={dismissToast} />
-      <MarkingTabStrip />
-
+  /* ══════════════════════════════════════════ RENDER: Live Marking — active queue ══ */
+  const liveMarkingActiveView = (
+    <>
       <div className="mkp-topbar">
         <div style={s.headingRow}>
           <ClipboardCheck size={20} color="var(--primary)" />
@@ -1190,16 +1614,23 @@ export default function Marking() {
               <button
                 type="button"
                 className="mkp-btn mkp-quickmark full"
-                title="Award full marks"
-                onClick={() => handleScoreChange(current.id, current.max_marks ?? 0, current.max_marks)}
+                title="Lock in the marked points and move on"
+                onClick={() => {
+                  const awarded = editableHlForCurrent.reduce((sum, h) => sum + (h.mark || 0), 0);
+                  handleScoreChange(current.id, awarded, current.max_marks);
+                  markAndAdvance();
+                }}
               >
                 ✓
               </button>
               <button
                 type="button"
                 className="mkp-btn mkp-quickmark zero"
-                title="Award zero"
-                onClick={() => handleScoreChange(current.id, 0, current.max_marks)}
+                title="Award zero and move on"
+                onClick={() => {
+                  handleScoreChange(current.id, 0, current.max_marks);
+                  markAndAdvance();
+                }}
               >
                 ✗
               </button>
@@ -1258,6 +1689,56 @@ export default function Marking() {
           <SaveBtn saving={saving} saved={saved} onClick={saveMarking} small />
         </div>
       )}
+    </>
+  );
+
+  /* ══════════════════════════════════════════ RENDER: tab dispatch ══ */
+  return (
+    <div className="mkp-root">
+      <Toast toast={toast} onDismiss={dismissToast} />
+      <MarkingTabStrip active={activeTab} onSelect={setActiveTab} />
+
+      {activeTab === "DashBoard" && (
+        <DashboardTab
+          submissions={submissions}
+          queue={queue}
+          remaining={remaining}
+          dismissed={dismissed}
+          flaggedAnswers={flaggedAnswers}
+          totalScore={totalScore}
+          maxPossible={maxPossible}
+          progressPct={progressPct}
+          onGoTo={setActiveTab}
+        />
+      )}
+
+      {activeTab === "MarkingProgress" && (
+        <ProgressTab
+          queue={queue}
+          remaining={remaining}
+          submissions={submissions}
+          studentStats={studentStats}
+          progressPct={progressPct}
+          onGoTo={setActiveTab}
+        />
+      )}
+
+      {activeTab === "Review" && (
+        <ReviewTab
+          queue={queue}
+          dismissed={dismissed}
+          scores={scores}
+          highlights={highlights}
+          flags={flags}
+          onEdit={goToAnswer}
+        />
+      )}
+
+      {activeTab === "Flags" && (
+        <FlagsTab flaggedAnswers={flaggedAnswers} dismissed={dismissed} scores={scores} onJump={goToAnswer} />
+      )}
+
+      {activeTab === "Live Marking" && (allDone ? liveMarkingDoneView : liveMarkingActiveView)}
     </div>
   );
 }
@@ -1309,16 +1790,266 @@ function FieldLabel({ children }) {
 
 /* Same orientation strip as the KNEC dashboard's DashBoard/MarkingProgress/
    Review/Live Marking/Flags row (see the identical component in
-   Marking.jsx) — only "Live Marking" is a real, working tab here. */
-function MarkingTabStrip({ active = "Live Marking" }) {
+   Marking.jsx). All five tabs are live — DashBoard, MarkingProgress, Review
+   and Flags are read-only overview panels built from the same marking
+   state; Live Marking is the original question-by-question flow. */
+function MarkingTabStrip({ active = "Live Marking", onSelect }) {
   const tabs = ["DashBoard", "MarkingProgress", "Review", "Live Marking", "Flags"];
   return (
     <div className="mkp-tabstrip">
       {tabs.map((t) => (
-        <button key={t} type="button" className={`mkp-tab${t === active ? " active" : ""}`} disabled={t !== active}>
+        <button
+          key={t}
+          type="button"
+          className={`mkp-tab${t === active ? " active" : ""}`}
+          onClick={() => onSelect && onSelect(t)}
+        >
           {t}
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DASHBOARD TAB — how many responses still need marking, at a glance
+═══════════════════════════════════════════════════════════ */
+function DashboardTab({ submissions, queue, remaining, flaggedAnswers, totalScore, maxPossible, progressPct, onGoTo }) {
+  const markedCount = queue.length - remaining.length;
+  return (
+    <div className="mkp-card">
+      <div className="mkp-topbar">
+        <div style={s.headingRow}>
+          <LayoutDashboard size={20} color="var(--primary)" />
+          <div>
+            <h2 style={s.heading}>Dashboard</h2>
+            <p style={s.subheading}>Overview of this marking batch</p>
+          </div>
+        </div>
+        {remaining.length > 0 && (
+          <button className="mkp-btn" style={s.primaryBtn} onClick={() => onGoTo("Live Marking")}>
+            Continue marking <ArrowRight size={15} />
+          </button>
+        )}
+      </div>
+
+      <div style={s.dashGrid} className="mkp-dash-grid">
+        <div style={{ ...s.dashStat, borderLeft: "3px solid var(--primary)" }}>
+          <span style={s.statLabel}>Responses to be marked</span>
+          <span style={{ ...s.dashStatValue, color: "var(--primary)" }}>{remaining.length}</span>
+        </div>
+        <div style={{ ...s.dashStat, borderLeft: "3px solid var(--success)" }}>
+          <span style={s.statLabel}>Marked so far</span>
+          <span style={{ ...s.dashStatValue, color: "var(--success)" }}>{markedCount}</span>
+        </div>
+        <div style={{ ...s.dashStat, borderLeft: "3px solid var(--warning)" }}>
+          <span style={s.statLabel}>Flagged</span>
+          <span style={{ ...s.dashStatValue, color: "var(--warning)" }}>{flaggedAnswers.length}</span>
+        </div>
+        <div style={{ ...s.dashStat, borderLeft: "3px solid var(--info)" }}>
+          <span style={s.statLabel}>Submissions</span>
+          <span style={{ ...s.dashStatValue, color: "var(--info)" }}>{submissions.length}</span>
+        </div>
+      </div>
+
+      <div style={s.dashSecondaryRow} className="mkp-dash-secondary">
+        <div style={s.qCard}>
+          <p style={s.hlListTitle}>Marking progress</p>
+          <div style={s.progressTrack} className="mkp-progress-track">
+            <div className="mkp-progress-fill" style={{ ...s.progressFill, width: `${progressPct}%` }} />
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)", fontWeight: 600 }}>
+            <span style={{ color: "var(--primary)", fontWeight: 800 }}>{progressPct}%</span> of responses marked
+          </p>
+          <button className="mkp-btn" style={{ ...s.reopenBtn, marginTop: 12 }} onClick={() => onGoTo("MarkingProgress")}>
+            View full progress
+          </button>
+        </div>
+
+        <div style={s.qCard}>
+          <p style={s.hlListTitle}>Score awarded</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <ScoreGauge value={totalScore} max={maxPossible} size={48} />
+            <span style={{ ...s.statValue, fontSize: 24, color: "var(--primary)" }}>
+              {totalScore}{maxPossible > 0 && <span style={{ color: "var(--text-muted)", fontSize: 15, fontWeight: 700 }}> / {maxPossible}</span>}
+            </span>
+          </div>
+          {flaggedAnswers.length > 0 && (
+            <button className="mkp-btn" style={{ ...s.reopenBtn, marginTop: 12 }} onClick={() => onGoTo("Flags")}>
+              Review {flaggedAnswers.length} flagged response{flaggedAnswers.length !== 1 ? "s" : ""}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {queue.length === 0 && <div style={s.emptyCard}>There's nothing to mark in this batch yet.</div>}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MARKING PROGRESS TAB — percentage + an encouraging message
+═══════════════════════════════════════════════════════════ */
+function encouragingMessage(pct, remainingCount) {
+  if (remainingCount === 0) return "All done — every response has been marked. Fantastic work!";
+  if (pct === 0) return "Let's get started — every response marked is one step closer to done.";
+  if (pct < 25) return "Great start! Keep the momentum going.";
+  if (pct < 50) return "You're making solid progress — keep going!";
+  if (pct < 75) return "More than halfway there — you've got this!";
+  if (pct < 100) return "Almost there — just a little more to go!";
+  return "All done — fantastic work!";
+}
+
+function ProgressTab({ queue, remaining, submissions, studentStats, progressPct, onGoTo }) {
+  const markedCount = queue.length - remaining.length;
+  return (
+    <div className="mkp-card">
+      <div className="mkp-topbar">
+        <div style={s.headingRow}>
+          <TrendingUp size={20} color="var(--primary)" />
+          <div>
+            <h2 style={s.heading}>Marking progress</h2>
+            <p style={s.subheading}>{markedCount} of {queue.length} responses marked</p>
+          </div>
+        </div>
+        {remaining.length > 0 && (
+          <button className="mkp-btn" style={s.primaryBtn} onClick={() => onGoTo("Live Marking")}>
+            Continue marking <ArrowRight size={15} />
+          </button>
+        )}
+      </div>
+
+      <div style={s.progressHero}>
+        <ScoreGauge value={markedCount} max={queue.length} size={120} />
+        <p style={s.progressEncouragement}>{encouragingMessage(progressPct, remaining.length)}</p>
+      </div>
+
+      <div style={s.progressTrack} className="mkp-progress-track">
+        <div className="mkp-progress-fill" style={{ ...s.progressFill, width: `${progressPct}%` }} />
+      </div>
+
+      {studentStats.length > 0 && (
+        <>
+          <p style={{ ...s.hlListTitle, marginTop: 22 }}>By student</p>
+          <div style={s.studentTable}>
+            {studentStats.map((st) => {
+              const pct = st.total > 0 ? Math.round((st.marked / st.total) * 100) : 0;
+              const done = st.total > 0 && st.marked === st.total;
+              return (
+                <div key={st.submissionId ?? st.studentId} style={s.studentRow}>
+                  <span style={s.studentRowLabel}>Student {st.studentId ?? "?"}</span>
+                  <div style={s.progressTrack} className="mkp-progress-track">
+                    <div
+                      className="mkp-progress-fill"
+                      style={{ ...s.progressFill, width: `${pct}%`, background: done ? "var(--success)" : "var(--primary)" }}
+                    />
+                  </div>
+                  <span style={{ ...s.railLabel, minWidth: 64, textAlign: "right" }}>{st.marked}/{st.total}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REVIEW TAB — the marked questions, with a way to reopen one
+═══════════════════════════════════════════════════════════ */
+function ReviewTab({ queue, dismissed, scores, highlights, flags, onEdit }) {
+  const markedItems = queue.filter((q) => dismissed.has(q.id));
+  return (
+    <div className="mkp-card">
+      <div className="mkp-topbar">
+        <div style={s.headingRow}>
+          <ListChecks size={20} color="var(--primary)" />
+          <div>
+            <h2 style={s.heading}>Review</h2>
+            <p style={s.subheading}>{markedItems.length} question{markedItems.length !== 1 ? "s" : ""} marked so far</p>
+          </div>
+        </div>
+      </div>
+
+      {markedItems.length === 0 ? (
+        <div style={s.emptyCard}>
+          <Inbox size={22} style={{ marginBottom: 8, opacity: 0.6 }} />
+          <div>Nothing marked yet — marked questions will show up here for review.</div>
+        </div>
+      ) : (
+        <div style={s.reviewList}>
+          {markedItems.map((q) => {
+            const awarded = scores[q.id] ?? (highlights[q.id] || []).reduce((sum, h) => sum + (Number(h.mark) || 0), 0);
+            return (
+              <div key={q.id} style={s.reviewRow}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={s.reviewRowHead}>
+                    <span style={s.studentPill}>Student {q._student_id ?? "?"}</span>
+                    {flags[q.id] && (
+                      <span style={{ ...s.flagToggle, color: "var(--warning)", borderColor: "var(--warning)" }}>
+                        <Flag size={11} /> Flagged
+                      </span>
+                    )}
+                  </div>
+                  <span style={s.flagRowText}>
+                    {(q.question_text || "").slice(0, 90)}{(q.question_text || "").length > 90 ? "…" : ""}
+                  </span>
+                </div>
+                <span style={s.awardedBadge}>{awarded} / {q.max_marks ?? "–"}</span>
+                <button onClick={() => onEdit(q)} className="mkp-btn" style={s.reopenBtn}>Edit</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FLAGS TAB — every response flagged for a second look
+═══════════════════════════════════════════════════════════ */
+function FlagsTab({ flaggedAnswers, dismissed, scores, onJump }) {
+  return (
+    <div className="mkp-card">
+      <div className="mkp-topbar">
+        <div style={s.headingRow}>
+          <Flag size={20} color="var(--warning)" />
+          <div>
+            <h2 style={s.heading}>Flags</h2>
+            <p style={s.subheading}>{flaggedAnswers.length} response{flaggedAnswers.length !== 1 ? "s" : ""} flagged for a second look</p>
+          </div>
+        </div>
+      </div>
+
+      {flaggedAnswers.length === 0 ? (
+        <div style={s.emptyCard}>
+          <Flag size={22} style={{ marginBottom: 8, opacity: 0.6 }} />
+          <div>No responses are flagged right now.</div>
+        </div>
+      ) : (
+        <div style={s.flagCard}>
+          {flaggedAnswers.map((a) => {
+            const isMarked = dismissed.has(a.id);
+            return (
+              <div key={a.id} style={s.flagRow}>
+                <span style={s.flagRowText}>
+                  Student {a._student_id ?? "?"} — {(a.question_text || "").slice(0, 70)}{(a.question_text || "").length > 70 ? "…" : ""}
+                  {isMarked ? (
+                    <span style={{ color: "var(--success)", fontWeight: 700 }}> · marked ({scores[a.id] ?? 0}/{a.max_marks ?? "–"})</span>
+                  ) : (
+                    <span style={{ color: "var(--text-muted)" }}> · not marked yet</span>
+                  )}
+                </span>
+                <button onClick={() => onJump(a)} className="mkp-btn" style={s.reopenBtn}>
+                  {isMarked ? "Reopen" : "Mark now"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1417,4 +2148,21 @@ const s = {
   flagRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid var(--border)", flexWrap: "wrap" },
   flagRowText: { fontSize: 13, color: "var(--text)", fontWeight: 500, flex: 1, minWidth: 160 },
   reopenBtn: { background: "var(--card)", border: "1px solid var(--border)", color: "var(--primary)", borderRadius: "var(--radius-sm)", padding: "5px 12px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
+
+  /* ── DashBoard / MarkingProgress / Review / Flags tab panels ── */
+  dashGrid: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 },
+  dashStat: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 6, boxShadow: "var(--shadow-sm)" },
+  dashStatValue: { fontSize: 28, fontWeight: 800, fontVariantNumeric: "tabular-nums" },
+  dashSecondaryRow: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
+
+  progressHero: { display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "20px 10px 26px", textAlign: "center" },
+  progressEncouragement: { margin: 0, fontSize: 16, fontWeight: 700, color: "var(--text)", maxWidth: 420 },
+
+  studentTable: { display: "flex", flexDirection: "column", gap: 10 },
+  studentRow: { display: "grid", gridTemplateColumns: "120px 1fr auto", alignItems: "center", gap: 12 },
+  studentRowLabel: { fontSize: 13, color: "var(--text-secondary)", fontWeight: 700 },
+
+  reviewList: { display: "flex", flexDirection: "column", gap: 10 },
+  reviewRow: { display: "flex", alignItems: "center", gap: 14, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "12px 16px", flexWrap: "wrap", boxShadow: "var(--shadow-sm)" },
+  reviewRowHead: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" },
 };

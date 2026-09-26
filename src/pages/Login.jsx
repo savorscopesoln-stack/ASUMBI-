@@ -149,6 +149,17 @@ export default function Login() {
   const [error, setError] = useState("");
   const [heroImageOk, setHeroImageOk] = useState(true);
 
+  /* ================= FINANCE MFA =================
+     Only ever populated when POST /auth/login responds with
+     { mfaRequired: true, mfaToken } instead of a normal token+user —
+     i.e. only for role === "finance" accounts with MFA enabled (see
+     routes/auth.js). Every other role's login flow is completely
+     unaffected by this state. */
+  const [mfaStep, setMfaStep] = useState(false);
+  const [mfaToken, setMfaToken] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
+
   const navigate = useNavigate();
   const { theme } = useTheme();
 
@@ -160,6 +171,7 @@ export default function Login() {
     student: "/student",
     teacher: "/teacher-dashboard",
     admin: "/dashboard",
+    finance: "/finance",
   };
 
   /* ================= SESSION-EXPIRED MESSAGE ================= */
@@ -231,6 +243,17 @@ export default function Login() {
             username,
             password,
           });
+
+          /* ================= FINANCE MFA CHALLENGE =================
+             No token/user yet — the backend needs the current 6-digit
+             authenticator code before it'll issue a real session. Stop
+             the retry loop cleanly (this is a definitive response, not
+             a transient failure) and switch the form to the MFA step. */
+          if (res.data?.mfaRequired) {
+            setMfaToken(res.data.mfaToken);
+            setMfaStep(true);
+            return;
+          }
 
           const { token, user } = res.data;
 
@@ -308,6 +331,53 @@ export default function Login() {
     }
   };
 
+  /* ================= FINANCE MFA — VERIFY CODE =================
+     Second step of the finance login flow. Same session-establishment
+     shape as the success path inside login() above (store token/user,
+     stamp loginAt/lastActivityAt, navigate by role) — kept as its own
+     small function rather than forced through the retry-loop machinery
+     in login(), since a wrong/expired MFA code is never a transient
+     failure worth retrying automatically. */
+  const verifyMfaCode = async (e) => {
+    e.preventDefault();
+    setMfaSubmitting(true);
+    setError("");
+    try {
+      const res = await API.post("/auth/finance-mfa/verify", {
+        mfaToken,
+        code: mfaCode,
+      });
+      const { token, user } = res.data;
+      if (!token || !user) {
+        setError("Invalid server response.");
+        return;
+      }
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+      const now = String(Date.now());
+      localStorage.setItem("loginAt", now);
+      localStorage.setItem("lastActivityAt", now);
+
+      const role = (user.role || "").toLowerCase();
+      if (user.mustChangePassword) {
+        navigate("/force-password-change", { replace: true });
+        return;
+      }
+      navigate(routes[role] || getDefaultRoute(user), { replace: true });
+    } catch (err) {
+      setError(err.response?.data?.message || "Incorrect or expired code.");
+    } finally {
+      setMfaSubmitting(false);
+    }
+  };
+
+  const cancelMfaStep = () => {
+    setMfaStep(false);
+    setMfaToken(null);
+    setMfaCode("");
+    setError("");
+  };
+
   return (
     <div className="auth-stage" style={S.stage}>
       {/* ── hero photo, dimmed under the gradient so it reads as
@@ -381,6 +451,7 @@ export default function Login() {
           </div>
         )}
 
+        {!mfaStep ? (
         <form onSubmit={login} style={S.form} noValidate>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label htmlFor="username" style={authStyles.label}>Username</label>
@@ -424,6 +495,61 @@ export default function Login() {
             )}
           </button>
         </form>
+        ) : (
+        /* ================= FINANCE MFA STEP =================
+           Shown only after POST /auth/login responds with
+           { mfaRequired: true } — see login() above. Username/password
+           already passed; this just needs the current 6-digit
+           authenticator code. */
+        <form onSubmit={verifyMfaCode} style={S.form} noValidate>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label htmlFor="mfaCode" style={authStyles.label}>
+              Authenticator code
+            </label>
+            <input
+              id="mfaCode"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              className="auth-input"
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="6-digit code"
+              required
+              autoFocus
+              style={authStyles.input}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={mfaSubmitting || mfaCode.length < 6}
+            className="auth-btn auth-submit-btn"
+            style={{
+              ...S.submitBtn,
+              opacity: mfaSubmitting ? 0.75 : 1,
+              cursor: mfaSubmitting ? "not-allowed" : "pointer",
+            }}
+          >
+            {mfaSubmitting ? (
+              <>
+                <Loader2 size={17} className="auth-spin" />
+                Verifying…
+              </>
+            ) : (
+              "Verify"
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={cancelMfaStep}
+            style={{ background: "none", border: "none", color: "inherit", opacity: 0.7, cursor: "pointer", fontSize: 13, marginTop: 4 }}
+          >
+            ← Back to login
+          </button>
+        </form>
+        )}
 
         <p style={S.footerNote}>
           © {new Date().getFullYear()} {schoolSettings?.schoolName || "Asumbi Teachers Training College"}

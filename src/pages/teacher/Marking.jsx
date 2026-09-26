@@ -152,9 +152,12 @@ const injectMarkingStyles = () => {
 
     .mkp-essay-readonly { user-select: text; caret-color: transparent; outline: none; }
     .mkp-essay-readonly:focus { outline: none; }
-    .hl-mark { background: rgba(251,191,36,.28); border-bottom: 2px solid var(--warning); border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; color: inherit; }
-    .hl-mark:hover { background: rgba(251,191,36,.5); }
-    .hl-mark::after { content: "+" attr(data-mark); position: absolute; top: -9px; right: -6px; background: var(--warning); color: var(--card); font-size: 9px; font-weight: 800; border-radius: 5px; padding: 0 3px; line-height: 13px; font-variant-numeric: tabular-nums; pointer-events: none; }
+    .hl-mark { background: rgba(239,68,68,.20); border-bottom: 2px solid #ef4444; border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; color: inherit; }
+    .hl-mark:hover { background: rgba(239,68,68,.35); }
+    .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; cursor: pointer; vertical-align: middle; color: #fff; user-select: none; }
+    .hl-status[data-status="correct"] { background: var(--success, #22c55e); }
+    .hl-status[data-status="wrong"] { background: #ef4444; }
+    .hl-status:hover { filter: brightness(1.1); }
 
     .mkp-btn { transition: filter .15s ease, opacity .2s ease, background .2s ease; cursor: pointer; font-family: inherit; }
     .mkp-btn:hover:not(:disabled) { filter: brightness(0.95); }
@@ -436,6 +439,78 @@ function RichEditor({ value, onChange, placeholder }) {
 /* ═══════════════════════════════════════════════════════════
    READ-ONLY RICH ESSAY VIEWER — highlight-to-mark
 ═══════════════════════════════════════════════════════════ */
+// Block-level tags a contentEditable box may use for its own line breaks
+// (Chrome wraps each typed line in its own <div>; other editors may use
+// <p> or <li>). Each one is treated as a whole line on its own.
+const HL_BLOCK_TAGS = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "TR", "TD"]);
+
+// Split the answer box into an ordered list of "lines" — each one just an
+// array of the DOM sibling nodes that make it up, broken at a <br> or a
+// block-level child. Keeping the exact node list (rather than guessing
+// from coordinates) means every line's Range always starts/ends on a
+// clean node edge, so it can always be wrapped safely.
+function getLineGroups(container) {
+  const groups = [];
+  const pushRun = (nodes) => { if (nodes.length) groups.push(nodes); };
+  const walkFlat = (parent) => {
+    let run = [];
+    for (const child of Array.from(parent.childNodes)) {
+      if (child.nodeType === 1 && child.tagName === "BR") {
+        pushRun(run); run = [];
+      } else if (child.nodeType === 1 && HL_BLOCK_TAGS.has(child.tagName)) {
+        pushRun(run); run = [];
+        walkFlat(child); // recurse in case this block has its own soft <br>
+      } else {
+        run.push(child);
+      }
+    }
+    pushRun(run);
+  };
+  walkFlat(container);
+  return groups;
+}
+
+function nodesToRange(nodes) {
+  if (!nodes.length) return null;
+  const r = document.createRange();
+  r.setStartBefore(nodes[0]);
+  r.setEndAfter(nodes[nodes.length - 1]);
+  return r;
+}
+
+// Inclusive overlap test between two Ranges.
+function rangesOverlap(a, b) {
+  try {
+    return (
+      a.compareBoundaryPoints(Range.END_TO_START, b) <= 0 &&
+      a.compareBoundaryPoints(Range.START_TO_END, b) >= 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Clip a whole-line Range down to just the part the drag actually
+// covered, so a highlight wraps exactly what was selected (a single
+// word included) instead of snapping outward to the whole sentence
+// or line. Picks the later of the two start points and the earlier
+// of the two end points, using each Range's own boundary — no need to
+// re-derive character offsets, so it can't misalign with rich markup.
+function intersectRanges(lineRange, rawRange) {
+  const startCmp = lineRange.compareBoundaryPoints(Range.START_TO_START, rawRange);
+  const startContainer = startCmp < 0 ? rawRange.startContainer : lineRange.startContainer;
+  const startOffset = startCmp < 0 ? rawRange.startOffset : lineRange.startOffset;
+
+  const endCmp = lineRange.compareBoundaryPoints(Range.END_TO_END, rawRange);
+  const endContainer = endCmp < 0 ? lineRange.endContainer : rawRange.endContainer;
+  const endOffset = endCmp < 0 ? lineRange.endOffset : rawRange.endOffset;
+
+  const r = document.createRange();
+  r.setStart(startContainer, startOffset);
+  r.setEnd(endContainer, endOffset);
+  return r;
+}
+
 function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onLimitReached }) {
   const containerRef = useRef(null);
   const totalMarks = highlights.reduce((sum, h) => sum + (h.mark || 0), 0);
@@ -446,6 +521,8 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       if (!container) return;
       const el = container.querySelector(`[data-hid="${hid}"]`);
       if (el) {
+        const badge = el.querySelector(".hl-status");
+        if (badge) badge.remove();
         const parent = el.parentNode;
         while (el.firstChild) parent.insertBefore(el.firstChild, el);
         parent.removeChild(el);
@@ -456,12 +533,19 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
     [onRemove]
   );
 
+  // Wrapping the raw, arbitrary drag range as-is broke layout whenever it
+  // crossed a line break or paragraph boundary, so a selection is first
+  // grouped by which line(s) it overlaps, then — line by line — clipped
+  // back down to exactly what was dragged (via intersectRanges) before
+  // being wrapped. A drag spanning several lines still gets one mark per
+  // line (each a separately awarded point), but within a single line the
+  // highlight is exactly the selected words, nothing wider.
   const handleMouseUp = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) return;
-    const range = sel.getRangeAt(0);
+    const rawRange = sel.getRangeAt(0);
     const container = containerRef.current;
-    if (!container || !container.contains(range.commonAncestorContainer)) return;
+    if (!container || !container.contains(rawRange.commonAncestorContainer)) return;
 
     const selectedText = sel.toString().trim();
     if (!selectedText || selectedText.length < 3) {
@@ -471,46 +555,102 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
 
     const existingMarks = container.querySelectorAll(".hl-mark");
     for (const el of existingMarks) {
-      if (range.intersectsNode(el)) {
+      if (rawRange.intersectsNode(el)) {
         sel.removeAllRanges();
         return;
       }
     }
 
-    const remaining = Math.max(0, (maxMarks || 1) - totalMarks);
-    if (remaining <= 0) {
-      sel.removeAllRanges();
-      onLimitReached && onLimitReached();
-      return;
-    }
-    const markValue = Math.min(1, remaining);
+    const lineGroups = getLineGroups(container);
+    const lineData = lineGroups
+      .map((nodes) => ({ nodes, range: nodesToRange(nodes) }))
+      .filter(({ range }) => range && rangesOverlap(range, rawRange));
 
-    const hid = `hl_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-    const markEl = document.createElement("mark");
-    markEl.className = "hl-mark";
-    markEl.dataset.hid = hid;
-    markEl.dataset.mark = String(markValue);
-    markEl.title = "Click to remove this highlight";
-
-    try {
-      range.surroundContents(markEl);
-    } catch (e) {
-      const frag = range.extractContents();
-      markEl.appendChild(frag);
-      range.insertNode(markEl);
-    }
     sel.removeAllRanges();
+    if (lineData.length === 0) return;
 
-    onAdd({ id: hid, text: selectedText, mark: markValue, createdAt: Date.now(), confirmed: true }, container.innerHTML);
+    let remaining = Math.max(0, (maxMarks || 1) - totalMarks);
+    const targets = lineData.map((l) => intersectRanges(l.range, rawRange));
+
+    for (const targetRange of targets) {
+      if (remaining <= 0) { onLimitReached && onLimitReached(); break; }
+      const text = targetRange.toString().trim();
+      if (!text) continue;
+
+      const markValue = Math.min(1, remaining);
+      remaining -= markValue;
+
+      const hid = `hl_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const markEl = document.createElement("mark");
+      markEl.className = "hl-mark";
+      markEl.dataset.hid = hid;
+      markEl.dataset.mark = String(markValue);
+      markEl.dataset.fullmark = String(markValue);
+      markEl.dataset.status = "correct";
+      markEl.title = "Click the highlight to remove it";
+
+      try {
+        targetRange.surroundContents(markEl);
+      } catch (e) {
+        // Clean ranges should always be safe to wrap; if the browser still
+        // balks (e.g. a selection edge lands inside other inline markup),
+        // skip this one segment instead of falling back to the old
+        // flatten-and-reinsert approach that broke layout.
+        continue;
+      }
+
+      // Small tick/✗ toggle appended right after the highlighted words —
+      // a real element (not a ::after) so it can be clicked on its own,
+      // separately from clicking the highlight itself to remove it.
+      const badge = document.createElement("span");
+      badge.className = "hl-status";
+      badge.dataset.status = "correct";
+      badge.textContent = "✓";
+      badge.title = "Tap to mark this point wrong";
+      markEl.appendChild(badge);
+
+      onAdd({ id: hid, text, mark: markValue, createdAt: Date.now(), confirmed: true }, container.innerHTML);
+    }
   }, [highlights, maxMarks, totalMarks, onAdd, onLimitReached]);
+
+  // Flips a highlight between "correct" (its full mark) and "wrong" (0),
+  // without touching the highlight's own remove/adjust plumbing — the
+  // toggle state and the original mark value both live on the mark
+  // element's dataset, the same place its text and id already live.
+  const toggleStatus = useCallback(
+    (hid) => {
+      const container = containerRef.current;
+      const el = container && container.querySelector(`[data-hid="${hid}"]`);
+      if (!el) return;
+      const fullMark = Number(el.dataset.fullmark ?? el.dataset.mark ?? 1);
+      const nowWrong = el.dataset.status !== "wrong";
+      const newMark = nowWrong ? 0 : fullMark;
+
+      el.dataset.status = nowWrong ? "wrong" : "correct";
+      el.dataset.mark = String(newMark);
+      const badge = el.querySelector(".hl-status");
+      if (badge) {
+        badge.dataset.status = el.dataset.status;
+        badge.textContent = nowWrong ? "✗" : "✓";
+      }
+      onAdjust(hid, newMark, container.innerHTML);
+    },
+    [onAdjust]
+  );
 
   const handleContainerClick = useCallback(
     (e) => {
+      const statusEl = e.target.closest && e.target.closest(".hl-status");
+      if (statusEl) {
+        const markEl = statusEl.closest(".hl-mark");
+        if (markEl) toggleStatus(markEl.dataset.hid);
+        return;
+      }
       const markEl = e.target.closest && e.target.closest(".hl-mark");
       if (!markEl) return;
       removeMark(markEl.dataset.hid);
     },
-    [removeMark]
+    [removeMark, toggleStatus]
   );
 
   const adjust = (hlId, delta) => {
@@ -533,7 +673,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       <div style={s.essayHeaderRow}>
         <div style={s.essayHint}>
           <PenLine size={14} style={{ flexShrink: 0 }} />
-          <span>Select the parts of the answer worth credit — a highlight is added automatically. Tap a highlight to remove it.</span>
+          <span>Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong, or tap the highlight itself to remove it.</span>
         </div>
         {maxMarks != null && (
           <div style={s.markMeter}>
@@ -685,6 +825,12 @@ export default function Marking() {
               // present only if the backend query selects it — used to skip
               // questions that were already graded in a previous session
               marks_awarded: a.marks_awarded,
+              // persisted highlight-to-mark data from a previous marking
+              // session (see saveMarking) — a JSON array + the marked-up
+              // HTML, so reopening a graded answer shows the same
+              // highlights instead of plain text
+              highlights: a.highlights,
+              highlighted_html: a.highlighted_html,
               _submission_id: sub.submission?.id,
               _student_id: sub.submission?.student_id,
             }))
@@ -699,14 +845,30 @@ export default function Marking() {
         const preDismissed = new Set();
 
         for (const item of interleaved) {
-          initialHTML[item.id] = toDisplayHTML(item.essay_answer);
           // already graded in an earlier session — surface it as done, don't re-queue it
           if (item.marks_awarded != null) {
+            // Prefer the teacher's actual saved highlights (real, editable
+            // spans) over the old "Previously marked" placeholder — the
+            // placeholder is only a fallback for answers that were graded
+            // via the plain override box, with no highlight data to show.
+            let savedHls = null;
+            try {
+              const parsed = item.highlights ? JSON.parse(item.highlights) : null;
+              if (Array.isArray(parsed) && parsed.length) savedHls = parsed;
+            } catch {
+              /* malformed/legacy value — fall back to the placeholder below */
+            }
+
+            initialHTML[item.id] = savedHls && item.highlighted_html
+              ? item.highlighted_html
+              : toDisplayHTML(item.essay_answer);
             initialScores[item.id] = item.marks_awarded;
-            initialHighlights[item.id] = [
+            initialHighlights[item.id] = savedHls || [
               { id: `prior_${item.id}`, text: "Previously marked", mark: item.marks_awarded, confirmed: true, prior: true },
             ];
             preDismissed.add(item.id);
+          } else {
+            initialHTML[item.id] = toDisplayHTML(item.essay_answer);
           }
         }
 
@@ -736,20 +898,6 @@ export default function Marking() {
 
     return () => { isMounted = false; };
   }, [assessmentId]);
-
-  /* ── Sync confirmed highlight marks → scores ── */
-  useEffect(() => {
-    setScores((prev) => {
-      const next = { ...prev };
-      for (const [aId, hls] of Object.entries(highlights)) {
-        const confirmed = hls.filter((h) => h.confirmed);
-        if (confirmed.length > 0) {
-          next[aId] = confirmed.reduce((sum, h) => sum + (h.mark || 0), 0);
-        }
-      }
-      return next;
-    });
-  }, [highlights]);
 
   /* ── warn on unsaved changes before leaving ── */
   useEffect(() => {
@@ -799,19 +947,47 @@ export default function Marking() {
     }
   }, [remaining, pendingJump]);
 
-  /* ── HIGHLIGHT HANDLERS ── */
+  /* ── HIGHLIGHT HANDLERS ──
+     Each of these updates that ONE answer's score at the same time it
+     updates its highlight list, scoped to just that answerId. This used
+     to be a single global useEffect keyed on `highlights` — but since
+     `highlights` is one shared object for the whole queue, ANY edit
+     anywhere re-ran it for EVERY answer that had highlights, silently
+     stomping a manually-typed "Override score" on a totally different
+     question the moment you highlighted something elsewhere. It also
+     never reset a score back to 0 when the last highlight on an answer
+     was removed (it only wrote a new total when `confirmed.length > 0`).
+     Recomputing right here, per answerId, on the specific change that
+     just happened fixes both. */
+  const recomputeScoreFor = (answerId, list) => {
+    const total = list.filter((h) => h.confirmed).reduce((sum, h) => sum + (h.mark || 0), 0);
+    setScores((prev) => ({ ...prev, [answerId]: total }));
+  };
+
   const addHighlight = useCallback((answerId, hl) => {
-    setHighlights((prev) => ({ ...prev, [answerId]: [...(prev[answerId] || []), { ...hl, confirmed: true }] }));
+    setHighlights((prev) => {
+      const list = [...(prev[answerId] || []), { ...hl, confirmed: true }];
+      recomputeScoreFor(answerId, list);
+      return { ...prev, [answerId]: list };
+    });
     setSaved(false);
   }, []);
 
   const removeHighlight = useCallback((answerId, hlId) => {
-    setHighlights((prev) => ({ ...prev, [answerId]: (prev[answerId] || []).filter((h) => h.id !== hlId) }));
+    setHighlights((prev) => {
+      const list = (prev[answerId] || []).filter((h) => h.id !== hlId);
+      recomputeScoreFor(answerId, list);
+      return { ...prev, [answerId]: list };
+    });
     setSaved(false);
   }, []);
 
   const adjustHighlight = useCallback((answerId, hlId, newMark) => {
-    setHighlights((prev) => ({ ...prev, [answerId]: (prev[answerId] || []).map((h) => (h.id === hlId ? { ...h, mark: newMark } : h)) }));
+    setHighlights((prev) => {
+      const list = (prev[answerId] || []).map((h) => (h.id === hlId ? { ...h, mark: newMark } : h));
+      recomputeScoreFor(answerId, list);
+      return { ...prev, [answerId]: list };
+    });
     setSaved(false);
   }, []);
 
@@ -912,16 +1088,33 @@ export default function Marking() {
       // mcqScores (see the load effect above) — they must be included here
       // too, or the backend never re-persists/finalizes them and the
       // submission can end up "marked" with a 0 (or understated) score.
+      //
+      // `scores[q.id]` (not a fresh highlight recompute) is the source of
+      // truth here: the highlight handlers above already keep it in sync
+      // with confirmed highlights as they're added/removed/adjusted, AND
+      // it's the only place a manually-typed "Override score" lives. This
+      // used to recompute straight from `highlights` at save time, which
+      // meant an answer marked purely via the override box (no
+      // highlighting at all) got sent to the server as 0 — silently
+      // discarding the teacher's manual mark.
       const computedScores = {
         ...mcqScores,
         ...queue.reduce((acc, q) => {
-          const hls = highlights[q.id] || [];
-          acc[q.id] = hls.reduce((sum, h) => sum + (Number(h.mark) || 0), 0);
+          acc[q.id] = Number(scores[q.id]) || 0;
           return acc;
         }, {}),
       };
 
-      const payload = { submission_id: submissionId, scores: computedScores, remarks: remarks || {}, highlights: highlights || {} };
+      const payload = {
+        submission_id: submissionId,
+        scores: computedScores,
+        remarks: remarks || {},
+        highlights: highlights || {},
+        // the marked-up HTML (the <mark> spans) for each answer — needed
+        // alongside `highlights` so a reopened answer shows the actual
+        // highlighted text, not just its score
+        essayHTML: essayHTML || {},
+      };
       await API.post("/e-assessments/save-marking/bulk", payload);
 
       setSaved(true);
@@ -1150,16 +1343,23 @@ export default function Marking() {
               <button
                 type="button"
                 className="mkp-btn mkp-quickmark full"
-                title="Award full marks"
-                onClick={() => handleScoreChange(current.id, current.max_marks ?? 0, current.max_marks)}
+                title="Lock in the marked points and move on"
+                onClick={() => {
+                  const awarded = editableHlForCurrent.reduce((sum, h) => sum + (h.mark || 0), 0);
+                  handleScoreChange(current.id, awarded, current.max_marks);
+                  markAndAdvance();
+                }}
               >
                 ✓
               </button>
               <button
                 type="button"
                 className="mkp-btn mkp-quickmark zero"
-                title="Award zero"
-                onClick={() => handleScoreChange(current.id, 0, current.max_marks)}
+                title="Award zero and move on"
+                onClick={() => {
+                  handleScoreChange(current.id, 0, current.max_marks);
+                  markAndAdvance();
+                }}
               >
                 ✗
               </button>
