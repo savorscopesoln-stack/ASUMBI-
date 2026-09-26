@@ -595,13 +595,7 @@ export default function StudentReport() {
       // out to get the sheet's true, unscaled height in px.
       const trueHeightPx = rect.height / (effectiveScale || 1);
       // 297mm at the browser's 96dpi CSS reference (matches A4_HEIGHT_PX).
-      const pageHeightPx = A4_HEIGHT_PX;
-      if (trueHeightPx > pageHeightPx + 2) {
-        const overBy = Math.round(((trueHeightPx - pageHeightPx) / pageHeightPx) * 100);
-        setOverflowWarning(`This report's content is about ${overBy}% taller than one A4 page and will continue onto a second page when printed or downloaded.`);
-      } else {
-        setOverflowWarning(null);
-      }
+      
     };
     // Wait one frame for layout (fonts, images) to settle before measuring.
     const raf = requestAnimationFrame(check);
