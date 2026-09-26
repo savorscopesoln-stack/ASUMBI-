@@ -1123,27 +1123,24 @@ export default function StudentReport() {
                       <div style={styles.sigGrid}>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Signature</p>
-                          <div style={styles.stampSigWrap}>
-                            {s.signatureUrl ? (
-                              <img src={resolveFileUrl(s.signatureUrl)} alt="" style={styles.sigImage} />
-                            ) : (
-                              <div style={styles.sigLine} />
-                            )}
-                            {/* Stamp sits to the right of the signature line
-                                like a real ink stamp pressed alongside a
-                                signed document, instead of directly on top
-                                of the signature or in its own separate
-                                cell. */}
-                            {stampSrc && (
-                              <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
-                            )}
-                          </div>
+                          {s.signatureUrl ? (
+                            <img src={resolveFileUrl(s.signatureUrl)} alt="" style={styles.sigImage} />
+                          ) : (
+                            <div style={styles.sigLine} />
+                          )}
                         </div>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Official Stamp</p>
-                          {!stampSrc && <div style={styles.stampBox} />}
-                          {stampSrc && (
-                            <p style={{ margin: 0, fontSize: 8, color: "#94a3b8", fontStyle: "italic" }}>Stamped above</p>
+                          {/* The stamp now renders directly in its own
+                              column (previously italic "Stamped above"
+                              text pointing back at the signature) so
+                              the visual actually sits in this open
+                              space instead of overlapping the
+                              signature. */}
+                          {stampSrc ? (
+                            <img src={stampSrc} alt="" style={styles.stampDisplayImage} />
+                          ) : (
+                            <div style={styles.stampBox} />
                           )}
                         </div>
                       </div>
@@ -1159,22 +1156,18 @@ export default function StudentReport() {
                     <div style={styles.sigGrid}>
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Signature</p>
-                        <div style={styles.stampSigWrap}>
-                          {(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl) ? (
-                            <img src={resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl)} alt="" style={styles.sigImage} />
-                          ) : (
-                            <div style={styles.sigLine} />
-                          )}
-                          {stampSrc && (
-                            <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
-                          )}
-                        </div>
+                        {(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl) ? (
+                          <img src={resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl)} alt="" style={styles.sigImage} />
+                        ) : (
+                          <div style={styles.sigLine} />
+                        )}
                       </div>
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Official Stamp</p>
-                        {!stampSrc && <div style={styles.stampBox} />}
-                        {stampSrc && (
-                          <p style={{ margin: 0, fontSize: 8, color: "#94a3b8", fontStyle: "italic" }}>Stamped above</p>
+                        {stampSrc ? (
+                          <img src={stampSrc} alt="" style={styles.stampDisplayImage} />
+                        ) : (
+                          <div style={styles.stampBox} />
                         )}
                       </div>
                     </div>
@@ -1768,25 +1761,14 @@ function getStyles(theme) {
     margin: "0 auto",
   },
   // Placeholder shown when no stamp has been uploaded yet. Sized to
-  // roughly match the overlay stamp footprint so layout doesn't
-  // shift once a real stamp image is added from School Settings.
+  // roughly match the stamp image footprint so layout doesn't
+  // shift once a real stamp is added from School Settings.
   stampBox: {
     width: "1.4in",
     height: "0.7in",
     margin: "0 auto",
     border: "1.5px dashed #94a3b8",
     borderRadius: 4,
-  },
-  // Wrapper that lets the stamp visually sit beside the signature —
-  // relative positioning here, absolute positioning on the stamp
-  // image itself, so the stamp is pinned to the right edge of this
-  // cell regardless of how wide the signature image is.
-  stampSigWrap: {
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 40,
   },
   // Real signature images, shown in place of sigLine above whenever
   // the person has actually uploaded one from School Settings.
@@ -1796,25 +1778,23 @@ function getStyles(theme) {
     maxHeight: 32,
     margin: "0 auto",
     objectFit: "contain",
-    position: "relative",
-    zIndex: 1,
   },
-  // Official stamp, now anchored to the RIGHT side of the signature
-  // cell (instead of centred over the signature) and enlarged
-  // slightly, still rotated and semi-transparent so it reads as an
-  // ink stamp pressed onto the document rather than a flat logo.
-  stampOverlayImage: {
-    position: "absolute",
-    right: "-4px",
-    top: "50%",
-    width: "1.75in",
-    height: "0.85in",
+  // Official stamp, rendered directly in its own "Official Stamp"
+  // column (previously overlapped the signature image and was
+  // replaced there by italic "Stamped above" text). Sized to fill
+  // roughly the same footprint as the dashed stampBox placeholder so
+  // layout doesn't jump once a real stamp is uploaded, with a slight
+  // rotation and multiply blend so it still reads as a pressed ink
+  // stamp rather than a flat logo.
+  stampDisplayImage: {
+    display: "block",
+    width: "1.6in",
+    height: "0.78in",
+    margin: "0 auto",
     objectFit: "contain",
-    opacity: 0.82,
-    transform: "translateY(-50%) rotate(-9deg)",
+    opacity: 0.88,
+    transform: "rotate(-6deg)",
     mixBlendMode: "multiply",
-    pointerEvents: "none",
-    zIndex: 2,
   },
 
   /* ── Footer ── */
