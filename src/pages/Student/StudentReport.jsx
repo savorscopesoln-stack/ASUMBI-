@@ -986,8 +986,9 @@ export default function StudentReport() {
             </div>
 
             {/* ══════════════════════════════════════════════
-                RESULTS TABLE (compact rows, all 18 subjects,
-                nothing truncated)
+                RESULTS TABLE (simplified — code folded into the
+                subject column, plain text instead of pill badges,
+                all 18 subjects fit without truncating anything)
             ══════════════════════════════════════════════ */}
             <div style={styles.sectionTight}>
               <div style={styles.sectionLabelBarTight}>
@@ -996,11 +997,10 @@ export default function StudentReport() {
               <table style={styles.table}>
                 <thead>
                   <tr style={styles.theadRow}>
-                    <th style={{ ...styles.th, width: "8%" }}>Code</th>
-                    <th style={{ ...styles.th, textAlign: "left", width: "34%" }}>Learning Area / Subject</th>
-                    <th style={{ ...styles.th, width: "12%" }}>Score</th>
-                    <th style={{ ...styles.th, width: "14%" }}>Grade</th>
-                    <th style={{ ...styles.th, textAlign: "left", width: "32%" }}>Remarks</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "40%" }}>Learning Area / Subject</th>
+                    <th style={{ ...styles.th, width: "14%" }}>Score</th>
+                    <th style={{ ...styles.th, width: "16%" }}>Grade</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "30%" }}>Remarks</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1010,30 +1010,15 @@ export default function StudentReport() {
                     const remark = valid ? getRemarkForScore(s.score, gradingSystem) : "";
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : reportTheme.zebra }}>
-                        <td style={{ ...styles.td, color: "#64748b", fontSize: 7 }}>{s.code || `L/A-${i + 1}`}</td>
-                        <td style={{ ...styles.td, textAlign: "left", fontWeight: 500 }}>{s.subject}</td>
-                        <td style={{ ...styles.td, textAlign: "center" }}>
-                          {valid ? (
-                            <span style={{
-                              fontWeight: 700,
-                              fontSize: 7.5,
-                              color: s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c"
-                            }}>{s.score}%</span>
-                          ) : <span style={styles.crnmTag}>CRNM</span>}
+                        <td style={{ ...styles.td, textAlign: "left", fontWeight: 500 }}>
+                          <span style={{ color: "#94a3b8", fontWeight: 400 }}>{s.code || `L/A-${i + 1}`} — </span>
+                          {s.subject}
                         </td>
-                        <td style={{ ...styles.td, textAlign: "center" }}>
-                          {valid ? (
-                            <span style={{
-                              background: badge.bg,
-                              color: badge.color,
-                              padding: "2px 9px",
-                              borderRadius: 20,
-                              fontWeight: 600,
-                              fontSize: 7.5,
-                              display: "inline-block",
-                              letterSpacing: "0.02em",
-                            }}>{badge.text}</span>
-                          ) : <span style={styles.crnmTag}>CRNM</span>}
+                        <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: valid ? (s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c") : "#991b1b" }}>
+                          {valid ? `${s.score}%` : "CRNM"}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: "center", fontWeight: 600, color: valid ? "#334155" : "#991b1b" }}>
+                          {valid ? badge.text : "CRNM"}
                         </td>
                         <td style={{ ...styles.td, textAlign: "left", color: "#64748b" }}>{remark || "—"}</td>
                       </tr>
@@ -1043,19 +1028,9 @@ export default function StudentReport() {
                   {/* AVERAGE ROW — a mean of percentages, correctly
                       labelled (this used to be a mis-labelled sum). */}
                   <tr style={styles.totalRow}>
-                    <td style={styles.td} colSpan={2}>AVERAGE</td>
+                    <td style={styles.td}>AVERAGE</td>
                     <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{analytics.avg}%</td>
-                    <td style={{ ...styles.td, textAlign: "center" }}>
-                      <span style={{
-                        background: "#dbeafe",
-                        color: "#1e3a8a",
-                        padding: "2px 9px",
-                        borderRadius: 20,
-                        fontWeight: 700,
-                        fontSize: 7.5,
-                        display: "inline-block",
-                      }}>{analytics.grade.label || "—"}</span>
-                    </td>
+                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700 }}>{analytics.grade.label || "—"}</td>
                     <td style={styles.td}></td>
                   </tr>
                 </tbody>
@@ -1161,11 +1136,7 @@ export default function StudentReport() {
                         </div>
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Signature</p>
-                          {ct.signatureUrl ? (
-                            <img src={resolveFileUrl(ct.signatureUrl)} alt="" style={styles.sigImage} />
-                          ) : (
-                            <div style={styles.sigLine} />
-                          )}
+                          <div style={styles.sigLine} />
                         </div>
                         <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
                       </div>
@@ -1204,11 +1175,7 @@ export default function StudentReport() {
                         <div style={styles.sigItem}>
                           <p style={styles.sigLabel}>Signature</p>
                           <div style={styles.stampSigWrap}>
-                            {s.signatureUrl ? (
-                              <img src={resolveFileUrl(s.signatureUrl)} alt="" style={styles.sigImage} />
-                            ) : (
-                              <div style={styles.sigLine} />
-                            )}
+                            <div style={styles.sigLine} />
                             {stampSrc && (
                               <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
                             )}
@@ -1235,11 +1202,7 @@ export default function StudentReport() {
                       <div style={styles.sigItem}>
                         <p style={styles.sigLabel}>Signature</p>
                         <div style={styles.stampSigWrap}>
-                          {(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl) ? (
-                            <img src={resolveFileUrl(dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl)} alt="" style={styles.sigImage} />
-                          ) : (
-                            <div style={styles.sigLine} />
-                          )}
+                          <div style={styles.sigLine} />
                           {stampSrc && (
                             <img src={stampSrc} alt="" style={styles.stampOverlayImage} />
                           )}
@@ -1863,21 +1826,13 @@ function getStyles(theme) {
     borderBottom: "2px solid rgba(0,0,0,0.18)",
   },
   td: {
-    padding: "3px 8px",
+    padding: "2px 7px",
     borderBottom: "1px solid #f1f5f9",
     color: "#334155",
     fontSize: 7.5,
     textAlign: "center",
     verticalAlign: "middle",
-    lineHeight: 1.25,
-  },
-  crnmTag: {
-    background: "#fee2e2",
-    color: "#991b1b",
-    padding: "2px 8px",
-    borderRadius: 12,
-    fontWeight: 700,
-    fontSize: 5,
+    lineHeight: 1.2,
   },
   totalRow: {
     background: primary,
@@ -1988,17 +1943,6 @@ function getStyles(theme) {
     alignItems: "center",
     justifyContent: "center",
     minHeight: 40,
-  },
-  // Real signature images, shown in place of sigLine above whenever
-  // the person has actually uploaded one from School Settings.
-  sigImage: {
-    display: "block",
-    maxWidth: "80%",
-    maxHeight: 32,
-    margin: "0 auto",
-    objectFit: "contain",
-    position: "relative",
-    zIndex: 1,
   },
   // Official stamp, overlapping the signature: kept at its original
   // fixed physical footprint and placement (unchanged by the layout
