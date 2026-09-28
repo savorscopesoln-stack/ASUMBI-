@@ -669,7 +669,7 @@ function Dashboard() {
           </div>
           {!sidebarCollapsed && (
             <div style={{ minWidth: 0 }}>
-              <div style={D.logoName}>Asumbi Smart Campus</div>
+              <div style={D.logoName}>Doravocore</div>
               <div style={D.logoSub}>Administration</div>
             </div>
           )}
