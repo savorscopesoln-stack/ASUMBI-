@@ -78,6 +78,12 @@ const s = {
   input: { width: "100%", padding: "9px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, marginBottom: 10 },
   label: { fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" },
   btn: { padding: "9px 16px", borderRadius: "var(--radius-sm)", border: "none", background: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 },
+  btnSmall: { padding: "5px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--text-secondary)", fontWeight: 600, cursor: "pointer", fontSize: 12, marginRight: 6 },
+  pill: (status) => ({
+    display: "inline-block", padding: "2px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: "uppercase",
+    background: status === "paid" ? "var(--success-tint)" : status === "void" ? "var(--destructive-tint)" : "var(--warning-tint)",
+    color: status === "paid" ? "var(--success)" : status === "void" ? "var(--destructive)" : "var(--warning)",
+  }),
   btnDanger: { padding: "9px 16px", borderRadius: "var(--radius-sm)", border: "none", background: "var(--destructive)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
   th: { textAlign: "left", padding: "8px 6px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", fontWeight: 600 },
@@ -89,7 +95,11 @@ const s = {
   }),
 };
 
-const TABS = ["Overview", "Verify Payment", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log"];
+const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log"];
+
+const EMPTY_INVOICE_FORM = { creditQuantity: "", unitPrice: "", currency: "KES", taxRate: "", dueDate: "", notes: "" };
+const EMPTY_PAY_FORM = { amount: "", currency: "KES", method: "", paymentReference: "", notes: "", invoiceId: "" };
+const money = (currency, n) => `${currency} ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function FinanceDashboard() {
   injectDesignTokens();
@@ -109,7 +119,12 @@ export default function FinanceDashboard() {
   const [busy, setBusy] = useState(false);
 
   // ---- form state ----
-  const [payForm, setPayForm] = useState({ amount: "", currency: "KES", method: "", paymentReference: "", notes: "" });
+  const [payForm, setPayForm] = useState(EMPTY_PAY_FORM);
+  const [invoices, setInvoices] = useState([]);
+  const [receipts, setReceipts] = useState([]);
+  const [invoiceForm, setInvoiceForm] = useState(EMPTY_INVOICE_FORM);
+  const [confirmTarget, setConfirmTarget] = useState(null); // invoice being marked paid from the Invoices tab
+  const [confirmForm, setConfirmForm] = useState({ method: "", paymentReference: "", notes: "" });
   const [issueForm, setIssueForm] = useState({ paymentId: "", creditQuantity: "", unitPrice: "", currency: "KES", notes: "" });
   const [issueConfirming, setIssueConfirming] = useState(false);
   const [reverseForm, setReverseForm] = useState({ issuanceId: "", quantity: "", reason: "" });
@@ -143,9 +158,19 @@ export default function FinanceDashboard() {
       if (activeTab === "Ledger") {
         const res = await API.get(`/finance/institutions/${tenantKey}/ledger`);
         setLedger(res.data?.ledger || []);
+      } else if (activeTab === "Invoices") {
+        const res = await API.get(`/finance/institutions/${tenantKey}/invoices`);
+        setInvoices(res.data?.invoices || []);
+      } else if (activeTab === "Receipts") {
+        const res = await API.get(`/finance/institutions/${tenantKey}/receipts`);
+        setReceipts(res.data?.receipts || []);
       } else if (activeTab === "Verify Payment" || activeTab === "Issue Credits") {
         const res = await API.get(`/finance/institutions/${tenantKey}/payments`);
         setPayments(res.data?.payments || []);
+        if (activeTab === "Verify Payment") {
+          const inv = await API.get(`/finance/institutions/${tenantKey}/invoices`);
+          setInvoices(inv.data?.invoices || []);
+        }
       } else if (activeTab === "Reverse Credits") {
         const res = await API.get(`/finance/institutions/${tenantKey}/issuances`);
         setIssuances(res.data?.issuances || []);
@@ -163,6 +188,7 @@ export default function FinanceDashboard() {
     setMessage(null);
     setTab("Overview");
     setWallet(null);
+    setConfirmTarget(null);
     await loadWallet(tenantKey);
   };
 
@@ -173,27 +199,159 @@ export default function FinanceDashboard() {
 
   const refreshWallet = () => selected && loadWallet(selected);
 
-  const submitVerifyPayment = async (e) => {
+  /* ---- PDF downloads ----
+     Documents are rendered by the backend and arrive as a PDF blob; we read
+     the filename from Content-Disposition (exposed via CORS) and trigger the
+     browser download ourselves so it happens automatically. */
+  const downloadPdf = async (path, fallbackName) => {
+    const res = await API.get(path, { responseType: "blob" });
+    const disposition = res.headers?.["content-disposition"] || "";
+    const match = /filename="?([^";]+)"?/i.exec(disposition);
+    const filename = match ? match[1] : fallbackName;
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+  };
+
+  // Used by the automatic downloads: the document already exists server-side,
+  // so a failed download must not look like a failed creation.
+  const autoDownload = async (path, fallbackName, label) => {
+    try {
+      await downloadPdf(path, fallbackName);
+      return true;
+    } catch (err) {
+      setMessage({ tone: "error", text: `${label} was created, but the automatic download failed — use its Download button.` });
+      return false;
+    }
+  };
+
+  const manualDownload = async (path, fallbackName) => {
+    try {
+      await downloadPdf(path, fallbackName);
+    } catch (err) {
+      setMessage({ tone: "error", text: "Could not download the document" });
+    }
+  };
+
+  const invoicePath = (inv) => `/finance/institutions/${selected}/invoices/${inv.id}/pdf`;
+  const receiptPath = (r) => `/finance/institutions/${selected}/receipts/${r.id}/pdf`;
+
+  /* ---- invoices ---- */
+  const invoicePreviewTotal = useMemo(() => {
+    const q = Number(invoiceForm.creditQuantity), p = Number(invoiceForm.unitPrice), t = Number(invoiceForm.taxRate || 0);
+    if (!(q > 0) || !(p > 0)) return null;
+    return q * p * (1 + (Number.isFinite(t) ? t : 0) / 100);
+  }, [invoiceForm.creditQuantity, invoiceForm.unitPrice, invoiceForm.taxRate]);
+
+  const submitCreateInvoice = async (e) => {
     e.preventDefault();
     if (!selected) return;
     setBusy(true);
     setMessage(null);
     try {
-      const res = await API.post(`/finance/institutions/${selected}/payments/verify`, {
-        amount: Number(payForm.amount),
-        currency: payForm.currency,
-        method: payForm.method || null,
-        paymentReference: payForm.paymentReference || null,
-        notes: payForm.notes || null,
+      const res = await API.post(`/finance/institutions/${selected}/invoices`, {
+        creditQuantity: Number(invoiceForm.creditQuantity),
+        unitPrice: Number(invoiceForm.unitPrice),
+        currency: invoiceForm.currency,
+        taxRate: invoiceForm.taxRate === "" ? 0 : Number(invoiceForm.taxRate),
+        dueDate: invoiceForm.dueDate || null,
+        notes: invoiceForm.notes || null,
       });
-      setMessage({ tone: "success", text: `Payment ${res.data.payment.payment_reference} verified.` });
-      setPayForm({ amount: "", currency: "KES", method: "", paymentReference: "", notes: "" });
-      loadTabData(selected, "Verify Payment");
+      const inv = res.data.invoice;
+      setInvoiceForm(EMPTY_INVOICE_FORM);
+      loadTabData(selected, "Invoices");
+      const ok = await autoDownload(res.data.pdfPath, `${inv.invoice_number}.pdf`, `Invoice ${inv.invoice_number}`);
+      if (ok) setMessage({ tone: "success", text: `Invoice ${inv.invoice_number} created and downloaded.` });
     } catch (err) {
-      setMessage({ tone: "error", text: err.response?.data?.message || "Failed to verify payment" });
+      setMessage({ tone: "error", text: err.response?.data?.message || "Failed to create invoice" });
     } finally {
       setBusy(false);
     }
+  };
+
+  const submitVoidInvoice = async (inv) => {
+    const reason = window.prompt(`Void invoice ${inv.invoice_number}? Enter a reason (required):`);
+    if (!reason || !reason.trim()) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await API.post(`/finance/institutions/${selected}/invoices/${inv.id}/void`, { reason: reason.trim() });
+      setMessage({ tone: "success", text: `Invoice ${inv.invoice_number} voided.` });
+      loadTabData(selected, "Invoices");
+    } catch (err) {
+      setMessage({ tone: "error", text: err.response?.data?.message || "Failed to void invoice" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /* ---- payment confirmation (+ receipt) ----
+     One backend call records the payment, issues the receipt and, when an
+     invoice is attached, marks it paid. The receipt is then downloaded. */
+  const confirmPayment = async (body, refreshTab) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await API.post(`/finance/institutions/${selected}/payments/verify`, body);
+      const { payment, receipt, invoice } = res.data;
+      loadTabData(selected, refreshTab);
+      const ok = await autoDownload(receipt.pdfPath, `${receipt.receipt_number}.pdf`, `Receipt ${receipt.receipt_number}`);
+      if (ok) {
+        setMessage({
+          tone: "success",
+          text: invoice
+            ? `Payment ${payment.payment_reference} confirmed — invoice ${invoice.invoice_number} marked paid, receipt ${receipt.receipt_number} downloaded.`
+            : `Payment ${payment.payment_reference} confirmed — receipt ${receipt.receipt_number} downloaded.`,
+        });
+      }
+      return true;
+    } catch (err) {
+      setMessage({ tone: "error", text: err.response?.data?.message || "Failed to verify payment" });
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitVerifyPayment = async (e) => {
+    e.preventDefault();
+    if (!selected) return;
+    const ok = await confirmPayment({
+      invoiceId: payForm.invoiceId ? Number(payForm.invoiceId) : null,
+      amount: payForm.amount === "" ? undefined : Number(payForm.amount),
+      currency: payForm.currency,
+      method: payForm.method || null,
+      paymentReference: payForm.paymentReference || null,
+      notes: payForm.notes || null,
+    }, "Verify Payment");
+    if (ok) setPayForm(EMPTY_PAY_FORM);
+  };
+
+  const submitConfirmInvoicePayment = async (e) => {
+    e.preventDefault();
+    if (!selected || !confirmTarget) return;
+    const ok = await confirmPayment({
+      invoiceId: confirmTarget.id,
+      method: confirmForm.method || null,
+      paymentReference: confirmForm.paymentReference || null,
+      notes: confirmForm.notes || null,
+    }, "Invoices");
+    if (ok) {
+      setConfirmTarget(null);
+      setConfirmForm({ method: "", paymentReference: "", notes: "" });
+    }
+  };
+
+  const selectInvoiceForPayment = (invoiceId) => {
+    const inv = invoices.find((i) => String(i.id) === String(invoiceId));
+    setPayForm(inv
+      ? { ...payForm, invoiceId, amount: String(inv.total_amount), currency: inv.currency }
+      : { ...payForm, invoiceId: "" });
   };
 
   const submitIssueCredits = async (e) => {
@@ -310,18 +468,123 @@ export default function FinanceDashboard() {
             {tab === "Overview" && (
               <div style={s.card}>
                 <p style={s.muted}>
-                  Select "Verify Payment" to record a manually-confirmed institutional payment, then "Issue Credits"
+                  Create an invoice under "Invoices" (the PDF downloads automatically). When the institution pays, confirm the payment
+                  — from the invoice or under "Verify Payment" — and its receipt is generated and downloaded automatically.
+                  "Verify Payment" records a manually-confirmed institutional payment, then "Issue Credits"
                   to deposit credits into this wallet against it. "Reverse Credits" corrects an unused, already-delivered
                   issuance with a mandatory reason — it never touches credits already reserved for a funded examination.
                 </p>
               </div>
             )}
 
+            {tab === "Invoices" && (
+              <div style={s.card}>
+                <h3 style={{ marginTop: 0, fontSize: 14 }}>New invoice</h3>
+                <p style={s.muted}>The PDF downloads automatically as soon as the invoice is created.</p>
+                <form onSubmit={submitCreateInvoice}>
+                  <label style={s.label}>Credit quantity</label>
+                  <input style={s.input} type="number" min="1" step="1" required
+                    value={invoiceForm.creditQuantity} onChange={(e) => setInvoiceForm({ ...invoiceForm, creditQuantity: e.target.value })} />
+                  <label style={s.label}>Unit price</label>
+                  <input style={s.input} type="number" min="0.01" step="0.01" required
+                    value={invoiceForm.unitPrice} onChange={(e) => setInvoiceForm({ ...invoiceForm, unitPrice: e.target.value })} />
+                  <label style={s.label}>Currency</label>
+                  <input style={s.input} maxLength={3} value={invoiceForm.currency} onChange={(e) => setInvoiceForm({ ...invoiceForm, currency: e.target.value.toUpperCase() })} />
+                  <label style={s.label}>Tax rate % (optional)</label>
+                  <input style={s.input} type="number" min="0" max="100" step="0.01"
+                    value={invoiceForm.taxRate} onChange={(e) => setInvoiceForm({ ...invoiceForm, taxRate: e.target.value })} />
+                  <label style={s.label}>Due date (optional)</label>
+                  <input style={s.input} type="date" value={invoiceForm.dueDate} onChange={(e) => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })} />
+                  <label style={s.label}>Notes (optional, printed on the invoice)</label>
+                  <input style={s.input} maxLength={500} value={invoiceForm.notes} onChange={(e) => setInvoiceForm({ ...invoiceForm, notes: e.target.value })} />
+                  {invoicePreviewTotal !== null && (
+                    <p style={{ ...s.muted, marginTop: 0 }}>Invoice total: <strong>{money(invoiceForm.currency || "KES", invoicePreviewTotal)}</strong></p>
+                  )}
+                  <button style={s.btn} disabled={busy} type="submit">{busy ? "Creating…" : "Create invoice & download"}</button>
+                </form>
+
+                {confirmTarget && (
+                  <form onSubmit={submitConfirmInvoicePayment} style={{ ...s.stat, marginTop: 24 }}>
+                    <h3 style={{ marginTop: 0, fontSize: 14 }}>
+                      Confirm payment for {confirmTarget.invoice_number} — {money(confirmTarget.currency, confirmTarget.total_amount)}
+                    </h3>
+                    <p style={s.muted}>Only confirm once you have reconciled the money in the bank / M-Pesa statement. This marks the invoice paid and downloads the receipt.</p>
+                    <label style={s.label}>Method (bank transfer, M-Pesa, etc.)</label>
+                    <input style={s.input} value={confirmForm.method} onChange={(e) => setConfirmForm({ ...confirmForm, method: e.target.value })} />
+                    <label style={s.label}>Payment reference (bank / M-Pesa code — leave blank to auto-generate)</label>
+                    <input style={s.input} value={confirmForm.paymentReference} onChange={(e) => setConfirmForm({ ...confirmForm, paymentReference: e.target.value })} />
+                    <label style={s.label}>Notes</label>
+                    <input style={s.input} value={confirmForm.notes} onChange={(e) => setConfirmForm({ ...confirmForm, notes: e.target.value })} />
+                    <button style={s.btn} disabled={busy} type="submit">{busy ? "Confirming…" : "Confirm payment & download receipt"}</button>{" "}
+                    <button style={s.btnSmall} type="button" onClick={() => setConfirmTarget(null)}>Cancel</button>
+                  </form>
+                )}
+
+                <h3 style={{ marginTop: 24, fontSize: 14 }}>Invoices</h3>
+                <table style={s.table}>
+                  <thead><tr><th style={s.th}>Number</th><th style={s.th}>Credits</th><th style={s.th}>Total</th><th style={s.th}>Status</th><th style={s.th}>Due</th><th style={s.th}></th></tr></thead>
+                  <tbody>
+                    {invoices.map((inv) => (
+                      <tr key={inv.id}>
+                        <td style={s.td}>{inv.invoice_number}</td>
+                        <td style={s.td}>{inv.credit_quantity}</td>
+                        <td style={s.td}>{money(inv.currency, inv.total_amount)}</td>
+                        <td style={s.td}><span style={s.pill(inv.status)}>{inv.status}</span></td>
+                        <td style={s.td}>{inv.due_date ? new Date(inv.due_date).toLocaleDateString(undefined, { timeZone: "UTC" }) : "—"}</td>
+                        <td style={s.td}>
+                          <button style={s.btnSmall} type="button" onClick={() => manualDownload(invoicePath(inv), `${inv.invoice_number}.pdf`)}>Download PDF</button>
+                          {inv.status === "issued" && (
+                            <>
+                              <button style={s.btnSmall} type="button" onClick={() => { setConfirmTarget(inv); setConfirmForm({ method: "", paymentReference: "", notes: "" }); }}>Confirm payment</button>
+                              <button style={s.btnSmall} type="button" disabled={busy} onClick={() => submitVoidInvoice(inv)}>Void</button>
+                            </>
+                          )}
+                          {inv.status === "paid" && inv.receipt_id && (
+                            <button style={s.btnSmall} type="button" onClick={() => manualDownload(receiptPath({ id: inv.receipt_id }), "receipt.pdf")}>Receipt</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {!invoices.length && <tr><td style={s.td} colSpan={6}><span style={s.muted}>No invoices yet.</span></td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {tab === "Receipts" && (
+              <div style={s.card}>
+                <p style={s.muted}>A receipt is generated automatically each time a payment is confirmed. Payments confirmed before receipts existed can still get one from the Verify Payment tab.</p>
+                <table style={s.table}>
+                  <thead><tr><th style={s.th}>Receipt</th><th style={s.th}>Payment ref</th><th style={s.th}>Invoice</th><th style={s.th}>Amount</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
+                  <tbody>
+                    {receipts.map((r) => (
+                      <tr key={r.id}>
+                        <td style={s.td}>{r.receipt_number}</td>
+                        <td style={s.td}>{r.payment_reference}</td>
+                        <td style={s.td}>{r.invoice_number || "—"}</td>
+                        <td style={s.td}>{money(r.currency, r.amount)}</td>
+                        <td style={s.td}>{new Date(r.issued_at).toLocaleDateString()}</td>
+                        <td style={s.td}><button style={s.btnSmall} type="button" onClick={() => manualDownload(receiptPath(r), `${r.receipt_number}.pdf`)}>Download PDF</button></td>
+                      </tr>
+                    ))}
+                    {!receipts.length && <tr><td style={s.td} colSpan={6}><span style={s.muted}>No receipts yet.</span></td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {tab === "Verify Payment" && (
               <div style={s.card}>
                 <form onSubmit={submitVerifyPayment}>
-                  <label style={s.label}>Amount</label>
-                  <input style={s.input} type="number" min="0.01" step="0.01" required
+                  <label style={s.label}>Settles invoice (optional)</label>
+                  <select style={s.input} value={payForm.invoiceId} onChange={(e) => selectInvoiceForPayment(e.target.value)}>
+                    <option value="">— payment not tied to an invoice —</option>
+                    {invoices.filter((i) => i.status === "issued").map((i) => (
+                      <option key={i.id} value={i.id}>{i.invoice_number} · {money(i.currency, i.total_amount)}</option>
+                    ))}
+                  </select>
+                  <label style={s.label}>Amount{payForm.invoiceId ? " (defaults to the invoice total)" : ""}</label>
+                  <input style={s.input} type="number" min="0.01" step="0.01" required={!payForm.invoiceId}
                     value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} />
                   <label style={s.label}>Currency</label>
                   <input style={s.input} value={payForm.currency} onChange={(e) => setPayForm({ ...payForm, currency: e.target.value })} />
@@ -331,12 +594,12 @@ export default function FinanceDashboard() {
                   <input style={s.input} value={payForm.paymentReference} onChange={(e) => setPayForm({ ...payForm, paymentReference: e.target.value })} />
                   <label style={s.label}>Notes</label>
                   <input style={s.input} value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} />
-                  <button style={s.btn} disabled={busy} type="submit">{busy ? "Verifying…" : "Verify payment"}</button>
+                  <button style={s.btn} disabled={busy} type="submit">{busy ? "Verifying…" : "Verify payment & download receipt"}</button>
                 </form>
 
                 <h3 style={{ marginTop: 24, fontSize: 14 }}>Verified payments</h3>
                 <table style={s.table}>
-                  <thead><tr><th style={s.th}>Reference</th><th style={s.th}>Amount</th><th style={s.th}>Method</th><th style={s.th}>Verified</th></tr></thead>
+                  <thead><tr><th style={s.th}>Reference</th><th style={s.th}>Amount</th><th style={s.th}>Method</th><th style={s.th}>Verified</th><th style={s.th}></th></tr></thead>
                   <tbody>
                     {payments.map((p) => (
                       <tr key={p.id}>
@@ -344,6 +607,12 @@ export default function FinanceDashboard() {
                         <td style={s.td}>{p.currency} {Number(p.amount).toLocaleString()}</td>
                         <td style={s.td}>{p.method || "—"}</td>
                         <td style={s.td}>{new Date(p.verified_at).toLocaleString()}</td>
+                        <td style={s.td}>
+                          <button style={s.btnSmall} type="button"
+                            onClick={() => manualDownload(`/finance/institutions/${selected}/payments/${p.id}/receipt`, `receipt-${p.payment_reference}.pdf`)}>
+                            Receipt
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
