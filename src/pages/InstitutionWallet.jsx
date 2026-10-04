@@ -81,7 +81,15 @@ const s = {
   badge: { fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "var(--primary-tint)", color: "var(--primary)" },
 };
 
-const TABS = ["Overview", "Request Credits", "Examinations", "Ledger"];
+const TABS = ["Overview", "Request Credits", "Invoices", "Receipts", "Examinations", "Ledger"];
+
+const fmtMoney = (currency, n) =>
+  `${currency || ""} ${Number(n || 0).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`.trim();
+const fmtDay = (d) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+const statusTone = (st) =>
+  st === "paid" ? { background: "var(--success-tint)", color: "var(--success)" }
+  : st === "void" ? { background: "var(--destructive-tint)", color: "var(--destructive)" }
+  : { background: "var(--warning-tint)", color: "var(--warning)" };
 
 export default function InstitutionWallet() {
   injectDesignTokens();
@@ -91,6 +99,9 @@ export default function InstitutionWallet() {
   const [overview, setOverview] = useState(null);
   const [ledger, setLedger] = useState([]);
   const [exams, setExams] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [receipts, setReceipts] = useState([]);
+  const [downloadingKey, setDownloadingKey] = useState(null);
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -139,6 +150,12 @@ export default function InstitutionWallet() {
         if (tab === "Ledger") {
           const res = await API.get("/wallet/ledger");
           setLedger(res.data?.ledger || []);
+        } else if (tab === "Invoices") {
+          const res = await API.get("/wallet/invoices");
+          setInvoices(res.data?.invoices || []);
+        } else if (tab === "Receipts") {
+          const res = await API.get("/wallet/receipts");
+          setReceipts(res.data?.receipts || []);
         } else if (tab === "Examinations") {
           const res = await API.get("/wallet/exams");
           setExams(res.data?.examinations || []);
@@ -148,6 +165,29 @@ export default function InstitutionWallet() {
       }
     })();
   }, [tab]);
+
+  // The backend renders the PDF; we read its filename from Content-Disposition
+  // (exposed via CORS) and trigger the browser download ourselves.
+  const downloadPdf = async (key, path, fallbackName) => {
+    setDownloadingKey(key);
+    setMessage(null);
+    try {
+      const res = await API.get(path, { responseType: "blob" });
+      const match = /filename="?([^";]+)"?/i.exec(res.headers?.["content-disposition"] || "");
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = match ? match[1] : fallbackName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch {
+      setMessage({ tone: "error", text: "Could not download the document. Please try again." });
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
 
   const loadRequestInfo = async () => {
     setRequestLoading(true);
@@ -321,7 +361,8 @@ export default function InstitutionWallet() {
               <p style={s.muted}>
                 Each credit funds one student for one complete main examination — every subject, scheduling,
                 submissions, marking, analytics, results and report card. Out of credits? Use "Request Credits" to
-                reach Doravo Finance by email or WhatsApp. Once Finance verifies your payment and deposits credits,
+                reach Doravo Finance by email or WhatsApp. Your invoices and payment receipts are under "Invoices" and
+                "Receipts". Once Finance verifies your payment and deposits credits,
                 come back here and allocate them to eligible students under "Examinations".
               </p>
             </div>
@@ -369,6 +410,83 @@ export default function InstitutionWallet() {
                   {requestInfo?.email?.message} {requestInfo?.whatsapp?.message}
                 </p>
               )}
+            </div>
+          )}
+
+          {tab === "Invoices" && (
+            <div style={s.card}>
+              <p style={{ ...s.muted, marginTop: 0 }}>
+                Invoices Doravo Finance has raised for your institution. Quote the invoice number as your payment
+                reference; a receipt appears under "Receipts" once Finance confirms the payment.
+              </p>
+              <table style={s.table}>
+                <thead>
+                  <tr><th style={s.th}>Invoice</th><th style={s.th}>Issued</th><th style={s.th}>Due</th><th style={s.th}>Credits</th><th style={s.th}>Total</th><th style={s.th}>Status</th><th style={s.th}></th></tr>
+                </thead>
+                <tbody>
+                  {invoices.map((inv) => (
+                    <tr key={inv.id} className="wlt-row">
+                      <td style={{ ...s.td, fontWeight: 700 }}>{inv.invoice_number}</td>
+                      <td style={s.td}>{fmtDay(inv.issue_date)}</td>
+                      <td style={s.td}>{inv.due_date ? fmtDay(inv.due_date) : "On receipt"}</td>
+                      <td style={s.td}>{inv.credit_quantity}</td>
+                      <td style={s.td}>{fmtMoney(inv.currency, inv.total_amount)}</td>
+                      <td style={s.td}><span style={{ ...s.badge, ...statusTone(inv.status) }}>{String(inv.status).toUpperCase()}</span></td>
+                      <td style={s.td}>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                          <button style={{ ...s.btnSecondary, padding: "6px 10px", fontSize: 12 }}
+                            disabled={downloadingKey === `inv-${inv.id}`}
+                            onClick={() => downloadPdf(`inv-${inv.id}`, `/wallet/invoices/${inv.id}/pdf`, `${inv.invoice_number}.pdf`)}>
+                            {downloadingKey === `inv-${inv.id}` ? "Preparing…" : "⬇ Invoice"}
+                          </button>
+                          {inv.receipt_id && (
+                            <button style={{ ...s.btnSecondary, padding: "6px 10px", fontSize: 12 }}
+                              disabled={downloadingKey === `rct-${inv.receipt_id}`}
+                              onClick={() => downloadPdf(`rct-${inv.receipt_id}`, `/wallet/receipts/${inv.receipt_id}/pdf`, "receipt.pdf")}>
+                              {downloadingKey === `rct-${inv.receipt_id}` ? "Preparing…" : "⬇ Receipt"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!invoices.length && <tr><td style={s.td} colSpan={7}><span style={s.muted}>No invoices yet.</span></td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {tab === "Receipts" && (
+            <div style={s.card}>
+              <p style={{ ...s.muted, marginTop: 0 }}>
+                A receipt is issued for every payment Doravo Finance confirms. Credits are added to your wallet
+                separately once issued.
+              </p>
+              <table style={s.table}>
+                <thead>
+                  <tr><th style={s.th}>Receipt</th><th style={s.th}>Date</th><th style={s.th}>Invoice</th><th style={s.th}>Method</th><th style={s.th}>Reference</th><th style={s.th}>Amount</th><th style={s.th}></th></tr>
+                </thead>
+                <tbody>
+                  {receipts.map((r) => (
+                    <tr key={r.id} className="wlt-row">
+                      <td style={{ ...s.td, fontWeight: 700 }}>{r.receipt_number}</td>
+                      <td style={s.td}>{fmtDay(r.issued_at)}</td>
+                      <td style={s.td}>{r.invoice_number || "—"}</td>
+                      <td style={s.td}>{r.payment_method || "—"}</td>
+                      <td style={s.td}>{r.payment_reference}</td>
+                      <td style={s.td}>{fmtMoney(r.currency, r.amount)}</td>
+                      <td style={s.td}>
+                        <button style={{ ...s.btnSecondary, padding: "6px 10px", fontSize: 12 }}
+                          disabled={downloadingKey === `rct-${r.id}`}
+                          onClick={() => downloadPdf(`rct-${r.id}`, `/wallet/receipts/${r.id}/pdf`, `${r.receipt_number}.pdf`)}>
+                          {downloadingKey === `rct-${r.id}` ? "Preparing…" : "⬇ Download"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!receipts.length && <tr><td style={s.td} colSpan={7}><span style={s.muted}>No receipts yet.</span></td></tr>}
+                </tbody>
+              </table>
             </div>
           )}
 
