@@ -312,6 +312,9 @@ const getDeviceId = () => {
 };
 
 const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
+// The session token is remembered next to the lock so a refreshed/reopened
+// locked screen can still check with the server whether an admin freed it.
+const tokenKey = (assessmentId) => `exam_token_${assessmentId}`;
 
 // Ported from exam.html's answersKey/saveAnswer — the React build never
 // persisted in-progress answers anywhere, so a refresh mid-exam (which
@@ -553,6 +556,10 @@ export default function TakeEAssessment() {
   const [activating, setActivating] = useState(false);
 
   const heartbeatRef = useRef(null);
+  const tokenRef = useRef("");
+  const [canResume, setCanResume] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  const [resumeMsg, setResumeMsg] = useState("");
   const timerRef = useRef(null);
   const videoRef = useRef(null);
   const cameraStreamRef = useRef(null);
@@ -576,6 +583,8 @@ export default function TakeEAssessment() {
   useEffect(() => {
     const saved = localStorage.getItem(lockKey(id));
     if (saved) {
+      const savedToken = localStorage.getItem(tokenKey(id)) || "";
+      if (savedToken) { tokenRef.current = savedToken; setToken(savedToken); }
       setLockReason(saved);
       setPhase("locked");
     }
@@ -645,6 +654,8 @@ export default function TakeEAssessment() {
     }
 
     const t = startRes.data.token;
+    tokenRef.current = t;
+    localStorage.setItem(tokenKey(id), t);
     setToken(t);
     setRevealCountdown(REVEAL_SECONDS);
 
@@ -818,7 +829,7 @@ export default function TakeEAssessment() {
       try {
         const res = await API.post("/e-assessments/exam-session/heartbeat", { token, device_id: deviceId });
         if (res.data.locked) {
-          triggerLock("This exam session was locked — the token was used on another device.");
+          triggerLock("This exam session was locked — the token was used on another device.", { fromServer: true });
         } else if (res.data.ended) {
           setPhase("ended");
         }
@@ -843,13 +854,24 @@ export default function TakeEAssessment() {
   }, [phase]);
 
   /* ── local anti-cheat detection (best-effort, client-side) ── */
-  const triggerLock = useCallback((reason) => {
+  const triggerLock = useCallback((reason, opts = {}) => {
     localStorage.setItem(lockKey(id), reason);
     setLockReason(reason);
+    setCanResume(false);
+    setResumeMsg("");
     setPhase("locked");
     clearInterval(heartbeatRef.current);
     clearInterval(timerRef.current);
-  }, [id]);
+    // A lock this device decided on (violations) must also be recorded on
+    // the server, otherwise the admin screen still shows the session as
+    // Active, offers no Unlock button, and the student can never get back
+    // in. Locks that came FROM the server (heartbeat 423) are already there.
+    if (!opts.fromServer && tokenRef.current) {
+      API.post("/e-assessments/exam-session/lock", {
+        token: tokenRef.current, device_id: deviceId, reason,
+      }).catch(() => { /* the locked screen re-reports it while it waits */ });
+    }
+  }, [id, deviceId]);
 
   const registerViolation = useCallback((label) => {
     setViolations((v) => {
@@ -1130,25 +1152,119 @@ export default function TakeEAssessment() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  /* ── while locked, keep polling in case an admin unlocks this session ── */
-  useEffect(() => {
-    if (phase !== "locked" || !token) return;
-    const poll = setInterval(async () => {
-      try {
-        const res = await API.post("/e-assessments/exam-session/activate", {
-          token, device_id: deviceId, device_label: navigator.userAgent,
-        });
-        if (res.data.success) {
-          localStorage.removeItem(lockKey(id));
-          setViolations(0);
-          await enterActive();
-        }
-      } catch {
-        /* still locked — keep waiting */
+  /* ── while locked, check (read-only) whether an admin has unlocked this
+       session. This used to call /activate every 15s, which both (a) never
+       ran after a refresh because the token wasn't remembered, and (b) let
+       a second waiting device re-lock the session the moment the admin
+       freed it. Now it only asks; the student presses Resume on the one
+       device they actually want to continue on. ── */
+  const checkLockStatus = useCallback(async () => {
+    const t = tokenRef.current;
+    if (!t) return false;
+    try {
+      const res = await API.post("/e-assessments/exam-session/status", { token: t, device_id: deviceId });
+      if (res.data.ended) {
+        localStorage.removeItem(lockKey(id));
+        localStorage.removeItem(tokenKey(id));
+        setErrorMsg("This assessment has already been completed.");
+        setPhase("ended");
+        return false;
       }
-    }, 15000);
+      const resumable = !!res.data.can_resume && res.data.status === "issued";
+      setCanResume(resumable);
+      // The server still thinks this device is active — the lock never
+      // reached it (e.g. offline when it happened). Report it again.
+      if (res.data.status === "active") {
+        API.post("/e-assessments/exam-session/lock", { token: t, device_id: deviceId, reason: localStorage.getItem(lockKey(id)) || "Locked by this device" }).catch(() => {});
+      }
+      return resumable;
+    } catch {
+      /* transient — try again next tick */
+      return false;
+    }
+  }, [id, deviceId]);
+
+  useEffect(() => {
+    if (phase !== "locked") return;
+    checkLockStatus();
+    const poll = setInterval(checkLockStatus, 8000);
     return () => clearInterval(poll);
-  }, [phase, token, deviceId, id, enterActive]);
+  }, [phase, checkLockStatus]);
+
+  // "Check again" — read-only. It never activates the session itself, so a
+  // locked student can't skip an admin unlock by pressing it.
+  const handleCheckAgain = async () => {
+    if (resuming) return;
+    setResuming(true);
+    setResumeMsg("");
+    try {
+      // Older locks (made before the token was remembered) have no token on
+      // this device — fetch it back through the normal start call. This only
+      // reads the session; it does not bind the device or unlock anything.
+      if (!tokenRef.current) {
+        if (!hasUsableSession(id)) {
+          setResumeMsg("Your exam sign-in has expired. Please sign in again.");
+          localStorage.removeItem(lockKey(id));
+          setPhase("examlogin");
+          return;
+        }
+        try {
+          const r = await API.post(`/e-assessments/${id}/start-exam`);
+          tokenRef.current = r.data.token;
+          localStorage.setItem(tokenKey(id), r.data.token);
+          setToken(r.data.token);
+        } catch (err) {
+          if (err?.response?.status === 409) {
+            setErrorMsg(err.response.data.message || "You have already completed this assessment.");
+            setPhase("ended");
+            return;
+          }
+          setResumeMsg(err?.response?.data?.message || "This session is still locked. Please wait for the administrator.");
+          return;
+        }
+      }
+      const resumable = await checkLockStatus();
+      if (!resumable) setResumeMsg("Still locked — waiting for the administrator to unlock it.");
+    } finally {
+      setResuming(false);
+    }
+  };
+
+  const handleResume = async () => {
+    if (resuming) return;
+    setResuming(true);
+    setResumeMsg("");
+    try {
+      if (!tokenRef.current) return; // Resume is only offered once a token is known
+      const res = await API.post("/e-assessments/exam-session/activate", {
+        token: tokenRef.current, device_id: deviceId, device_label: navigator.userAgent,
+      });
+      if (res.data.success) {
+        localStorage.removeItem(lockKey(id));
+        setViolations(0);
+        setCanResume(false);
+        await enterActive();
+      }
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 423) {
+        setCanResume(false);
+        setResumeMsg(err?.response?.data?.message || "This session is still locked. Please wait for the administrator.");
+      } else if (status === 409) {
+        localStorage.removeItem(lockKey(id));
+        localStorage.removeItem(tokenKey(id));
+        setErrorMsg(err.response.data.message || "You have already completed this assessment.");
+        setPhase("ended");
+      } else if (status === 401) {
+        localStorage.removeItem(lockKey(id));
+        setPhase("examlogin");
+      } else {
+        setResumeMsg("Couldn't reach the server. Check your connection and try again.");
+      }
+    } finally {
+      setResuming(false);
+    }
+  };
 
   /* ── submit ── */
   // Updates both the live `answers` state and its localStorage mirror in
@@ -1192,6 +1308,7 @@ export default function TakeEAssessment() {
       };
       await API.post("/e-assessments/submit", payload);
       localStorage.removeItem(lockKey(id));
+      localStorage.removeItem(tokenKey(id));
       localStorage.removeItem(answersKey(id));
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 
@@ -1390,10 +1507,37 @@ export default function TakeEAssessment() {
           </div>
           <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Device Locked</h2>
           <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>{lockReason}</p>
-          <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.6, textAlign: "center" }}>
-            This screen will stay locked until an administrator clears it, or the exam ends.
-            Please contact your invigilator or school admin.
-          </p>
+          {canResume ? (
+            <>
+              <p style={{ color: "var(--success)", fontSize: 13, fontWeight: 700, lineHeight: 1.6, textAlign: "center", margin: "0 0 12px" }}>
+                An administrator has unlocked your exam. Press Resume on this device to continue.
+              </p>
+              <button
+                onClick={handleResume}
+                disabled={resuming}
+                style={{ width: "100%", padding: "12px 16px", borderRadius: 10, border: "none", background: "var(--success)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: resuming ? "wait" : "pointer", opacity: resuming ? 0.7 : 1 }}
+              >
+                {resuming ? "Resuming…" : "Resume exam"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.6, textAlign: "center" }}>
+                This screen will stay locked until an administrator clears it, or the exam ends.
+                Please contact your invigilator or school admin — it unlocks here automatically, no need to refresh.
+              </p>
+              <button
+                onClick={handleCheckAgain}
+                disabled={resuming}
+                style={{ width: "100%", marginTop: 8, padding: "10px 16px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontWeight: 700, fontSize: 13, cursor: resuming ? "wait" : "pointer" }}
+              >
+                {resuming ? "Checking…" : "Check again"}
+              </button>
+            </>
+          )}
+          {resumeMsg && (
+            <p style={{ color: "var(--destructive)", fontSize: 12, lineHeight: 1.5, textAlign: "center", margin: "10px 0 0" }}>{resumeMsg}</p>
+          )}
         </div>
       </div>
     );

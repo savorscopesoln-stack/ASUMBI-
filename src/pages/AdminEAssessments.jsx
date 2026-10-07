@@ -802,7 +802,7 @@ export default function AdminEAssessments() {
     try {
       setSaving(true);
       await API.put(`/e-assessments/admin/exam-sessions/${sessionId}/unlock`);
-      showToast("Session unlocked — student can resume on a new device");
+      showToast("Session unlocked — the student will see a Resume button on their screen");
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Unlock failed", "error");
