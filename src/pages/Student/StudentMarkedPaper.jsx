@@ -4,6 +4,7 @@ import API, { resolveFileUrl } from "../../api";
 import {
   ArrowLeft, Loader2, AlertTriangle, FileQuestion, MessageSquareText,
 } from "lucide-react";
+import { round2, fmt2 } from "../../utils/format";
 
 /* ─── shared design-token stylesheet, plus a couple of things unique
    to this "physical exam script" page: a handwriting face for the
@@ -199,7 +200,7 @@ export default function StudentMarkedPaper() {
 
   const totalMarks = Number(submission?.total_marks) || 0;
   const score = Number(submission?.score) || 0;
-  const pct = totalMarks ? Math.round((score / totalMarks) * 100) : null;
+  const pct = totalMarks ? round2((score / totalMarks) * 100) : null;
   const grade = gradeFor(pct);
 
   if (loading) {
@@ -277,7 +278,7 @@ export default function StudentMarkedPaper() {
           <div className="mp-cover-score" style={D.coverScoreWrap}>
             <HandCircle size={128}>
               <div style={D.coverScoreValue}>{score}<span style={D.coverScoreOutOf}>/{totalMarks || "—"}</span></div>
-              {pct !== null && <div style={D.coverScorePct}>{pct}%</div>}
+              {pct !== null && <div style={D.coverScorePct}>{fmt2(pct)}%</div>}
             </HandCircle>
             {remarkFor(pct) && <div style={D.examinerNote}>{remarkFor(pct)}</div>}
           </div>

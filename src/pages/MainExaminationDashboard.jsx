@@ -1344,7 +1344,7 @@ function ResultsTab({ id, classes, showToast }) {
   );
 }
 
-function round1(n) { return n == null ? null : Math.round(n * 10) / 10; }
+function round1(n) { return n == null ? null : Math.round((Number(n) + Number.EPSILON) * 100) / 100; } // 2dp
 
 function useMemoFilterRows(rows, search) {
   return useMemo(() => {

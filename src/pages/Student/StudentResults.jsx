@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../api";
 import { Loader2, AlertTriangle, Trophy, ChevronRight, Inbox } from "lucide-react";
+import { round2, fmt2 } from "../../utils/format";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app; a no-op if already mounted elsewhere. ─── */
@@ -157,7 +158,7 @@ export default function StudentResults() {
           {results.map((r) => {
             const total = Number(r.total_marks) || 0;
             const score = Number(r.my_score) || 0;
-            const pct = total ? Math.round((score / total) * 100) : null;
+            const pct = total ? round2((score / total) * 100) : null;
             const grade = gradeFor(pct);
             return (
               <button
@@ -173,7 +174,7 @@ export default function StudentResults() {
                 <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
                   <div style={{ textAlign: "right" }}>
                     <div style={D.rowScore}>{score} / {total || "—"}</div>
-                    {pct !== null && <div style={D.rowPct}>{pct}%</div>}
+                    {pct !== null && <div style={D.rowPct}>{fmt2(pct)}%</div>}
                   </div>
                   <span style={{ ...D.gradeBadge, background: grade.bg, color: grade.fg }}>{grade.label}</span>
                   <ChevronRight size={16} color="var(--text-muted)" />

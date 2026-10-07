@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../api";
+import { round2, fmt2 } from "../utils/format";
 
 /* ================= GRADE SYSTEM ================= */
 const getGrade = (avg) => {
@@ -96,7 +97,7 @@ export default function ResultsDashboard() {
         name: s?.name || "Unknown",
         adm: s?.admissionNo || "-",
         class: s?.studentClass || s?.classLevel,
-        avg: Math.round(avg),
+        avg: round2(avg),
         grade: grade.g,
         color: grade.c,
         total: scores.length,
@@ -213,18 +214,18 @@ export default function ResultsDashboard() {
 
       {/* ================= SUMMARY CARDS ================= */}
       <div style={styles.summary}>
-        <div style={styles.cardRed}>📊 Average: {avg.toFixed(1)}</div>
+        <div style={styles.cardRed}>📊 Average: {avg.toFixed(2)}</div>
         <div style={styles.cardYellow}>🏆 Best Class: {bestClass?.class}</div>
         <div style={styles.cardGreen}>📘 Best Subject: {bestSubject?.subject}</div>
       </div>
 
       {/* ================= CLASS / SUBJECT ================= */}
       <div style={styles.box}>
-        🏫 Class Result Leader: <b>{bestClass?.class}</b> ({bestClass?.mean?.toFixed(1)})
+        🏫 Class Result Leader: <b>{bestClass?.class}</b> ({bestClass?.mean?.toFixed(2)})
       </div>
 
       <div style={styles.box}>
-        📘 Subject Top: <b>{bestSubject?.subject}</b> ({bestSubject?.mean?.toFixed(1)})
+        📘 Subject Top: <b>{bestSubject?.subject}</b> ({bestSubject?.mean?.toFixed(2)})
       </div>
 
       {/* ================= LEADERBOARD ================= */}
@@ -240,7 +241,7 @@ export default function ResultsDashboard() {
             <p>Class: {s.class}</p>
 
             <p style={{ color: s.color }}>
-              Avg: {s.avg} | Grade: {s.grade}
+              Avg: {fmt2(s.avg)} | Grade: {s.grade}
             </p>
 
             <div style={styles.bar}>

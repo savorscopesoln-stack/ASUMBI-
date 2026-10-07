@@ -1,3 +1,4 @@
+import { round2, fmt2 } from "../utils/format";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API, { resolveFileUrl } from "../api";
 import QRCode from "qrcode";
@@ -182,7 +183,7 @@ export default function Reports() {
       };
     });
 
-    const avg = Math.round(total / (count || 1));
+    const avg = round2(total / (count || 1));
 
     return {
       studentId,
@@ -219,7 +220,7 @@ export default function Reports() {
     const pass = meritList.filter((s) => s.avg >= passMark).length;
 
     return {
-      avg: Math.round(avg),
+      avg: round2(avg),
       highest: Math.max(...meritList.map((r) => r.avg)),
       lowest: Math.min(...meritList.map((r) => r.avg)),
       total: meritList.length,
@@ -493,7 +494,7 @@ const printAllTranscripts = async () => {
 
                 return {
                   name: sub.name,
-                  avg: Math.round(avg)
+                  avg: round2(avg)
                 };
               })}
             >
@@ -569,7 +570,7 @@ const printAllTranscripts = async () => {
 
             return {
               name: a.name,
-              avg: Math.round(avg)
+              avg: round2(avg)
             };
           })}
         >
@@ -635,7 +636,7 @@ const printAllTranscripts = async () => {
           .slice(0, 3)
           .map((s, i) => (
             <p key={i} style={{ margin: 0, fontSize: 12 }}>
-              ✔ {s.name} ({Math.round(s.avg)})
+              ✔ {s.name} ({fmt2(s.avg)})
             </p>
           ))}
       </div>
@@ -667,7 +668,7 @@ const printAllTranscripts = async () => {
           .slice(0, 3)
           .map((s, i) => (
             <p key={i} style={{ margin: 0, fontSize: 12 }}>
-              ⚠ {s.name} ({Math.round(s.avg)})
+              ⚠ {s.name} ({fmt2(s.avg)})
             </p>
           ))}
       </div>
@@ -872,7 +873,7 @@ const printAllTranscripts = async () => {
                   }}
                 >
                   <b>{sub.name}</b>
-                  <div>{Math.round(avg)}</div>
+                  <div>{fmt2(avg)}</div>
                 </div>
               );
             })}
@@ -906,7 +907,7 @@ const printAllTranscripts = async () => {
                 }}
               >
                 <span>{s.student?.name}</span>
-                <b style={{ color: "#7f1d1d" }}>{s.avg}</b>
+                <b style={{ color: "#7f1d1d" }}>{fmt2(s.avg)}</b>
               </div>
             ))}
         </div>
@@ -950,7 +951,7 @@ const printAllTranscripts = async () => {
           </span>
 
           <b style={{ color: "#dc2626", fontSize: 13 }}>
-            {s.avg}
+            {fmt2(s.avg)}
           </b>
         </div>
       ))
@@ -1020,7 +1021,7 @@ const printAllTranscripts = async () => {
             }))
             .sort((a, b) => b.avg - a.avg)[0];
 
-          return best ? `${best.name} (${Math.round(best.avg)})` : "N/A";
+          return best ? `${best.name} (${fmt2(best.avg)})` : "N/A";
         })()}
       </b>
     </div>
@@ -1060,7 +1061,7 @@ const printAllTranscripts = async () => {
             }))
             .sort((a, b) => b.avg - a.avg)[0];
 
-          return best ? `${best.name} (${Math.round(best.avg)})` : "N/A";
+          return best ? `${best.name} (${fmt2(best.avg)})` : "N/A";
         })()}
       </b>
     </div>
@@ -1099,7 +1100,7 @@ const printAllTranscripts = async () => {
           </span>
 
           <b style={{ color: "#dc2626", fontSize: 13 }}>
-            {s.avg}
+            {fmt2(s.avg)}
           </b>
         </div>
       ))}
@@ -1129,7 +1130,7 @@ const printAllTranscripts = async () => {
                 <tr key={r.studentId}>
                   <td>{r.position}</td>
                   <td>{r.student?.name}</td>
-                  <td>{r.avg}</td>
+                  <td>{fmt2(r.avg)}</td>
                   <td>{r.result}</td>
                   <td>{r.medal}</td>
                 </tr>
@@ -1569,7 +1570,7 @@ onClick={() => printAllReports()}
             ["Student Name", r.student?.name],
             ["Admission Number", r.student?.id],
             ["Class", r.student?.studentClass],
-            ["Average Score", `${r.avg}%`],
+            ["Average Score", `${fmt2(r.avg)}%`],
             ["Overall Grade", r.grade?.label],
             ["Final Result", r.result],
           ].map(([label, value], i) => (
@@ -1648,7 +1649,7 @@ onClick={() => printAllReports()}
                 fontSize: 34,
               }}
             >
-              {r.avg}%
+              {fmt2(r.avg)}%
             </h1>
           </div>
 
@@ -1899,7 +1900,7 @@ onClick={() => printAllReports()}
                 </td>
 
                 <td style={styles.proTableCell}>
-                  {r.avg}%
+                  {fmt2(r.avg)}%
                 </td>
 
                 <td style={styles.proTableCell}>

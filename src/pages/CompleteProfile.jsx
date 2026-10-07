@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api";
 
@@ -21,10 +21,37 @@ export default function CompleteProfile() {
   const [phone, setPhone] = useState("");
   const [assessmentNumber, setAssessmentNumber] = useState("");
 
+  // Classes come from the school's Classes table so students pick one
+  // instead of typing it. Uses the /student/profile/classes route since
+  // that's the only path a profile-incomplete student is allowed to hit.
+  const [classes, setClasses] = useState([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setClassesLoading(true);
+        setClassesError(false);
+        const res = await API.get("/student/profile/classes");
+        setClasses(res.data || []);
+      } catch (err) {
+        console.log("LOAD CLASSES ERROR:", err);
+        setClassesError(true);
+      } finally {
+        setClassesLoading(false);
+      }
+    })();
+  }, []);
+
+  const classOptions = classes
+    .map((c) => c.name ?? c.class_name)
+    .filter(Boolean);
 
   const getUser = () => {
     try {
@@ -89,14 +116,30 @@ export default function CompleteProfile() {
 
         <div style={styles.field}>
           <label style={styles.label} htmlFor="studentClass">Class</label>
-          <input
+          <select
             id="studentClass"
-            type="text"
-            placeholder="e.g. Form 2 East"
             value={studentClass}
             onChange={(e) => setStudentClass(e.target.value)}
             style={styles.input}
-          />
+            disabled={classesLoading}
+          >
+            <option value="">
+              {classesLoading ? "Loading classes…" : "Select class"}
+            </option>
+            {classOptions.map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          {classesError && (
+            <div style={{ fontSize: 12, marginTop: 6, color: "#b91c1c" }}>
+              Couldn't load the class list — refresh the page to try again.
+            </div>
+          )}
+          {!classesLoading && !classesError && classOptions.length === 0 && (
+            <div style={{ fontSize: 12, marginTop: 6, color: "#6b7280" }}>
+              No classes have been set up yet — contact your administrator.
+            </div>
+          )}
         </div>
 
         <div style={styles.field}>

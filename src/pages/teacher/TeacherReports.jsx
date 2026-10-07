@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { round2, fmt2 } from "../../utils/format";
 import API from "../../api";
 import html2canvas from "html2canvas";
 import QRCode from "react-qr-code";
@@ -109,7 +110,7 @@ const reports = useMemo(() => {
     const scores = map[id];
 
     const total = scores.reduce((s, m) => s + Number(m.score || 0), 0);
-    const avg = Math.round(total / (scores.length || 1));
+    const avg = round2(total / (scores.length || 1));
 
     const student =
       students.find((s) => String(s.id) === String(id)) ||
@@ -131,7 +132,7 @@ const analytics = useMemo(() => {
     reports.reduce((a, b) => a + b.avg, 0) / reports.length;
 
   return {
-    avg: Math.round(avg),
+    avg: round2(avg),
     highest: Math.max(...reports.map((r) => r.avg)),
     lowest: Math.min(...reports.map((r) => r.avg)),
     total: reports.length,
@@ -174,7 +175,7 @@ const insights = useMemo(() => {
       subjectMarks.reduce((s, m) => s + Number(m.score), 0) /
       (subjectMarks.length || 1);
 
-    return [{ name: subjectObj.name, avg: Math.round(avg) }];
+    return [{ name: subjectObj.name, avg: round2(avg) }];
   }, [subjectMarks, subjectObj]);
 
   /* ================= PDF ================= */
@@ -237,7 +238,7 @@ const insights = useMemo(() => {
 
       {/* KPI */}
       <div style={styles.kpiGrid}>
-        <KPI title="Average" value={analytics.avg} />
+        <KPI title="Average" value={fmt2(analytics.avg)} />
         <KPI title="Pass Rate" value={`${analytics.passRate || 0}%`} />
         <KPI title="Highest" value={analytics.highest} />
         <KPI title="Lowest" value={analytics.lowest} />
@@ -274,14 +275,14 @@ const insights = useMemo(() => {
         <div style={styles.glassCard}>
           <h3>🏆 Top Performers</h3>
           {reports.sort((a, b) => b.avg - a.avg).slice(0, 5).map((r, i) => (
-            <Row key={i} name={r.student?.name} value={r.avg} />
+            <Row key={i} name={r.student?.name} value={fmt2(r.avg)} />
           ))}
         </div>
 
         <div style={styles.glassCard}>
           <h3>⚠ At Risk</h3>
           {reports.filter(r => r.avg < 40).map((r, i) => (
-            <Row key={i} name={r.student?.name} value={r.avg} danger />
+            <Row key={i} name={r.student?.name} value={fmt2(r.avg)} danger />
           ))}
         </div>
       </div>
@@ -326,7 +327,7 @@ const insights = useMemo(() => {
     <div><b>Subject:</b> {activeSubject}</div>
     <div><b>Assessment:</b> {assessmentId || "N/A"}</div>
     <div><b>Total Students:</b> {analytics.total}</div>
-    <div><b>Average Score:</b> {analytics.avg}%</div>
+    <div><b>Average Score:</b> {fmt2(analytics.avg)}%</div>
     <div><b>Highest:</b> {analytics.highest}</div>
     <div><b>Lowest:</b> {analytics.lowest}</div>
     <div><b>Pass Rate:</b> {analytics.passRate || 0}%</div>
@@ -338,7 +339,7 @@ const insights = useMemo(() => {
 
     <div style={printStyles.summaryCard}>
       <h4>Class Performance</h4>
-      <h2>{analytics.avg}%</h2>
+      <h2>{fmt2(analytics.avg)}%</h2>
     </div>
 
     <div style={printStyles.summaryCard}>
@@ -377,7 +378,7 @@ const insights = useMemo(() => {
           <tr key={i}>
             <td>{i + 1}</td>
             <td>{r.student?.name}</td>
-            <td>{r.avg}</td>
+            <td>{fmt2(r.avg)}</td>
             <td>{r.grade}</td>
           </tr>
         ))}

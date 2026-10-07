@@ -4,6 +4,7 @@ import {
   BarChart3, Percent, TrendingUp, TrendingDown, BookOpen,
   AlertTriangle, Loader2, Inbox, Sparkles, BrainCircuit,
 } from "lucide-react";
+import { round2, fmt2 } from "../../utils/format";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app, so this page renders from the same system.
@@ -291,7 +292,7 @@ export default function StudentMarks() {
     );
 
     return {
-      avg: Math.round(avg),
+      avg: round2(avg),
       highest: highestItem,
       lowest: lowestItem,
       total: subjects.length,
@@ -345,7 +346,7 @@ export default function StudentMarks() {
           <section className="marks-stats-grid" style={D.statsGrid} aria-label="Summary statistics">
             <StatCard
               label="Average Score"
-              value={`${analytics.avg}%`}
+              value={`${fmt2(analytics.avg)}%`}
               Icon={Percent}
               tint="primary"
             />

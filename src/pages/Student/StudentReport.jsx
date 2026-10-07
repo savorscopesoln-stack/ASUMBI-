@@ -246,7 +246,7 @@ const BADGE_COLORS = [
 // how an admin configures the bands. Text comes straight from the
 // configured band's label.
 // Round to 1 decimal place, dropping trailing float noise (e.g. 74.3000001).
-const round1 = (n) => Math.round(Number(n) * 10) / 10;
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 /* ================= ANTI-FORGERY: DETERMINISTIC CHECKSUM =================
    A small FNV-1a style hash used purely to derive a printed, human
@@ -477,9 +477,9 @@ export default function StudentReport() {
     const scores = visibleMarks.map((m) => Number(m.percentage)).filter((v) => !isNaN(v));
     const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     return {
-      avg: round1(avg),
-      highest: scores.length ? round1(Math.max(...scores)) : null,
-      lowest: scores.length ? round1(Math.min(...scores)) : null,
+      avg: round2(avg),
+      highest: scores.length ? round2(Math.max(...scores)) : null,
+      lowest: scores.length ? round2(Math.min(...scores)) : null,
       assessedCount: scores.length,
       grade: hasCrnm ? { grade: "", label: "CRNM", remark: "" } : getGradeForScore(avg, gradingSystem),
       result: hasCrnm ? "CRNM" : getOverallResultForScore(avg, gradingSystem),
@@ -489,7 +489,7 @@ export default function StudentReport() {
   /* ================= SUBJECT MAP (unchanged) ================= */
   const subjectMap = useMemo(() => {
     const map = {};
-    visibleMarks.forEach((m) => { map[m.subjectName] = round1(Number(m.percentage)); });
+    visibleMarks.forEach((m) => { map[m.subjectName] = round2(Number(m.percentage)); });
     return visibleSubjects.map((s) => ({ subject: s.name, code: s.code, score: map[s.name] ?? null }));
   }, [visibleMarks, visibleSubjects]);
 
@@ -898,13 +898,13 @@ export default function StudentReport() {
               </div>
               <div style={styles.summaryRow}>
                 {[
-                  { label: "Average Score", value: `${analytics.avg}%`, color: "#1d4ed8" },
+                  { label: "Average Score", value: `${Number(analytics.avg).toFixed(2)}%`, color: "#1d4ed8" },
                   { label: "Overall Result", value: analytics.result || "—", color: "#15803d" },
                   { label: "Class Position", value: `#${classPosition}`, color: "#b45309" },
                   { label: "Overall Position", value: `#${overallPosition}`, color: "#7c3aed" },
                   { label: "Learning Areas", value: analytics.assessedCount, color: "#0f766e" },
-                  { label: "Highest Score", value: analytics.highest != null ? `${analytics.highest}%` : "—", color: "#15803d" },
-                  { label: "Lowest Score", value: analytics.lowest != null ? `${analytics.lowest}%` : "—", color: "#b91c1c" },
+                  { label: "Highest Score", value: analytics.highest != null ? `${Number(analytics.highest).toFixed(2)}%` : "—", color: "#15803d" },
+                  { label: "Lowest Score", value: analytics.lowest != null ? `${Number(analytics.lowest).toFixed(2)}%` : "—", color: "#b91c1c" },
                 ].map((m, i, arr) => (
                   <div
                     key={m.label}
@@ -949,7 +949,7 @@ export default function StudentReport() {
                               fontWeight: 700,
                               fontSize: 8,
                               color: s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c"
-                            }}>{s.score}%</span>
+                            }}>{Number(s.score).toFixed(2)}%</span>
                           ) : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
@@ -975,7 +975,7 @@ export default function StudentReport() {
                       labelled (this used to be a mis-labelled sum). */}
                   <tr style={styles.totalRow}>
                     <td style={styles.td} colSpan={2}>AVERAGE</td>
-                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{analytics.avg}%</td>
+                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{Number(analytics.avg).toFixed(2)}%</td>
                     <td style={{ ...styles.td, textAlign: "center" }}>
                       <span style={{
                         background: "#dbeafe",
@@ -1020,7 +1020,7 @@ export default function StudentReport() {
                   </div>
                 </div>
                 <p style={{ margin: "8px 2px 0", fontSize: 9.5, color: "#64748b" }}>
-                  {analytics.assessedCount} learning area{analytics.assessedCount === 1 ? "" : "s"} assessed, average {analytics.avg}%.
+                  {analytics.assessedCount} learning area{analytics.assessedCount === 1 ? "" : "s"} assessed, average {Number(analytics.avg).toFixed(2)}%.
                   {attentionSubjects.length > 0
                     ? ` ${attentionSubjects.length} learning area${attentionSubjects.length === 1 ? "" : "s"} fell below the ${passMark}% pass mark.`
                     : " All assessed learning areas met the configured pass mark."}

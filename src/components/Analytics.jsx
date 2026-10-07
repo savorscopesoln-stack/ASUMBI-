@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer
 } from "recharts";
+import { round2, fmt2 } from "../utils/format";
 
 /* ================= AI ENGINE (UNCHANGED) ================= */
 const computeStudentAI = (scores = []) => {
@@ -44,7 +45,7 @@ const computeStudentAI = (scores = []) => {
     "LOW RISK";
 
   return {
-    avg: Math.round(avg),
+    avg: round2(avg),
     risk: Math.round(risk),
     trend,
     consistency: Math.round(consistency),
@@ -239,7 +240,7 @@ export default function SchoolAIAnalytics() {
 
       {/* KPI */}
       <div style={styles.kpiRow}>
-        <KPI title="Mean" value={stats.mean.toFixed(1)} />
+        <KPI title="Mean" value={stats.mean.toFixed(2)} />
         <KPI title="Max" value={stats.max} />
         <KPI title="Min" value={stats.min} />
         <KPI title="Pass Rate" value={stats.passRate.toFixed(1) + "%"} />
