@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useParams } from "react-router-dom";
 import { PenLine, AlertTriangle, Flag, BookOpen, X } from "lucide-react";
 import API from "../../api";
+import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -1418,6 +1419,8 @@ export default function Marking() {
           <SaveBtn saving={saving} saved={saved} onClick={saveMarking} small />
         </div>
       )}
+
+      <AiMarkingTools assessmentId={assessmentId} />
     </div>
   );
 }

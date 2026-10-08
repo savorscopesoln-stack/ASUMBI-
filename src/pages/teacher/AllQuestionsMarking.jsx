@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import API, { BASE_URL } from "../../api";
+import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 import {
   ClipboardCheck,
   AlertTriangle,
@@ -1739,6 +1740,8 @@ export default function Marking() {
       )}
 
       {activeTab === "Live Marking" && (allDone ? liveMarkingDoneView : liveMarkingActiveView)}
+
+      <AiMarkingTools assessmentId={assessmentId} />
     </div>
   );
 }

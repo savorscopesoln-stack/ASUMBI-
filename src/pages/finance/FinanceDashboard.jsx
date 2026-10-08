@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
+import AiFinanceAnalyticsPanel from "../../components/aiMarking/AiFinanceAnalyticsPanel";
 
 /* =========================================================================
    DORAVO FINANCE DASHBOARD
@@ -95,7 +96,7 @@ const s = {
   }),
 };
 
-const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log"];
+const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "AI Marking Analytics"];
 
 const EMPTY_INVOICE_FORM = { creditQuantity: "", unitPrice: "", currency: "KES", taxRate: "", dueDate: "", notes: "" };
 const EMPTY_PAY_FORM = { amount: "", currency: "KES", method: "", paymentReference: "", notes: "", invoiceId: "" };
@@ -108,6 +109,7 @@ export default function FinanceDashboard() {
   const [institutions, setInstitutions] = useState([]);
   const [loadingInstitutions, setLoadingInstitutions] = useState(true);
   const [selected, setSelected] = useState(null); // tenantKey
+  const [platformView, setPlatformView] = useState(false); // platform-wide AI marking analytics
   const [wallet, setWallet] = useState(null);
   const [institutionProfile, setInstitutionProfile] = useState(null);
   const [tab, setTab] = useState("Overview");
@@ -184,6 +186,7 @@ export default function FinanceDashboard() {
   };
 
   const selectInstitution = async (tenantKey) => {
+    setPlatformView(false);
     setSelected(tenantKey);
     setMessage(null);
     setTab("Overview");
@@ -418,6 +421,14 @@ export default function FinanceDashboard() {
             {theme === "dark" ? "☀" : "🌙"}
           </button>
         </div>
+        <div
+          className="fin-row"
+          style={s.instRow(platformView)}
+          onClick={() => setPlatformView(true)}
+        >
+          <div style={{ fontWeight: 600, fontSize: 14 }}>AI marking — all institutions</div>
+          <div style={s.muted}>Cost, charges and margin</div>
+        </div>
         <p style={s.muted}>Institutions</p>
         {loadingInstitutions && <p style={s.muted}>Loading…</p>}
         {institutions.map((inst) => (
@@ -439,9 +450,16 @@ export default function FinanceDashboard() {
 
       {/* MAIN PANEL */}
       <div style={s.main}>
-        {!selected && <p style={s.muted}>Select an institution to view its wallet.</p>}
+        {platformView && (
+          <>
+            <h2 style={{ marginTop: 0 }}>AI marking — all institutions</h2>
+            <AiFinanceAnalyticsPanel api={API} />
+          </>
+        )}
 
-        {selected && (
+        {!platformView && !selected && <p style={s.muted}>Select an institution to view its wallet.</p>}
+
+        {!platformView && selected && (
           <>
             <div style={{ marginBottom: 16 }}>
               <h2 style={{ margin: 0 }}>{institutionProfile?.schoolName || selectedRow?.institutionName || selected}</h2>
@@ -464,6 +482,10 @@ export default function FinanceDashboard() {
                 </div>
               ))}
             </div>
+
+            {tab === "AI Marking Analytics" && (
+              <AiFinanceAnalyticsPanel key={selected} api={API} tenantKey={selected} />
+            )}
 
             {tab === "Overview" && (
               <div style={s.card}>
