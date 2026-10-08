@@ -321,7 +321,7 @@ function SubjectMiniCard({ s }) {
   return (
     <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 13.5, color: C.textPri }}>{s.subject}</span>
+        <span style={{ fontWeight: 700, fontSize: 13.5, color: C.textPri }}>{s.subject}{s.paper_label ? ` — ${s.paper_label}` : ""}</span>
         <LifecycleBadge status={s.status} />
       </div>
       <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
@@ -367,6 +367,7 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
   const blank = {
     subject: "", class_id: "", e_assessment_id: "", exam_date: "", start_clock: "", end_clock: "",
     duration_minutes: "", venue: "", max_marks: "", instructions: "",
+    allow_concurrent: false, paper_label: "",
   };
   const [form, setForm] = useState(blank);
 
@@ -381,13 +382,17 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
       start_clock: startSplit.time, end_clock: endSplit.time,
       duration_minutes: s.duration_minutes || "", venue: s.venue || "", max_marks: s.max_marks || "",
       instructions: s.instructions || "",
+      allow_concurrent: !!s.allow_concurrent, paper_label: s.paper_label || "",
     });
     setFormOpen(true);
   };
 
   const save = async () => {
     if (!form.subject.trim()) return showToast("Subject / learning area is required", "error");
+    if (form.allow_concurrent && !form.paper_label.trim()) return showToast("Enter a paper name (e.g. Paper 1) for a concurrent paper", "error");
     const payload = {
+      allow_concurrent: !!form.allow_concurrent,
+      paper_label: form.paper_label.trim() || null,
       subject: form.subject.trim(),
       class_id: form.class_id || null,
       e_assessment_id: form.e_assessment_id || null,
@@ -488,6 +493,27 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
           <FieldLabel>Subject / Learning Area</FieldLabel>
           <ModalSelect value={form.subject} onChange={(v) => setForm((f) => ({ ...f, subject: v }))} options={subjectOptions} placeholder="Select a subject…" />
 
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, margin: "12px 0 4px", cursor: "pointer", fontSize: 13, color: C.textPri }}>
+            <input
+              type="checkbox"
+              checked={form.allow_concurrent}
+              onChange={(e) => setForm((f) => ({ ...f, allow_concurrent: e.target.checked }))}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              <strong>Concurrent / split paper</strong>
+              <span style={{ display: "block", fontSize: 11.5, color: C.textMuted }}>
+                Special occasions only: allows this subject to have more than one paper at the same time (e.g. Paper 1 and Paper 2).
+              </span>
+            </span>
+          </label>
+          {form.allow_concurrent && (
+            <>
+              <FieldLabel>Paper name</FieldLabel>
+              <ModalInput value={form.paper_label} onChange={(v) => setForm((f) => ({ ...f, paper_label: v }))} placeholder="e.g. Paper 1, Paper 2, Written, Practical" />
+            </>
+          )}
+
           <FieldLabel>Class (optional — leave blank for whole cohort)</FieldLabel>
           <ModalSelect value={form.class_id} onChange={(v) => setForm((f) => ({ ...f, class_id: v }))} options={classOptions} placeholder="Whole cohort" />
 
@@ -548,7 +574,8 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontWeight: 800, fontSize: 15, color: C.textPri }}>{s.subject}</span>
+            <span style={{ fontWeight: 800, fontSize: 15, color: C.textPri }}>{s.subject}{s.paper_label ? ` — ${s.paper_label}` : ""}</span>
+            {s.allow_concurrent ? <Chip text="Concurrent" tone="info" /> : null}
             <LifecycleBadge status={s.status} />
           </div>
           <div style={{ fontSize: 12.5, color: C.textMuted, marginTop: 6 }}>
@@ -876,7 +903,7 @@ function ExamTimetableTable({ byDay, print = false }) {
             {dayCells}
             <td style={{ ...cell, whiteSpace: "nowrap" }}>{st !== null ? _clock(st) : "—"}{en !== null ? ` – ${_clock(en)}` : ""}</td>
             <td style={{ ...cell, textAlign: "center", width: 40 }}>{sn}.</td>
-            <td style={{ ...cell, fontWeight: 700 }}>{s.subject}</td>
+            <td style={{ ...cell, fontWeight: 700 }}>{s.subject}{s.paper_label ? ` — ${s.paper_label}` : ""}</td>
             <td style={cell}>{_dur(dur)}</td>
             <td style={cell}>{s.venue || "—"}</td>
           </tr>
@@ -922,7 +949,7 @@ function TimetableListView({ byDay, unscheduled }) {
             <tbody>
               {unscheduled.map((s) => (
                 <tr key={s.id}>
-                  <Td style={{ fontWeight: 700, color: C.textPri }}>{s.subject}</Td>
+                  <Td style={{ fontWeight: 700, color: C.textPri }}>{s.subject}{s.paper_label ? ` — ${s.paper_label}` : ""}</Td>
                   <Td>{s.venue || "—"}</Td>
                   <Td><LifecycleBadge status={s.status} /></Td>
                 </tr>
@@ -1024,7 +1051,7 @@ function TimetableCalendarView({ byDay, sorted }) {
                     fontSize: 10.5, fontWeight: 600, color: C.accent, background: "var(--primary-tint)",
                     borderRadius: 5, padding: "2px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                   }}>
-                    {fmtTime(s.start_time)} {s.subject}
+                    {fmtTime(s.start_time)} {s.subject}{s.paper_label ? ` — ${s.paper_label}` : ""}
                   </span>
                 ))}
                 {extra > 0 && <span style={{ fontSize: 10, color: C.textMuted }}>+{extra} more</span>}
@@ -1046,7 +1073,7 @@ function TimetableCalendarView({ byDay, sorted }) {
               {selectedSessions.map((s) => (
                 <tr key={s.id}>
                   <Td>{fmtTime(s.start_time)}–{fmtTime(s.end_time)}</Td>
-                  <Td style={{ fontWeight: 700, color: C.textPri }}>{s.subject}</Td>
+                  <Td style={{ fontWeight: 700, color: C.textPri }}>{s.subject}{s.paper_label ? ` — ${s.paper_label}` : ""}</Td>
                   <Td>{s.duration_minutes ? `${s.duration_minutes} min` : "—"}</Td>
                   <Td>{s.venue || "—"}</Td>
                   <Td><LifecycleBadge status={s.status} /></Td>
@@ -1112,7 +1139,7 @@ function TimetablePrintSheet({ examination, byDay, unscheduled }) {
             <thead><tr><th>Subject</th><th>Venue</th></tr></thead>
             <tbody>
               {unscheduled.map((s) => (
-                <tr key={s.id}><td>{s.subject}</td><td>{s.venue || "—"}</td></tr>
+                <tr key={s.id}><td>{s.subject}{s.paper_label ? ` — ${s.paper_label}` : ""}</td><td>{s.venue || "—"}</td></tr>
               ))}
             </tbody>
           </table>
