@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
+import AiFinanceWalletPanel from "../../components/aiMarking/AiFinanceWalletPanel";
 import AiFinanceAnalyticsPanel from "../../components/aiMarking/AiFinanceAnalyticsPanel";
 
 /* =========================================================================
@@ -96,7 +97,7 @@ const s = {
   }),
 };
 
-const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "AI Marking Analytics"];
+const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "AI Marking Wallet", "AI Marking Analytics"];
 
 const EMPTY_INVOICE_FORM = { creditQuantity: "", unitPrice: "", currency: "KES", taxRate: "", dueDate: "", notes: "" };
 const EMPTY_PAY_FORM = { amount: "", currency: "KES", method: "", paymentReference: "", notes: "", invoiceId: "" };
@@ -482,6 +483,10 @@ export default function FinanceDashboard() {
                 </div>
               ))}
             </div>
+
+            {tab === "AI Marking Wallet" && (
+              <AiFinanceWalletPanel key={selected} api={API} tenantKey={selected} />
+            )}
 
             {tab === "AI Marking Analytics" && (
               <AiFinanceAnalyticsPanel key={selected} api={API} tenantKey={selected} />
