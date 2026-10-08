@@ -246,7 +246,7 @@ const BADGE_COLORS = [
 // how an admin configures the bands. Text comes straight from the
 // configured band's label.
 // Round to 1 decimal place, dropping trailing float noise (e.g. 74.3000001).
-const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+const round2 = (n) => Math.floor(Number(n) + 1e-9);
 
 /* ================= ANTI-FORGERY: DETERMINISTIC CHECKSUM =================
    A small FNV-1a style hash used purely to derive a printed, human
@@ -898,13 +898,13 @@ export default function StudentReport() {
               </div>
               <div style={styles.summaryRow}>
                 {[
-                  { label: "Average Score", value: `${Number(analytics.avg).toFixed(2)}%`, color: "#1d4ed8" },
+                  { label: "Average Score", value: `${Math.floor(Number(analytics.avg)+1e-9)}%`, color: "#1d4ed8" },
                   { label: "Overall Result", value: analytics.result || "—", color: "#15803d" },
                   { label: "Class Position", value: `#${classPosition}`, color: "#b45309" },
                   { label: "Overall Position", value: `#${overallPosition}`, color: "#7c3aed" },
                   { label: "Learning Areas", value: analytics.assessedCount, color: "#0f766e" },
-                  { label: "Highest Score", value: analytics.highest != null ? `${Number(analytics.highest).toFixed(2)}%` : "—", color: "#15803d" },
-                  { label: "Lowest Score", value: analytics.lowest != null ? `${Number(analytics.lowest).toFixed(2)}%` : "—", color: "#b91c1c" },
+                  { label: "Highest Score", value: analytics.highest != null ? `${Math.floor(Number(analytics.highest)+1e-9)}%` : "—", color: "#15803d" },
+                  { label: "Lowest Score", value: analytics.lowest != null ? `${Math.floor(Number(analytics.lowest)+1e-9)}%` : "—", color: "#b91c1c" },
                 ].map((m, i, arr) => (
                   <div
                     key={m.label}
@@ -949,7 +949,7 @@ export default function StudentReport() {
                               fontWeight: 700,
                               fontSize: 8,
                               color: s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c"
-                            }}>{Number(s.score).toFixed(2)}%</span>
+                            }}>{Math.floor(Number(s.score)+1e-9)}%</span>
                           ) : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
@@ -975,7 +975,7 @@ export default function StudentReport() {
                       labelled (this used to be a mis-labelled sum). */}
                   <tr style={styles.totalRow}>
                     <td style={styles.td} colSpan={2}>AVERAGE</td>
-                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{Number(analytics.avg).toFixed(2)}%</td>
+                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{Math.floor(Number(analytics.avg)+1e-9)}%</td>
                     <td style={{ ...styles.td, textAlign: "center" }}>
                       <span style={{
                         background: "#dbeafe",
@@ -1020,7 +1020,7 @@ export default function StudentReport() {
                   </div>
                 </div>
                 <p style={{ margin: "8px 2px 0", fontSize: 9.5, color: "#64748b" }}>
-                  {analytics.assessedCount} learning area{analytics.assessedCount === 1 ? "" : "s"} assessed, average {Number(analytics.avg).toFixed(2)}%.
+                  {analytics.assessedCount} learning area{analytics.assessedCount === 1 ? "" : "s"} assessed, average {Math.floor(Number(analytics.avg)+1e-9)}%.
                   {attentionSubjects.length > 0
                     ? ` ${attentionSubjects.length} learning area${attentionSubjects.length === 1 ? "" : "s"} fell below the ${passMark}% pass mark.`
                     : " All assessed learning areas met the configured pass mark."}

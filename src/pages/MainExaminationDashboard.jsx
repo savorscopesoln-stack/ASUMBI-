@@ -1704,6 +1704,23 @@ function SummaryReportView({ data }) {
         ]}
       />
 
+      {/* Gender Analysis — overall and per class, same per-candidate mean. */}
+      <SectionHeader title="Gender Analysis" />
+      <RowsTable
+        rows={data.gender_performance}
+        emptyText="No registered candidates found for this examination."
+        columns={[
+          { key: "class", label: "Class", strong: true },
+          { key: "gender", label: "Gender" },
+          { key: "registered", label: "Registered" },
+          { key: "scored", label: "Scored" },
+          { key: "mean", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
+          { key: "highest", label: "Highest %", fmt: (v) => (v != null ? `${v}%` : "—") },
+          { key: "lowest", label: "Lowest %", fmt: (v) => (v != null ? `${v}%` : "—") },
+          { key: "pass_rate", label: "Pass Rate", fmt: (v) => (v != null ? `${v}%` : "—") },
+        ]}
+      />
+
       {/* Class Performance — one row per class/stream, rolled up from the
           same per-candidate mean the Overall Performance ranking and the
           Nominal Roll below both use (§51). */}
@@ -2006,6 +2023,35 @@ function CandidateScheduleReportView({ data }) {
    Anything the backend reports as null renders as an honest "Not enough
    data" / "Unavailable" state (§50), never a blank or a guess.
 ═══════════════════════════════════════════════════════════ */
+/* ── PDF download bar for the Analytics tab. Each item hits the matching
+   existing /reports/.../pdf export route (same data as on-screen). ── */
+function AnalyticsPdfBar({ id, items, showToast }) {
+  const [busy, setBusy] = useState(null);
+  const run = async (item) => {
+    try {
+      setBusy(item.label);
+      const res = await API.get(`/main-exams/${id}${item.path}/pdf`, { responseType: "blob" });
+      const disposition = res.headers?.["content-disposition"] || "";
+      const match = /filename="?([^"]+)"?/i.exec(disposition);
+      downloadBlob(new Blob([res.data]), match?.[1] || `${item.label.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      console.error(err);
+      showToast?.("Failed to download PDF", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", margin: "0 0 14px" }}>
+      {items.map((it) => (
+        <ActionButton key={it.label} icon={<Download size={14} />} onClick={() => run(it)} disabled={!!busy}>
+          {busy === it.label ? "Downloading…" : `${it.label} PDF`}
+        </ActionButton>
+      ))}
+    </div>
+  );
+}
+
 function AnalyticsTab({ id, subjects, classes, showToast }) {
   const C = useC();
   const [mainData, setMainData] = useState(null);
@@ -2107,36 +2153,52 @@ function AnalyticsTab({ id, subjects, classes, showToast }) {
   // ── Drill-down: Subject ──
   if (drill?.type === "subject") {
     return (
-      <SubjectAnalyticsView
-        label={drill.label}
-        loading={drillLoading}
-        data={drillData}
-        onBack={closeDrill}
-      />
+      <div>
+        <AnalyticsPdfBar id={id} showToast={showToast} items={[
+          { label: "Subject Results", path: `/reports/subjects/${drill.key}/results` },
+          { label: "Question Analysis", path: `/reports/subjects/${drill.key}/question-analysis` },
+        ]} />
+        <SubjectAnalyticsView
+          label={drill.label}
+          loading={drillLoading}
+          data={drillData}
+          onBack={closeDrill}
+        />
+      </div>
     );
   }
 
   // ── Drill-down: Student ──
   if (drill?.type === "student") {
     return (
-      <StudentProfileView
-        loading={drillLoading}
-        data={drillData}
-        onBack={() => { setDrill(null); setDrillData(null); }}
-      />
+      <div>
+        <AnalyticsPdfBar id={id} showToast={showToast} items={[
+          { label: "Candidate Result", path: `/reports/students/${drill.key}/result` },
+        ]} />
+        <StudentProfileView
+          loading={drillLoading}
+          data={drillData}
+          onBack={() => { setDrill(null); setDrillData(null); }}
+        />
+      </div>
     );
   }
 
   // ── Drill-down: Class (§49 — Main Examination → Class → Student) ──
   if (drill?.type === "class") {
     return (
-      <ClassAnalyticsView
-        label={drill.label}
-        loading={drillLoading}
-        data={drillData}
-        onBack={closeDrill}
-        onSelectStudent={openStudent}
-      />
+      <div>
+        <AnalyticsPdfBar id={id} showToast={showToast} items={[
+          { label: "Class Results", path: `/reports/classes/${drill.key}/results` },
+        ]} />
+        <ClassAnalyticsView
+          label={drill.label}
+          loading={drillLoading}
+          data={drillData}
+          onBack={closeDrill}
+          onSelectStudent={openStudent}
+        />
+      </div>
     );
   }
 
@@ -2159,6 +2221,12 @@ function AnalyticsTab({ id, subjects, classes, showToast }) {
 
       {subView === "overview" && (
         <>
+          <AnalyticsPdfBar id={id} showToast={showToast} items={[
+            { label: "Summary", path: "/reports/summary" },
+            { label: "Class Ranking", path: "/reports/class-ranking" },
+            { label: "Overall Performance", path: "/reports/overall-performance" },
+            { label: "Grade Distribution", path: "/reports/grade-distribution" },
+          ]} />
           {/* ── Candidate statistics (§16) ── */}
           <SectionHeader title="Candidate Statistics" />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 8 }}>

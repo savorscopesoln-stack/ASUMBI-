@@ -214,18 +214,18 @@ export default function ResultsDashboard() {
 
       {/* ================= SUMMARY CARDS ================= */}
       <div style={styles.summary}>
-        <div style={styles.cardRed}>📊 Average: {avg.toFixed(2)}</div>
+        <div style={styles.cardRed}>📊 Average: {Math.floor(avg+1e-9)}</div>
         <div style={styles.cardYellow}>🏆 Best Class: {bestClass?.class}</div>
         <div style={styles.cardGreen}>📘 Best Subject: {bestSubject?.subject}</div>
       </div>
 
       {/* ================= CLASS / SUBJECT ================= */}
       <div style={styles.box}>
-        🏫 Class Result Leader: <b>{bestClass?.class}</b> ({bestClass?.mean?.toFixed(2)})
+        🏫 Class Result Leader: <b>{bestClass?.class}</b> ({fmt2(bestClass?.mean)})
       </div>
 
       <div style={styles.box}>
-        📘 Subject Top: <b>{bestSubject?.subject}</b> ({bestSubject?.mean?.toFixed(2)})
+        📘 Subject Top: <b>{bestSubject?.subject}</b> ({fmt2(bestSubject?.mean)})
       </div>
 
       {/* ================= LEADERBOARD ================= */}

@@ -240,7 +240,7 @@ export default function SchoolAIAnalytics() {
 
       {/* KPI */}
       <div style={styles.kpiRow}>
-        <KPI title="Mean" value={stats.mean.toFixed(2)} />
+        <KPI title="Mean" value={fmt2(stats.mean)} />
         <KPI title="Max" value={stats.max} />
         <KPI title="Min" value={stats.min} />
         <KPI title="Pass Rate" value={stats.passRate.toFixed(1) + "%"} />

@@ -231,7 +231,7 @@ export default function TeacherSubmissions() {
     const locked  = submissions.filter(isLocked).length;
     const scores  = submissions.map(s => Number(s.score)).filter(n => !isNaN(n) && n !== 0);
     const average = scores.length
-      ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
+      ? Math.floor(scores.reduce((a, b) => a + b, 0) / scores.length + 1e-9) : "—";
     const highest  = scores.length ? Math.max(...scores) : "—";
     const passRate = scores.length
       ? Math.round((scores.filter(n => n >= 50).length / scores.length) * 100) : "—";

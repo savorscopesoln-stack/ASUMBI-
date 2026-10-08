@@ -384,10 +384,10 @@ const submitQuestion = async () => {
   const deleteQuestion = async (qid) => {
     if (!window.confirm("Delete this question?")) return;
     try {
-      await API.delete(`/questions/${qid}`);
+      await API.delete(`/e-assessments/questions/${qid}`);
       fetchQuestions();
-    } catch {
-      alert("Failed to delete question");
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to delete question");
     }
   };
 

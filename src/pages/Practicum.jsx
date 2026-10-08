@@ -806,7 +806,7 @@ export default function Practicum() {
       a.assessments.sort((x, y) => x.number - y.number);
       const scored = a.assessments.filter((x) => x.score !== null && x.score !== undefined);
       const average = scored.length
-        ? (scored.reduce((sum, x) => sum + Number(x.score), 0) / scored.length).toFixed(1)
+        ? Math.floor(scored.reduce((sum, x) => sum + Number(x.score), 0) / scored.length + 1e-9)
         : null;
       return { ...a, average, completed: scored.length };
     });
