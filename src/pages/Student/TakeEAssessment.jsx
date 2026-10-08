@@ -1041,13 +1041,13 @@ export default function TakeEAssessment() {
        assessment in progress (reveal → verify → active). We trap it
        by keeping an extra history entry in front of the exam page and
        re-pushing it every time the student tries to pop back — so the
-       "Back" gesture never actually leaves this page. Leaving via
-       "locked" / "ended" / "error" is still allowed, since the exam is
-       no longer in progress at that point. During the active exam,
-       trying to go back also counts as a suspicious action, same as
-       switching tabs. ── */
+       "Back" gesture never actually leaves this page. Only the live exam
+       is protected: before it starts (loading / token screens) and once
+       it is locked / ended / errored the student can freely go back or
+       leave. During the active exam, trying to go back also counts as a
+       suspicious action, same as switching tabs. ── */
   useEffect(() => {
-    const blocking = ["loading", "reveal", "verify", "active"].includes(phase);
+    const blocking = phase === "active";
     if (!blocking) return;
 
     window.history.pushState(null, "", window.location.href);
@@ -1458,6 +1458,36 @@ export default function TakeEAssessment() {
     </button>
   );
 
+  // "Go to Home" — shown on the sign-in, locked and finished screens.
+  const HomeButton = ({ style }) => (
+    <button
+      type="button"
+      onClick={() => {
+        // An exam-only sign-in is fenced to this one exam page (see
+        // ProtectedRoute in App.jsx), so "/" would just bounce straight back
+        // here. End that exam-only session first. Nothing is unlocked by
+        // this: a lock is kept on the server and on this device, and the
+        // student signs in to the exam again to carry on once cleared.
+        try {
+          const u = JSON.parse(localStorage.getItem("user") || "{}");
+          if (u?.examOnly) {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+          }
+        } catch { /* unreadable user blob — just go home */ }
+        navigate("/");
+      }}
+      style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        marginTop: 10, padding: "10px 16px", borderRadius: 10, cursor: "pointer",
+        border: "1px solid var(--border)", background: "transparent",
+        color: "var(--text-secondary)", fontWeight: 700, fontSize: 13, ...style,
+      }}
+    >
+      <Home size={15} /> Go to Home
+    </button>
+  );
+
   /* ═══════════════════════════════════════════════════════════
      RENDER — states
   ═══════════════════════════════════════════════════════════ */
@@ -1525,6 +1555,7 @@ export default function TakeEAssessment() {
           >
             {examLoggingIn ? "Signing in…" : "Continue to Exam"}
           </button>
+          <HomeButton />
         </form>
         <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
@@ -1557,36 +1588,6 @@ export default function TakeEAssessment() {
       </div>
     );
   }
-
-  // "Go to Home" — shown on the locked and finished screens.
-  const HomeButton = ({ style }) => (
-    <button
-      type="button"
-      onClick={() => {
-        // An exam-only sign-in is fenced to this one exam page (see
-        // ProtectedRoute in App.jsx), so "/" would just bounce straight back
-        // here. End that exam-only session first. Nothing is unlocked by
-        // this: a lock is kept on the server and on this device, and the
-        // student signs in to the exam again to carry on once cleared.
-        try {
-          const u = JSON.parse(localStorage.getItem("user") || "{}");
-          if (u?.examOnly) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-          }
-        } catch { /* unreadable user blob — just go home */ }
-        navigate("/");
-      }}
-      style={{
-        width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-        marginTop: 10, padding: "10px 16px", borderRadius: 10, cursor: "pointer",
-        border: "1px solid var(--border)", background: "transparent",
-        color: "var(--text-secondary)", fontWeight: 700, fontSize: 13, ...style,
-      }}
-    >
-      <Home size={15} /> Go to Home
-    </button>
-  );
 
   if (phase === "ended") {
     const currentUser = (() => {

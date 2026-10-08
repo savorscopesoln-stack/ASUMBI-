@@ -228,7 +228,8 @@ const ProtectedRoute = ({
 const PublicRoute = ({
   children,
 }) => {
-  if (isLoggedIn()) {
+  // Exam-only sessions don't count as "logged in" here — see the "/" route.
+  if (isLoggedIn() && !getUser()?.examOnly) {
     const user = getUser();
 
     if (user?.mustChangePassword) {
@@ -325,7 +326,12 @@ export default function App() {
       <Route
         path="/"
         element={
-          isLoggedIn() ? (
+          // An exam-only sign-in (from /take-assessment/:id) is fenced to its
+          // one exam page, so bouncing it to a dashboard just throws it
+          // straight back into the exam — it could never reach the home page.
+          // Show the landing page instead; the exam session stays intact, so
+          // the student can still go back to their exam link and resume.
+          isLoggedIn() && !getUser()?.examOnly ? (
             <Navigate
               to={getDefaultRoute(getUser())}
               replace

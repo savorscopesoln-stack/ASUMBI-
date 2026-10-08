@@ -197,7 +197,10 @@ export default function Login() {
       user = null;
     }
 
-    if (token && user?.role) {
+    // An exam-only sign-in must not redirect away from the login page: every
+    // other route sends it straight back to the exam, so the student could
+    // never get here. Let them log in normally (or just leave).
+    if (token && user?.role && !user.examOnly) {
       if (user.mustChangePassword) {
         navigate("/force-password-change", { replace: true });
         return;
