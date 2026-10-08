@@ -315,6 +315,12 @@ const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
 // The session token is remembered next to the lock so a refreshed/reopened
 // locked screen can still check with the server whether an admin freed it.
 const tokenKey = (assessmentId) => `exam_token_${assessmentId}`;
+// Which attempt (1 = first sitting, 2+ = admin-granted resits) this browser's
+// saved answers belong to, so a resit never starts pre-filled with the
+// previous attempt's answers.
+const attemptKey = (assessmentId) => `exam_attempt_${assessmentId}`;
+// Answers are saved to the server this often while the exam is open.
+const AUTOSAVE_MS = 60 * 1000;
 
 // Ported from exam.html's answersKey/saveAnswer — the React build never
 // persisted in-progress answers anywhere, so a refresh mid-exam (which
@@ -557,6 +563,12 @@ export default function TakeEAssessment() {
 
   const heartbeatRef = useRef(null);
   const tokenRef = useRef("");
+  const answersRef = useRef({});          // always the latest answers (timers/intervals read this)
+  const handleSubmitRef = useRef(null);   // always the latest handleSubmit
+  const lastSavedRef = useRef("");        // JSON of the last answers the server confirmed
+  const submitRetryRef = useRef(0);
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [autosaveFailed, setAutosaveFailed] = useState(false);
   const [canResume, setCanResume] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [resumeMsg, setResumeMsg] = useState("");
@@ -653,6 +665,17 @@ export default function TakeEAssessment() {
       return;
     }
 
+    const attemptNo = String(startRes.data.attempt_no || 1);
+    const prevAttempt = localStorage.getItem(attemptKey(id));
+    if (prevAttempt !== null ? prevAttempt !== attemptNo : attemptNo !== "1") {
+      // A new attempt (admin-granted resit): drop anything left over from
+      // the previous one so it starts clean.
+      localStorage.removeItem(answersKey(id));
+      localStorage.removeItem(lockKey(id));
+    }
+    localStorage.setItem(attemptKey(id), attemptNo);
+    lastSavedRef.current = "";
+
     const t = startRes.data.token;
     tokenRef.current = t;
     localStorage.setItem(tokenKey(id), t);
@@ -737,12 +760,27 @@ export default function TakeEAssessment() {
     setQuestions(detail.data.questions || []);
     setSecondsLeft((detail.data.assessment.duration_minutes || 30) * 60);
 
-    // Restore any answers saved locally from an earlier attempt at this
-    // same assessment (e.g. a refresh mid-exam) — see answersKey above.
+    // Restore answers from (a) the server's autosave and (b) this browser's
+    // local copy. The local copy is newer when both exist, so it wins per
+    // question; the server copy fills in anything this device doesn't have
+    // (e.g. the student is back on a different device after an unlock).
+    let serverAnswers = {};
+    try {
+      const d = await API.get(`/e-assessments/${id}/draft`);
+      serverAnswers = d.data?.answers || {};
+      // Remaining time per the server clock (see getExamDraft). Null when
+      // the server couldn't work it out — keep the full-duration fallback.
+      if (typeof d.data?.seconds_left === "number") setSecondsLeft(d.data.seconds_left);
+    } catch { /* offline / no draft — fall back to the local copy */ }
+    let localAnswers = {};
     try {
       const saved = localStorage.getItem(answersKey(id));
-      if (saved) setAnswers(JSON.parse(saved));
+      if (saved) localAnswers = JSON.parse(saved) || {};
     } catch { /* ignore a corrupted/unreadable saved-answers blob */ }
+    const merged = { ...serverAnswers, ...localAnswers };
+    setAnswers(merged);
+    answersRef.current = merged;
+    lastSavedRef.current = "";
 
     setCurrentQuestionIndex(0);
     setPhase("active");
@@ -840,12 +878,51 @@ export default function TakeEAssessment() {
     return () => clearInterval(heartbeatRef.current);
   }, [phase, token, deviceId]);
 
+  /* ── autosave: every minute the current answers are saved to the DB. If
+       time runs out (or the device dies) before the student submits, the
+       server submits from this copy instead of the work being lost. ── */
+  const autosaveNow = useCallback(async () => {
+    const current = answersRef.current || {};
+    const hasAny = Object.values(current).some((v) => (typeof v === "string" ? v.trim() !== "" : !!v));
+    if (!hasAny) return;
+    const snapshot = JSON.stringify(current);
+    if (snapshot === lastSavedRef.current) return; // nothing new since the last save
+    try {
+      await API.post(`/e-assessments/${id}/autosave`, {
+        answers: current,
+        token: tokenRef.current || undefined,
+        device_id: deviceId,
+      });
+      lastSavedRef.current = snapshot;
+      setLastSavedAt(new Date());
+      setAutosaveFailed(false);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 409) { setErrorMsg(err.response?.data?.message || "This assessment has already been completed."); setPhase("ended"); return; }
+      if (status === 423) return; // locked — the heartbeat shows the lock screen
+      setAutosaveFailed(true);    // transient — the next tick retries
+    }
+  }, [id, deviceId]);
+
+  useEffect(() => {
+    if (phase !== "active") return;
+    const iv = setInterval(autosaveNow, AUTOSAVE_MS);
+    const onHidden = () => { if (document.visibilityState === "hidden") autosaveNow(); };
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", autosaveNow);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", autosaveNow);
+    };
+  }, [phase, autosaveNow]);
+
   /* ── countdown timer ── */
   useEffect(() => {
     if (phase !== "active") return;
     timerRef.current = setInterval(() => {
       setSecondsLeft((s) => {
-        if (s <= 1) { clearInterval(timerRef.current); handleSubmit(true); return 0; }
+        if (s <= 1) { clearInterval(timerRef.current); handleSubmitRef.current?.(true); return 0; }
         return s - 1;
       });
     }, 1000);
@@ -1274,6 +1351,7 @@ export default function TakeEAssessment() {
   const saveAnswer = (questionId, val) => {
     setAnswers((prev) => {
       const next = { ...prev, [questionId]: val };
+      answersRef.current = next;
       try { localStorage.setItem(answersKey(id), JSON.stringify(next)); } catch { /* storage full/unavailable — exam continues, just unsaved locally */ }
       return next;
     });
@@ -1289,6 +1367,26 @@ export default function TakeEAssessment() {
   const isAnswered = (q) => {
     const val = answers[q.id];
     return typeof val === "string" ? val.trim().length > 0 : !!val;
+  };
+
+  // Everything that happens once the server has the submission.
+  const finishAfterSubmit = (auto) => {
+    localStorage.removeItem(lockKey(id));
+    localStorage.removeItem(tokenKey(id));
+    localStorage.removeItem(answersKey(id));
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+
+    // Submitting the exam doubles as logging the student out — the
+    // Submit button is the last thing they should be able to do in
+    // this session, whether they were on an exam-only token or a full
+    // portal login, so both are cleared here exactly like the normal
+    // student logout (StudentLayout.jsx's logout()).
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setLoggedOut(true);
+
+    setPhase("ended");
+    setErrorMsg(auto ? "Time's up — your assessment was submitted automatically." : "Assessment submitted successfully.");
   };
 
   const handleSubmit = async (auto = false) => {
@@ -1307,28 +1405,29 @@ export default function TakeEAssessment() {
         }),
       };
       await API.post("/e-assessments/submit", payload);
-      localStorage.removeItem(lockKey(id));
-      localStorage.removeItem(tokenKey(id));
-      localStorage.removeItem(answersKey(id));
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-
-      // Submitting the exam doubles as logging the student out — the
-      // Submit button is the last thing they should be able to do in
-      // this session, whether they were on an exam-only token or a full
-      // portal login, so both are cleared here exactly like the normal
-      // student logout (StudentLayout.jsx's logout()).
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-      setLoggedOut(true);
-
-      setPhase("ended");
-      setErrorMsg(auto ? "Time's up — your assessment was submitted automatically." : "Assessment submitted successfully.");
+      finishAfterSubmit(auto);
     } catch (err) {
+      const status = err?.response?.status;
+      if (status === 409) {
+        // Already submitted — e.g. the server auto-submitted from the last
+        // autosave while this screen was offline. Nothing is lost; finish up.
+        finishAfterSubmit(auto);
+        return;
+      }
+      // Time ran out and the submit couldn't reach the server (network
+      // blip). Keep trying — the server's own autosave sweep is the backstop.
+      if (auto && status !== 423 && status !== 403 && submitRetryRef.current < 30) {
+        submitRetryRef.current += 1;
+        setErrorMsg("Time's up — saving your answers, reconnecting…");
+        setTimeout(() => handleSubmitRef.current?.(true), 8000);
+        return;
+      }
       setErrorMsg(err?.response?.data?.message || "Submission failed. Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
+  handleSubmitRef.current = handleSubmit;
 
   // Submitting logs the student out (see handleSubmit) — once that's
   // happened, finish the job by bouncing them off this screen and back
@@ -1623,6 +1722,13 @@ export default function TakeEAssessment() {
         <div>
           <h1 style={S.examTitle}>{assessment?.title}</h1>
           <p style={S.examMeta}>{assessment?.subject} · Token <strong style={{ color: "var(--primary)" }}>{token}</strong></p>
+          <p style={{ ...S.examMeta, fontSize: 11, marginTop: 2, color: autosaveFailed ? "var(--destructive)" : "var(--text-muted)" }}>
+            {autosaveFailed
+              ? "Autosave failed — will retry in a minute"
+              : lastSavedAt
+                ? `Answers autosaved at ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                : "Answers are autosaved every minute"}
+          </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ ...S.timer, color: secondsLeft < 60 ? "var(--destructive)" : "var(--text)" }}>

@@ -385,7 +385,21 @@ export default function TakeAssessmentPicker() {
                 </div>
               </div>
 
-              {a.my_submission_status === "released" ? (
+              {a.my_resit_allowed ? (
+                <>
+                  <div style={S.pendingBox}>
+                    <ClipboardCheck size={14} />
+                    Resit granted by your administrator{a.my_attempt_no > 1 ? ` (attempt ${a.my_attempt_no})` : ""}
+                  </div>
+                  <button
+                    className="assess-take-btn"
+                    style={S.takeBtn}
+                    onClick={() => navigate(`/take-assessment/${a.id}`)}
+                  >
+                    Start Resit
+                  </button>
+                </>
+              ) : a.my_submission_status === "released" ? (
                 <>
                   <div style={S.resultBox}>
                     <div>

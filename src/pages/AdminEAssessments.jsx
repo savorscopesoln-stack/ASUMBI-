@@ -269,6 +269,9 @@ export default function AdminEAssessments() {
   const [selected,     setSelected]     = useState(null);
   const [remarkModal,  setRemarkModal]  = useState(null);
   const [releaseModal, setReleaseModal] = useState(null);
+  const [unsubmitted,    setUnsubmitted]    = useState([]);   // sat the exam, nothing submitted
+  const [resitModal,     setResitModal]     = useState(null); // { student_id, e_assessment_id, student_name, assessment_title, hasPrevious }
+  const [resitPolicy,    setResitPolicy]    = useState("replace");
   const [answerModal,  setAnswerModal]  = useState(null);
   const [quickStats,   setQuickStats]   = useState(null);
 
@@ -293,7 +296,7 @@ export default function AdminEAssessments() {
   const loadAll = useCallback(async () => {
     try {
       setLoading(true);
-      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions, grading] =
+      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions, grading, noSub] =
         await Promise.all([
           API.get("/e-assessments"),
           API.get("/e-assessments/classes"),
@@ -305,6 +308,7 @@ export default function AdminEAssessments() {
           API.get("/e-assessments/admin/released-marks").catch(() => ({ data: [] })),
           API.get("/e-assessments/admin/exam-sessions").catch(() => ({ data: [] })),
           API.get("/e-assessments/grading-system").catch(() => ({ data: null })),
+          API.get("/e-assessments/admin/exam-sessions/unsubmitted").catch(() => ({ data: [] })),
         ]);
 
       setList(extract(assessments));
@@ -316,6 +320,7 @@ export default function AdminEAssessments() {
       setRemarkRequests(extract(remarks));
       setReleasedMarks(extract(released));
       setExamSessions(extract(sessions));
+      setUnsubmitted(extract(noSub));
       if (grading.data) {
         setGradingSystem(grading.data);
         setGradingDraft(grading.data);
@@ -798,6 +803,51 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
+  // Opens the resit dialog. `hasPrevious` = the student already has a
+  // submission, so there is a score policy to choose; a student who never
+  // submitted anything simply gets a first real attempt.
+  const grantResit = (row, hasPrevious = true) => {
+    setResitPolicy("replace");
+    setResitModal({
+      student_id: row.student_id,
+      e_assessment_id: row.e_assessment_id,
+      student_name: row.student_name || `Student #${row.student_id}`,
+      assessment_title: row.assessment_title || `Assessment #${row.e_assessment_id}`,
+      hasPrevious,
+    });
+  };
+
+  const confirmResit = async () => {
+    if (!resitModal) return;
+    try {
+      setSaving(true);
+      await API.post("/e-assessments/admin/resit", {
+        assessment_id: resitModal.e_assessment_id,
+        student_id: resitModal.student_id,
+        score_policy: resitModal.hasPrevious ? resitPolicy : "replace",
+      });
+      showToast(`Resit granted — ${resitModal.student_name} can now sign in and retake it`);
+      setResitModal(null);
+      loadAll();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not grant resit", "error");
+    } finally { setSaving(false); }
+  };
+
+  const cancelResit = async (sess) => {
+    if (!window.confirm("Cancel this resit? The student will keep their existing result.")) return;
+    try {
+      setSaving(true);
+      await API.post("/e-assessments/admin/resit/cancel", {
+        assessment_id: sess.e_assessment_id, student_id: sess.student_id,
+      });
+      showToast("Resit cancelled");
+      loadAll();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not cancel resit", "error");
+    } finally { setSaving(false); }
+  };
+
   const unlockSession = async (sessionId) => {
     try {
       setSaving(true);
@@ -1275,6 +1325,7 @@ export default function AdminEAssessments() {
                                   {sub.score != null && sub.status !== "released" && (
                                     <MiniBtn onClick={() => setReleaseModal(sub)} icon={<IconRocket size={12} />}>Release</MiniBtn>
                                   )}
+                                  <MiniBtn tone="warning" onClick={() => grantResit(sub)} icon={<IconZap size={12} />} title="Give this student another attempt">Allow resit</MiniBtn>
                                   <MiniBtn onClick={() => openAnswerModal(sub)} icon={<IconFileText size={12} />}>Answers</MiniBtn>
                                   <MiniBtn onClick={() => openQuickStats(sub)} neutral>View</MiniBtn>
                                 </div>
@@ -1449,16 +1500,61 @@ export default function AdminEAssessments() {
                       <Td>
                         {sess.status === "locked" && <Chip icon={<IconLock size={11} />} text="Locked" tone="danger" />}
                         {sess.status === "active" && <Chip icon={<IconDot size={7} />} text="Active" tone="success" />}
-                        {sess.status === "issued" && <Chip text="Not started" tone="neutral" />}
+                        {sess.status === "issued" && (sess.resit_allowed
+                          ? <Chip text={`Resit granted${sess.attempt_no > 1 ? ` · attempt ${sess.attempt_no}` : ""}`} tone="success" />
+                          : <Chip text="Not started" tone="neutral" />)}
                       </Td>
                       <Td style={{ color: C.textMuted, fontSize: 12, maxWidth: 220 }}>{sess.device_label || "—"}</Td>
                       <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(sess.last_heartbeat || sess.activated_at)}</Td>
                       <Td>
                         {sess.status === "locked" ? (
                           <MiniBtn tone="success" icon={<IconUnlock size={12} />} onClick={() => unlockSession(sess.id)}>Unlock</MiniBtn>
+                        ) : (sess.status === "issued" && sess.resit_allowed) ? (
+                          <MiniBtn tone="warning" onClick={() => cancelResit(sess)}>Cancel resit</MiniBtn>
                         ) : (
                           <span style={{ color: C.textMuted, fontSize: 12 }}>—</span>
                         )}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div style={{ ...sx.tabTopRow, marginTop: 28 }}>
+            <div>
+              <h2 style={sx.tabTitle}>Did Not Submit</h2>
+              <p style={sx.tabSub}>
+                Students who opened an exam but have no submission — for example time ran out with
+                nothing saved. Give them another go from here.
+              </p>
+            </div>
+          </div>
+
+          {unsubmitted.length === 0 ? (
+            <EmptyState icon={<IconCheckCircle size={26} />} text="No students are missing a submission." />
+          ) : (
+            <div className="dash-card" style={sx.tableWrap}>
+              <table style={sx.table}>
+                <thead>
+                  <tr>{["Student","Class","Assessment","Subject","Ended","Reason","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                </thead>
+                <tbody>
+                  {unsubmitted.map((u) => (
+                    <tr key={u.id} className="row-hover">
+                      <Td><span style={{ fontWeight: 600, color: C.textPri }}>{u.student_name || `#${u.student_id}`}</span></Td>
+                      <Td style={{ color: C.textSec, fontSize: 13 }}>{u.student_class || "—"}</Td>
+                      <Td style={{ color: C.textSec, fontSize: 13 }}>{u.assessment_title || "—"}</Td>
+                      <Td style={{ color: C.textSec, fontSize: 13 }}>{u.subject_name || "—"}</Td>
+                      <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(u.ended_at)}</Td>
+                      <Td>
+                        {u.auto_submitted
+                          ? <Chip text="Timed out — nothing saved" tone="danger" />
+                          : <Chip text="Session closed" tone="neutral" />}
+                      </Td>
+                      <Td>
+                        <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => grantResit(u, false)}>Allow resit</MiniBtn>
                       </Td>
                     </tr>
                   ))}
@@ -1860,6 +1956,57 @@ export default function AdminEAssessments() {
               {saving ? "…" : "Reject"}
             </MiniBtn>
           </div>
+        </Modal>
+      )}
+
+      {resitModal && (
+        <Modal title="Grant Resit" onClose={() => setResitModal(null)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            <DetailRow label="Student"    value={resitModal.student_name} />
+            <DetailRow label="Assessment" value={resitModal.assessment_title} />
+          </div>
+
+          {resitModal.hasPrevious ? (
+            <>
+              <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: C.textPri }}>Which score should count?</p>
+              {[
+                { v: "replace",   t: "Replace the old score",     d: "The resit result becomes the student's official mark, even if it is lower." },
+                { v: "keep_best", t: "Keep the higher of the two", d: "The official mark is whichever of the original and the resit is higher." },
+              ].map((o) => (
+                <label
+                  key={o.v}
+                  style={{
+                    display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", marginBottom: 8,
+                    borderRadius: 10, cursor: "pointer",
+                    border: `1px solid ${resitPolicy === o.v ? C.accent : C.border}`,
+                    background: resitPolicy === o.v ? "var(--primary-tint, transparent)" : "transparent",
+                  }}
+                >
+                  <input type="radio" name="resit-policy" checked={resitPolicy === o.v} onChange={() => setResitPolicy(o.v)} style={{ marginTop: 3 }} />
+                  <span>
+                    <span style={{ display: "block", fontWeight: 700, fontSize: 13, color: C.textPri }}>{o.t}</span>
+                    <span style={{ display: "block", fontSize: 12, color: C.textMuted, marginTop: 2 }}>{o.d}</span>
+                  </span>
+                </label>
+              ))}
+              <div style={{ ...sx.warningBox, marginTop: 4 }}>
+                <IconAlert size={15} style={{ color: C.warning, flexShrink: 0 }} />
+                The student keeps their current result until they submit the resit. The old attempt is archived, not deleted.
+              </div>
+            </>
+          ) : (
+            <div style={sx.warningBox}>
+              <IconAlert size={15} style={{ color: C.warning, flexShrink: 0 }} />
+              This student has no submission for this assessment. They will get a fresh token and can sit it now.
+            </div>
+          )}
+
+          <SaveButton
+            onClick={confirmResit}
+            loading={saving}
+            label="Grant Resit"
+            icon={<IconZap size={15} />}
+          />
         </Modal>
       )}
 
