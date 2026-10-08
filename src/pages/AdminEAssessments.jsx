@@ -9,6 +9,8 @@ import {
   Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle,
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
+import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
+import { fmt2 } from "../utils/format";
 
 /* ═══════════════════════════════════════════════════════════
    DESIGN TOKENS — shared with the rest of the app
@@ -211,6 +213,26 @@ const computeGrade = (score, total = 100, gradingSystem = null) => {
   if (pct >= 60) return "C";
   if (pct >= 50) return "D";
   return "E";
+};
+
+// Total marks as a plain number — defends against a duplicated column
+// arriving as an array (see fixTotalMarks on the server).
+const toTotal = (v) => {
+  const n = Array.isArray(v) ? Number(v[v.length - 1]) : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 100;
+};
+
+// Everything the Released Marks tab shows for one mark, derived from the
+// saved grading system (bands, grade codes, labels and pass mark).
+const markInfo = (m, gradingSystem) => {
+  const total = toTotal(m.total_marks);
+  const pct = m.score != null ? (Number(m.score) / total) * 100 : null;
+  const g = pct != null ? getGradeForScore(pct, gradingSystem) : null;
+  const pass = pct != null && pct >= getPassMark(gradingSystem);
+  const gradeText = g
+    ? (g.grade && g.label && String(g.grade) !== String(g.label) ? `${g.grade} · ${g.label}` : (g.label || g.grade || "—"))
+    : "—";
+  return { total, pct, g, pass, gradeText };
 };
 
 const fmtDate = (d) =>
@@ -1426,15 +1448,20 @@ export default function AdminEAssessments() {
               <p style={sx.tabSub}>Marks published to student academic records</p>
             </div>
             <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
-              releasedMarks.map((m) => ({
-                student: m.student_name, assessment: m.assessment_title,
-                subject: m.subject_name, score: m.score, total: m.total_marks,
-                grade: computeGrade(m.score, m.total_marks, gradingSystem), released: m.released_at,
-              })), "released-marks.csv"
+              releasedMarks.map((m) => {
+                const info = markInfo(m, gradingSystem);
+                return {
+                  student: m.student_name, assessment: m.assessment_title,
+                  subject: m.subject_name, score: m.score, total: info.total,
+                  percentage: info.pct != null ? fmt2(info.pct) : "",
+                  grade: info.g?.grade ?? "", grade_label: info.g?.label ?? "",
+                  released: m.released_at,
+                };
+              }), "released-marks.csv"
             )}>Export CSV</ActionButton>
           </div>
 
-          {releasedMarks.length > 0 && <GradeDistribution marks={releasedMarks} />}
+          {releasedMarks.length > 0 && <GradeDistribution marks={releasedMarks} gradingSystem={gradingSystem} />}
 
           {releasedMarks.length === 0 ? (
             <EmptyState icon={<IconBarChart size={26} />} text="No marks have been released yet." />
@@ -1446,16 +1473,15 @@ export default function AdminEAssessments() {
                 </thead>
                 <tbody>
                   {releasedMarks.map((m) => {
-                    const total = m.total_marks || 100;
-                    const pct   = m.score != null ? Math.round((m.score / total) * 100) : null;
+                    const { total, pct, pass, gradeText } = markInfo(m, gradingSystem);
                     return (
                       <tr key={m.id} className="row-hover">
                         <Td><span style={{ fontWeight: 600, color: C.textPri }}>{m.student_name || m.student_id}</span></Td>
                         <Td style={{ color: C.textSec }}>{m.assessment_title || "—"}</Td>
                         <Td style={{ color: C.textSec }}>{m.subject_name || "—"}</Td>
                         <Td><ScoreBadge score={m.score} total={total} /></Td>
-                        <Td style={{ color: pct >= 50 ? C.success : C.danger, fontWeight: 700 }}>{pct != null ? `${pct}%` : "—"}</Td>
-                        <Td><GradeBadge grade={computeGrade(m.score, total, gradingSystem)} /></Td>
+                        <Td style={{ color: pct == null ? C.textMuted : pass ? C.success : C.danger, fontWeight: 700 }}>{pct != null ? `${fmt2(pct)}%` : "—"}</Td>
+                        <Td><Chip text={gradeText} tone={pct == null ? "neutral" : pass ? "success" : "danger"} /></Td>
                         <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDate(m.released_at)}</Td>
                       </tr>
                     );
@@ -2120,36 +2146,42 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onStats, onEdi
 /* ═══════════════════════════════════════════════════════════
    GRADE DISTRIBUTION
 ═══════════════════════════════════════════════════════════ */
-function GradeDistribution({ marks }) {
+function GradeDistribution({ marks, gradingSystem }) {
   const C = useC();
-  const computeGradeLocal = (score, total = 100) => {
-    if (score == null) return "—";
-    const pct = (score / (total || 100)) * 100;
-    if (pct >= 80) return "A"; if (pct >= 70) return "B";
-    if (pct >= 60) return "C"; if (pct >= 50) return "D"; return "E";
-  };
-  const counts = { A: 0, B: 0, C: 0, D: 0, E: 0 };
-  marks.forEach((m) => { const g = computeGradeLocal(m.score, m.total_marks); if (counts[g] !== undefined) counts[g]++; });
-  const max = Math.max(...Object.values(counts), 1);
+  // One bar per band of the CURRENT grading system (highest band first),
+  // so the chart always matches Admin → Grading System.
+  const bands = [...(gradingSystem?.gradeBands?.length ? gradingSystem.gradeBands : DEFAULT_GRADING_SYSTEM.gradeBands)]
+    .sort((a, b) => Number(b.minScore) - Number(a.minScore));
+  const counts = bands.map(() => 0);
+  marks.forEach((m) => {
+    if (m.score == null) return;
+    const pct = (Number(m.score) / toTotal(m.total_marks)) * 100;
+    const idx = bands.findIndex((band) => pct >= Number(band.minScore));
+    counts[idx >= 0 ? idx : bands.length - 1]++;
+  });
+  const max = Math.max(...counts, 1);
 
   return (
     <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 24 }}>
       <p style={{ margin: "0 0 18px", fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>
         Grade Distribution — {marks.length} Release{marks.length !== 1 ? "s" : ""}
       </p>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 14, height: 90 }}>
-        {Object.entries(counts).map(([grade, count]) => (
-          <div key={grade} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: C.textSec }}>{count}</span>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 14, minHeight: 110 }}>
+        {bands.map((band, i) => (
+          <div key={`${band.grade}-${band.minScore}-${i}`} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.textSec }}>{counts[i]}</span>
             <div style={{
-              width: "100%", minHeight: count > 0 ? 4 : 0,
-              height: `${(count / max) * 64}px`,
+              width: "100%", minHeight: counts[i] > 0 ? 4 : 0,
+              height: `${(counts[i] / max) * 64}px`,
               background: C.textPri,
-              opacity: 0.55 + (grade === "A" ? 0.3 : grade === "B" ? 0.15 : 0),
+              opacity: 0.55 + Math.max(0, 0.3 - i * 0.06),
               borderRadius: "3px 3px 0 0",
               transition: "height 0.3s ease",
             }} />
-            <span style={{ fontSize: 13, fontWeight: 800, color: C.textPri }}>{grade}</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: C.textPri }}>{band.grade || band.label}</span>
+            {band.grade && band.label && String(band.grade) !== String(band.label) && (
+              <span style={{ fontSize: 10, color: C.textMuted, textAlign: "center", lineHeight: 1.2 }}>{band.label}</span>
+            )}
           </div>
         ))}
       </div>
