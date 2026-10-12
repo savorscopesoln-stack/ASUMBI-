@@ -363,6 +363,18 @@ export default function AdminEAssessments() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // Device Locks tab: refresh quietly so a fresh lock (and its reason) shows up without a manual reload.
+  useEffect(() => {
+    if (activeTab !== 4) return;
+    const iv = setInterval(async () => {
+      try {
+        const r = await API.get("/e-assessments/admin/exam-sessions");
+        setExamSessions(extract(r));
+      } catch { /* try again next tick */ }
+    }, 10000);
+    return () => clearInterval(iv);
+  }, [activeTab]);
+
   /* ═══════════════════════════════════════════════════════════
      HANDLERS  (unchanged logic)
   ═══════════════════════════════════════════════════════════ */
@@ -657,9 +669,7 @@ export default function AdminEAssessments() {
     setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, [key]: next } : x)));
     try {
       await API.put(`/e-assessments/admin/${a.id}/security`, { [key]: next });
-      showToast(key === "use_device_cache"
-        ? (next ? "Local device caching turned ON" : "Local device caching turned OFF for this assessment")
-        : (next ? "Security feature turned ON" : "Security feature turned OFF for this assessment"));
+      showToast(next ? "Security feature turned ON" : "Security feature turned OFF for this assessment");
     } catch (err) {
       setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, [key]: cur } : x)));
       showToast(err?.response?.data?.message || "Failed to change the security setting", "error");
@@ -1622,7 +1632,7 @@ export default function AdminEAssessments() {
             <div className="dash-card" style={sx.tableWrap}>
               <table style={sx.table}>
                 <thead>
-                  <tr>{["Student","Assessment","Token","Status","Device","Last Activity","Photos","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                  <tr>{["Student","Assessment","Token","Status","Lock reason","Device","Last Activity","Photos","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
                 </thead>
                 <tbody>
                   {examSessions.map((sess) => (
@@ -1636,6 +1646,9 @@ export default function AdminEAssessments() {
                         {sess.status === "issued" && (sess.resit_allowed
                           ? <Chip text={`Resit granted${sess.attempt_no > 1 ? ` · attempt ${sess.attempt_no}` : ""}`} tone="success" />
                           : <Chip text="Not started" tone="neutral" />)}
+                      </Td>
+                      <Td style={{ color: sess.status === "locked" ? C.danger || "#dc2626" : C.textMuted, fontSize: 12, maxWidth: 260, fontWeight: sess.status === "locked" ? 600 : 400 }}>
+                        {sess.status === "locked" ? (<>{sess.lock_reason || "No reason recorded"}{sess.locked_at ? <div style={{ fontWeight: 400, color: C.textMuted, marginTop: 2 }}>{fmtDateTime(sess.locked_at)}</div> : null}</>) : "—"}
                       </Td>
                       <Td style={{ color: C.textMuted, fontSize: 12, maxWidth: 220 }}>{sess.device_label || "—"}</Td>
                       <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(sess.last_heartbeat || sess.activated_at)}</Td>
@@ -2334,23 +2347,22 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDeskto
       </div>
 
       <div style={{ marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginBottom: 2 }}>Exam security &amp; storage</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginBottom: 2 }}>Exam security</div>
         <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 6 }}>
-          ON = the feature applies to students. Turn a switch OFF for this assessment only when needed.
+          ON = students must comply. Turn a switch OFF for this assessment only when needed.
         </div>
         {[
           ["require_camera", "Camera required", "Students must allow their camera (eye-gaze monitoring and photos)."],
           ["require_screen_share", "Entire-screen sharing required", "Students must share their whole screen before starting and throughout."],
-          ["require_fullscreen", "Fullscreen required", "Exam opens fullscreen; leaving it counts as a violation."],
+          ["require_fullscreen", "Fullscreen required", "Exam must run in fullscreen. Window mode or minimising locks the student out at once and the reason is shown under Device Locks."],
           ["lock_on_violations", "Lock after repeated violations", "Switching tabs/windows or blocked shortcuts 3 times locks the exam."],
-          ["use_device_cache", "Local device caching", "Paper and answers are kept on the student's device so a refresh or dropped connection loses nothing."],
         ].map(([key, label, desc]) => {
           const on = a[key] == null ? true : !!a[key];
           return (
             <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "6px 0", borderTop: `1px solid ${C.border}` }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: C.textPri }}>{label}</div>
-                <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.35 }}>{on ? desc : (key === "use_device_cache" ? "OFF: nothing is stored on the device. Answers are saved to the server every few seconds and the exam needs a live connection." : "Turned OFF for this assessment.")}</div>
+                <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.35 }}>{on ? desc : "Turned OFF for this assessment."}</div>
               </div>
               <button
                 type="button"
