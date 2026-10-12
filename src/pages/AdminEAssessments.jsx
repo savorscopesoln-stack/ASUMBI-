@@ -664,6 +664,23 @@ export default function AdminEAssessments() {
     }
   };
 
+  // Safe Exam Browser: the on/off switch and/or the allowed Config/Browser Exam Keys.
+  // Resolves true on success so the card can react (e.g. clear its "unsaved" hint).
+  const saveSeb = async (a, payload) => {
+    const prev = { require_seb: a.require_seb, seb_keys: a.seb_keys };
+    if ("enabled" in payload) setList((p) => p.map((x) => (x.id === a.id ? { ...x, require_seb: payload.enabled } : x)));
+    try {
+      const res = await API.put(`/e-assessments/admin/${a.id}/seb`, payload);
+      setList((p) => p.map((x) => (x.id === a.id ? { ...x, require_seb: res.data.require_seb, seb_keys: res.data.seb_keys } : x)));
+      showToast(res.data?.message || "Saved");
+      return true;
+    } catch (err) {
+      setList((p) => p.map((x) => (x.id === a.id ? { ...x, ...prev } : x)));
+      showToast(err?.response?.data?.message || "Failed to save the Safe Exam Browser setting", "error");
+      return false;
+    }
+  };
+
   // Bulk version of Activate / Start / Stop — runs the same per-item logic
   // as startAssessment/stopAssessment above, but across every selected
   // assessment in one go, with a single summary toast at the end instead
@@ -1312,6 +1329,7 @@ export default function AdminEAssessments() {
                   onStop={() => stopAssessment(a)}
                   onToggleDesktop={() => toggleDesktopOnly(a)}
                   onToggleSecurity={(key) => toggleSecurity(a, key)}
+                  onSaveSeb={(payload) => saveSeb(a, payload)}
                   onStats={() => openQuickStats(a)}
                   onAttendance={() => downloadAttendance(a)}
                   attendanceBusy={attendanceBusy === a.id}
@@ -2190,7 +2208,10 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDesktop, onToggleSecurity, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDesktop, onToggleSecurity, onSaveSeb, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
+  const [sebKeysDraft, setSebKeysDraft] = React.useState(a.seb_keys || "");
+  const [sebSaving, setSebSaving] = React.useState(false);
+  const sebKeysDirty = (sebKeysDraft || "").trim() !== (a.seb_keys || "").trim();
   const C = useC();
   // Exact-match against "Active" — kept in lockstep with the backend's
   // toggle-active logic (see eAssessment.controller.js), which only ever
@@ -2257,6 +2278,57 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDeskto
         >
           <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
         </button>
+      </div>
+
+      <div style={{ marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${a.require_seb ? C.accent : C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri }}>Require Safe Exam Browser</div>
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4 }}>
+              {a.require_seb ? "Students can only sign in and sit this exam from Safe Exam Browser." : "Any browser can take this exam."}
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!a.require_seb}
+            aria-label="Require Safe Exam Browser"
+            title={a.require_seb ? "Turn off: allow normal browsers" : "Turn on: only Safe Exam Browser (works instantly, even mid-exam)"}
+            onClick={() => onSaveSeb({ enabled: !a.require_seb })}
+            style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: "none", padding: 2, cursor: "pointer", background: a.require_seb ? C.accent : C.border, display: "flex", alignItems: "center", justifyContent: a.require_seb ? "flex-end" : "flex-start", transition: "background .15s" }}
+          >
+            <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
+          </button>
+        </div>
+        {a.require_seb && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 4 }}>
+              SEB Config Key or Browser Exam Key — one per line (64 characters each). From the SEB Config Tool (Exam tab) after saving your .seb file.
+            </div>
+            <textarea
+              value={sebKeysDraft}
+              onChange={(e) => setSebKeysDraft(e.target.value)}
+              rows={3}
+              spellCheck={false}
+              placeholder="e.g. 3f9a…(64 hex characters)"
+              style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 11, padding: 6, borderRadius: 6, border: `1px solid ${C.border}`, background: C.bg || "transparent", color: C.textPri, resize: "vertical" }}
+            />
+            {!(a.seb_keys || "").trim() && (
+              <div style={{ fontSize: 11, color: C.danger || "#b45309", marginTop: 4, lineHeight: 1.4 }}>
+                No key saved: only a basic check is applied, which a determined student can fake. Add a key for real protection.
+              </div>
+            )}
+            <div style={{ marginTop: 6 }}>
+              <MiniBtn
+                tone="success"
+                disabled={sebSaving || !sebKeysDirty}
+                onClick={async () => { setSebSaving(true); await onSaveSeb({ keys: sebKeysDraft }); setSebSaving(false); }}
+              >
+                {sebSaving ? "Saving…" : "Save keys"}
+              </MiniBtn>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
@@ -2725,7 +2797,7 @@ const ACTION_LABELS = {
   open_script_for_marking: "Opened script to mark", open_all_scripts_for_marking: "Opened all scripts to mark",
   save_marking: "Saved marking", save_marking_bulk: "Saved marking (bulk)",
   review_assessment: "Approved / rejected assessment", start_stop_assessment: "Started / stopped assessment",
-  set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", unlock_device: "Unlocked device", grant_resit: "Granted resit",
+  set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", set_seb_settings: "Safe Exam Browser setting", unlock_device: "Unlocked device", grant_resit: "Granted resit",
   cancel_resit: "Cancelled resit", assign_teacher: "Assigned teacher", assign_submission: "Assigned script",
   bulk_assign_submissions: "Assigned scripts (bulk)", review_remark_request: "Reviewed remark request",
   release_marks: "Released marks", bulk_release_marks: "Released marks (bulk)", update_grading_system: "Updated grading system",
