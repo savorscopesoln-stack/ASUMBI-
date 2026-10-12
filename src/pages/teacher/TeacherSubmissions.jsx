@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import API from "../../api";
+import API, { resolvePhotoUrl } from "../../api";
+import { useTheme } from "../../context/ThemeContext";
 import jsPDF from "jspdf";
 
 /* ─────────────────────────────────────────────
