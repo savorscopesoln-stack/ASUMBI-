@@ -649,6 +649,21 @@ export default function AdminEAssessments() {
     }
   };
 
+  // Per-assessment exam-security switches (camera, screen share, fullscreen,
+  // violation lock-out). Missing/NULL = ON. Optimistic, rolled back on error.
+  const toggleSecurity = async (a, key) => {
+    const cur = a[key] == null ? true : !!a[key];
+    const next = !cur;
+    setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, [key]: next } : x)));
+    try {
+      await API.put(`/e-assessments/admin/${a.id}/security`, { [key]: next });
+      showToast(next ? "Security feature turned ON" : "Security feature turned OFF for this assessment");
+    } catch (err) {
+      setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, [key]: cur } : x)));
+      showToast(err?.response?.data?.message || "Failed to change the security setting", "error");
+    }
+  };
+
   // Bulk version of Activate / Start / Stop — runs the same per-item logic
   // as startAssessment/stopAssessment above, but across every selected
   // assessment in one go, with a single summary toast at the end instead
@@ -1296,6 +1311,7 @@ export default function AdminEAssessments() {
                   onStart={() => startAssessment(a)}
                   onStop={() => stopAssessment(a)}
                   onToggleDesktop={() => toggleDesktopOnly(a)}
+                  onToggleSecurity={(key) => toggleSecurity(a, key)}
                   onStats={() => openQuickStats(a)}
                   onAttendance={() => downloadAttendance(a)}
                   attendanceBusy={attendanceBusy === a.id}
@@ -2174,7 +2190,7 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDesktop, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDesktop, onToggleSecurity, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
   const C = useC();
   // Exact-match against "Active" — kept in lockstep with the backend's
   // toggle-active logic (see eAssessment.controller.js), which only ever
@@ -2241,6 +2257,40 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDeskto
         >
           <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
         </button>
+      </div>
+
+      <div style={{ marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginBottom: 2 }}>Exam security</div>
+        <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 6 }}>
+          ON = students must comply. Turn a switch OFF for this assessment only when needed.
+        </div>
+        {[
+          ["require_camera", "Camera required", "Students must allow their camera (eye-gaze monitoring and photos)."],
+          ["require_screen_share", "Entire-screen sharing required", "Students must share their whole screen before starting and throughout."],
+          ["require_fullscreen", "Fullscreen required", "Exam opens fullscreen; leaving it counts as a violation."],
+          ["lock_on_violations", "Lock after repeated violations", "Switching tabs/windows or blocked shortcuts 3 times locks the exam."],
+        ].map(([key, label, desc]) => {
+          const on = a[key] == null ? true : !!a[key];
+          return (
+            <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "6px 0", borderTop: `1px solid ${C.border}` }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.textPri }}>{label}</div>
+                <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.35 }}>{on ? desc : "Turned OFF for this assessment."}</div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={on}
+                aria-label={label}
+                title={on ? "Turn off for this assessment" : "Turn on"}
+                onClick={() => onToggleSecurity(key)}
+                style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: "none", padding: 2, cursor: "pointer", background: on ? C.accent : C.border, display: "flex", alignItems: "center", justifyContent: on ? "flex-end" : "flex-start", transition: "background .15s" }}
+              >
+                <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
@@ -2675,7 +2725,7 @@ const ACTION_LABELS = {
   open_script_for_marking: "Opened script to mark", open_all_scripts_for_marking: "Opened all scripts to mark",
   save_marking: "Saved marking", save_marking_bulk: "Saved marking (bulk)",
   review_assessment: "Approved / rejected assessment", start_stop_assessment: "Started / stopped assessment",
-  set_desktop_only: "Desktop-only switch", unlock_device: "Unlocked device", grant_resit: "Granted resit",
+  set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", unlock_device: "Unlocked device", grant_resit: "Granted resit",
   cancel_resit: "Cancelled resit", assign_teacher: "Assigned teacher", assign_submission: "Assigned script",
   bulk_assign_submissions: "Assigned scripts (bulk)", review_remark_request: "Reviewed remark request",
   release_marks: "Released marks", bulk_release_marks: "Released marks (bulk)", update_grading_system: "Updated grading system",
