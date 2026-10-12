@@ -657,7 +657,9 @@ export default function AdminEAssessments() {
     setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, [key]: next } : x)));
     try {
       await API.put(`/e-assessments/admin/${a.id}/security`, { [key]: next });
-      showToast(next ? "Security feature turned ON" : "Security feature turned OFF for this assessment");
+      showToast(key === "use_device_cache"
+        ? (next ? "Local device caching turned ON" : "Local device caching turned OFF for this assessment")
+        : (next ? "Security feature turned ON" : "Security feature turned OFF for this assessment"));
     } catch (err) {
       setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, [key]: cur } : x)));
       showToast(err?.response?.data?.message || "Failed to change the security setting", "error");
@@ -2332,22 +2334,23 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDeskto
       </div>
 
       <div style={{ marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginBottom: 2 }}>Exam security</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginBottom: 2 }}>Exam security &amp; storage</div>
         <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 6 }}>
-          ON = students must comply. Turn a switch OFF for this assessment only when needed.
+          ON = the feature applies to students. Turn a switch OFF for this assessment only when needed.
         </div>
         {[
           ["require_camera", "Camera required", "Students must allow their camera (eye-gaze monitoring and photos)."],
           ["require_screen_share", "Entire-screen sharing required", "Students must share their whole screen before starting and throughout."],
           ["require_fullscreen", "Fullscreen required", "Exam opens fullscreen; leaving it counts as a violation."],
           ["lock_on_violations", "Lock after repeated violations", "Switching tabs/windows or blocked shortcuts 3 times locks the exam."],
+          ["use_device_cache", "Local device caching", "Paper and answers are kept on the student's device so a refresh or dropped connection loses nothing."],
         ].map(([key, label, desc]) => {
           const on = a[key] == null ? true : !!a[key];
           return (
             <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "6px 0", borderTop: `1px solid ${C.border}` }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: C.textPri }}>{label}</div>
-                <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.35 }}>{on ? desc : "Turned OFF for this assessment."}</div>
+                <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.35 }}>{on ? desc : (key === "use_device_cache" ? "OFF: nothing is stored on the device. Answers are saved to the server every few seconds and the exam needs a live connection." : "Turned OFF for this assessment.")}</div>
               </div>
               <button
                 type="button"
