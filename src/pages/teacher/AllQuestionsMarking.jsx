@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import API, { BASE_URL, resolvePhotoUrl } from "../../api";
-import { sanitizeHtml } from "../../utils/safeHtml";
+import API, { BASE_URL } from "../../api";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 import {
   ClipboardCheck,

@@ -6,7 +6,7 @@ import {
   Search, X, RefreshCw, Download, Plus, UserPlus, ChevronDown, ArrowLeft, Pencil, Trash2,
   Check, CheckCircle2, AlertTriangle, Lock, Unlock, Zap, Rocket, MessageSquare, Mail,
   BarChart3, ClipboardList, FileText, Award, LockKeyhole, Users, Inbox, Clock, TrendingUp,
-  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle, Smartphone, ShieldCheck, Camera,
+  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle,
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
