@@ -45,12 +45,35 @@ const API = axios.create({
 // ================================
 // REQUEST INTERCEPTOR (TOKEN)
 // ================================
+// Describes this device to the server for the exam "Desktop only" switch
+// (backend/utils/deviceRestriction.js). The User-Agent alone can't tell an
+// iPad from a MacBook (iPadOS sends a Mac UA), so we also report touch
+// support, which real Macs don't have.
+const clientDeviceHeader = () => {
+  try {
+    return JSON.stringify({
+      platform: navigator.platform || "",
+      uaPlatform: navigator.userAgentData?.platform || "",
+      mobile: navigator.userAgentData?.mobile === true,
+      maxTouchPoints: navigator.maxTouchPoints || 0,
+    });
+  } catch {
+    return "";
+  }
+};
+
 API.interceptors.request.use(
   (req) => {
     const token = localStorage.getItem("token");
 
     if (token) {
       req.headers.Authorization = `Bearer ${token}`;
+    }
+
+    // Only exam traffic needs it — keeps every other request unchanged.
+    if (String(req.url || "").startsWith("/e-assessments")) {
+      const dev = clientDeviceHeader();
+      if (dev) req.headers["X-Client-Device"] = dev;
     }
 
     return req;
@@ -87,6 +110,18 @@ API.interceptors.response.use(
       if (window.location.pathname !== "/complete-profile") {
         window.location.href = "/complete-profile";
       }
+      return Promise.reject(error);
+    }
+
+    // ============================
+    // DEVICE NOT ALLOWED (exam "Desktop only" switch)
+    // A 403, but NOT an auth failure — the session is fine, this phone/
+    // tablet just isn't permitted. Must not wipe the token or bounce to
+    // ?expired=1 (the block below does both for any other 403): the exam
+    // page shows its own "use a laptop" screen, and if the admin switches
+    // the restriction off the student can carry straight on.
+    // ============================
+    if (status === 403 && error.response?.data?.code === "DEVICE_NOT_ALLOWED") {
       return Promise.reject(error);
     }
 

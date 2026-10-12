@@ -8,6 +8,11 @@ import {
   Camera, CameraOff, Eye, EyeOff, ChevronLeft, ChevronRight, Home,
 } from "lucide-react";
 
+// The admin's "Desktop only" switch rejects phones/tablets with a 403 whose
+// body carries this code (see backend/utils/deviceRestriction.js).
+const isDeviceBlocked = (err) =>
+  err?.response?.status === 403 && err?.response?.data?.code === "DEVICE_NOT_ALLOWED";
+
 /* ═══════════════════════════════════════════════════════════
    IMPORTANT — HONEST SCOPE NOTE
    ─────────────────────────────────────────────────────────
@@ -647,7 +652,10 @@ export default function TakeEAssessment() {
 
     if (finalErr) {
       const err = finalErr;
-      if (err?.response?.status === 423) {
+      if (isDeviceBlocked(err)) {
+        setErrorMsg(err.response.data.message);
+        setPhase("devicedenied");
+      } else if (err?.response?.status === 423) {
         const reason = err?.response?.data?.message || "This exam token is already in use on another device.";
         localStorage.setItem(lockKey(id), reason);
         setLockReason(reason);
@@ -871,8 +879,18 @@ export default function TakeEAssessment() {
         } else if (res.data.ended) {
           setPhase("ended");
         }
-      } catch {
-        /* transient network errors are ignored; heartbeat retries next tick */
+      } catch (err) {
+        // Admin switched "Desktop only" on while this phone/tablet was
+        // mid-exam: stop the exam UI here. The session is NOT locked, so
+        // nothing is lost — answers were already autosaved, and the student
+        // can carry on from a Windows/Mac computer.
+        if (isDeviceBlocked(err)) {
+          clearInterval(heartbeatRef.current);
+          clearInterval(timerRef.current);
+          setErrorMsg(err.response.data.message);
+          setPhase("devicedenied");
+        }
+        /* other (transient network) errors are ignored; heartbeat retries next tick */
       }
     }, HEARTBEAT_MS);
     return () => clearInterval(heartbeatRef.current);
@@ -900,6 +918,7 @@ export default function TakeEAssessment() {
       const status = err?.response?.status;
       if (status === 409) { setErrorMsg(err.response?.data?.message || "This assessment has already been completed."); setPhase("ended"); return; }
       if (status === 423) return; // locked — the heartbeat shows the lock screen
+      if (isDeviceBlocked(err)) return; // desktop-only switch — the heartbeat shows the screen
       setAutosaveFailed(true);    // transient — the next tick retries
     }
   }, [id, deviceId]);
@@ -1408,6 +1427,13 @@ export default function TakeEAssessment() {
       finishAfterSubmit(auto);
     } catch (err) {
       const status = err?.response?.status;
+      if (isDeviceBlocked(err)) {
+        clearInterval(heartbeatRef.current);
+        clearInterval(timerRef.current);
+        setErrorMsg(err.response.data.message);
+        setPhase("devicedenied");
+        return;
+      }
       if (status === 409) {
         // Already submitted — e.g. the server auto-submitted from the last
         // autosave while this screen was offline. Nothing is lost; finish up.
@@ -1567,6 +1593,32 @@ export default function TakeEAssessment() {
       <div className="dash-main" style={S.stateWrap}>
         <div className="dash-spin" style={S.spinner} />
         <p style={{ color: "var(--text-secondary)", fontWeight: 600, fontSize: 13.5 }}>Preparing your exam session…</p>
+        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+      </div>
+    );
+  }
+
+  if (phase === "devicedenied") {
+    return (
+      <div className="dash-main" style={S.stateWrap}>
+        <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 460 }}>
+          <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
+            <AlertTriangle size={26} color="var(--destructive)" />
+          </div>
+          <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>
+            This device isn't allowed
+          </h2>
+          <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 8px" }}>
+            {errorMsg || "This exam can only be taken on a Windows or Mac laptop/desktop computer. Phones and tablets are not allowed."}
+          </p>
+          <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13, textAlign: "center", margin: "0 0 16px" }}>
+            Open this exam link on a Windows or Mac computer and sign in again. Your answers so far were saved.
+          </p>
+          <button style={S.primaryBtn} onClick={() => window.location.reload()}>
+            Try again
+          </button>
+          <HomeButton />
+        </div>
         <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
       </div>
     );

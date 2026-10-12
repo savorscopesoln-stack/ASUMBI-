@@ -249,6 +249,7 @@ const TABS = [
   { label: "Device Locks",    icon: IconLockKeyhole },
   { label: "Local Sync",      icon: IconServer },
   { label: "Grading System",  icon: IconGraduationCap },
+  { label: "Activity Log",    icon: IconFileText },
 ];
 
 /* ═══════════════════════════════════════════════════════════
@@ -603,6 +604,23 @@ export default function AdminEAssessments() {
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Failed to stop assessment", "error");
+    }
+  };
+
+  // "Desktop only" switch — restricts the assessment to Windows/Mac laptops
+  // & desktops (phones/tablets rejected). Sets an explicit on/off value, and
+  // works at any time, including mid-exam: a phone already inside the exam is
+  // kicked out on its next heartbeat (~10s). Applied optimistically so the
+  // switch feels instant, rolled back if the server refuses.
+  const toggleDesktopOnly = async (a) => {
+    const next = !a.desktop_only;
+    setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, desktop_only: next } : x)));
+    try {
+      const res = await API.put(`/e-assessments/admin/${a.id}/desktop-only`, { enabled: next });
+      showToast(res.data?.message || (next ? "Desktop-only ON" : "Desktop-only OFF"));
+    } catch (err) {
+      setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, desktop_only: !next } : x)));
+      showToast(err?.response?.data?.message || "Failed to change the device restriction", "error");
     }
   };
 
@@ -1228,6 +1246,7 @@ export default function AdminEAssessments() {
                   )}
                   onStart={() => startAssessment(a)}
                   onStop={() => stopAssessment(a)}
+                  onToggleDesktop={() => toggleDesktopOnly(a)}
                   onStats={() => openQuickStats(a)}
                   onEdit={() => openEditModal(a)}
                   onDelete={() => deleteAssessments([a.id])}
@@ -1592,6 +1611,8 @@ export default function AdminEAssessments() {
       )}
 
       {activeTab === 5 && <LocalSyncPanel assessments={list} />}
+
+      {activeTab === 7 && <ActivityLogTab assessments={list} />}
 
       {activeTab === 6 && (
         <GradingSystemTab
@@ -2082,7 +2103,7 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onStats, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDesktop, onStats, onEdit, onDelete, onAddQuestions }) {
   const C = useC();
   // Exact-match against "Active" — kept in lockstep with the backend's
   // toggle-active logic (see eAssessment.controller.js), which only ever
@@ -2129,6 +2150,26 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onStats, onEdi
         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: isActive ? C.success : C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
           <IconDot size={7} /> {isActive ? "Active" : "Inactive"}
         </span>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${a.desktop_only ? C.accent : C.border}` }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri }}>Desktop only</div>
+          <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4 }}>
+            {a.desktop_only ? "Only Windows & Mac computers. Phones/tablets blocked." : "Any device can take this exam."}
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!a.desktop_only}
+          aria-label="Desktop only — block phones and tablets"
+          title={a.desktop_only ? "Turn off: allow any device" : "Turn on: only Windows & Mac laptops/desktops (works instantly, even mid-exam)"}
+          onClick={onToggleDesktop}
+          style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: "none", padding: 2, cursor: "pointer", background: a.desktop_only ? C.accent : C.border, display: "flex", alignItems: "center", justifyContent: a.desktop_only ? "flex-end" : "flex-start", transition: "background .15s" }}
+        >
+          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
+        </button>
       </div>
 
       <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
@@ -2434,6 +2475,159 @@ function GradingSystemTab({
             )}
           </tbody>
         </table>
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ACTIVITY LOG — who did what, and when (student / teacher / admin)
+   Backed by GET /e-assessments/admin/activity-log
+   (see backend/utils/eAssessmentActivityLog.js)
+═══════════════════════════════════════════════════════════ */
+const ACTION_LABELS = {
+  exam_login: "Exam login", start_exam: "Started exam", activate_exam_device: "Exam device bound",
+  heartbeat: "Heartbeat problem", autosave: "Autosave problem", device_locked_by_student_device: "Device locked",
+  end_exam_session: "Ended exam session", submit_exam: "Submitted exam", violation_photo_captured: "Evidence photo captured",
+  request_remark: "Requested remark", open_exam: "Opened exam",
+  create_assessment: "Created assessment", update_assessment: "Edited assessment", add_question: "Added question",
+  update_question: "Edited question", delete_question: "Deleted question", import_questions_docx: "Imported questions (Word)",
+  bulk_add_questions: "Bulk-added questions", upload_cover_page: "Uploaded cover page", delete_cover_page: "Removed cover page",
+  upload_question_images: "Uploaded question image", delete_question_image: "Deleted question image",
+  open_script_for_marking: "Opened script to mark", open_all_scripts_for_marking: "Opened all scripts to mark",
+  save_marking: "Saved marking", save_marking_bulk: "Saved marking (bulk)",
+  review_assessment: "Approved / rejected assessment", start_stop_assessment: "Started / stopped assessment",
+  set_desktop_only: "Desktop-only switch", unlock_device: "Unlocked device", grant_resit: "Granted resit",
+  cancel_resit: "Cancelled resit", assign_teacher: "Assigned teacher", assign_submission: "Assigned script",
+  bulk_assign_submissions: "Assigned scripts (bulk)", review_remark_request: "Reviewed remark request",
+  release_marks: "Released marks", bulk_release_marks: "Released marks (bulk)", update_grading_system: "Updated grading system",
+  delete_assessments: "Deleted assessments", delete_assignments: "Deleted assignments",
+};
+const OUTCOME_TONE = { success: "success", rejected: "warning", conflict: "warning", locked: "danger", device_blocked: "danger", denied: "danger", error: "danger" };
+
+function ActivityLogTab({ assessments }) {
+  const C = useC();
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [expanded, setExpanded] = useState(null);
+  const [f, setF] = useState({ assessmentId: "", portal: "", outcome: "", actor: "", from: "", to: "" });
+  const [applied, setApplied] = useState(f);
+  const LIMIT = 50;
+
+  const params = (extra = {}) => {
+    const p = { ...extra };
+    Object.entries(applied).forEach(([k, v]) => { if (v) p[k] = v; });
+    return p;
+  };
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true); setErr("");
+    API.get("/e-assessments/admin/activity-log", { params: params({ page, limit: LIMIT }) })
+      .then((r) => { if (!alive) return; setRows(r.data.rows || []); setTotal(r.data.total || 0); })
+      .catch((e) => { if (alive) setErr(e?.response?.data?.message || "Failed to load the activity log"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, applied]);
+
+  const apply = () => { setPage(1); setApplied({ ...f }); };
+  const reset = () => { const blank = { assessmentId: "", portal: "", outcome: "", actor: "", from: "", to: "" }; setF(blank); setPage(1); setApplied(blank); };
+
+  const exportCsv = async () => {
+    try {
+      const r = await API.get("/e-assessments/admin/activity-log", { params: params({ format: "csv" }), responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url; a.download = `e-assessment-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch { setErr("CSV export failed"); }
+  };
+
+  const input = { padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 13, minWidth: 0 };
+  const pages = Math.max(1, Math.ceil(total / LIMIT));
+  const prettyDetails = (d) => { try { return JSON.stringify(JSON.parse(d), null, 2); } catch { return d || ""; } };
+
+  return (
+    <>
+      <div style={{ marginBottom: 14 }}>
+        <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800, color: C.textPri }}>Activity Log</h2>
+        <p style={{ margin: 0, fontSize: 13, color: C.textSec }}>
+          Every student, teacher and admin action in the exam module — who did it, what, when, from where. Passwords and students' answers are never recorded.
+        </p>
+      </div>
+
+      <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 14, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+        <select style={{ ...input, maxWidth: 220 }} value={f.assessmentId} onChange={(e) => setF({ ...f, assessmentId: e.target.value })}>
+          <option value="">All assessments</option>
+          {(assessments || []).map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+        </select>
+        <select style={input} value={f.portal} onChange={(e) => setF({ ...f, portal: e.target.value })}>
+          <option value="">All portals</option><option value="student">Student</option><option value="teacher">Teacher</option><option value="admin">Admin</option>
+        </select>
+        <select style={input} value={f.outcome} onChange={(e) => setF({ ...f, outcome: e.target.value })}>
+          <option value="">Any outcome</option><option value="success">Success</option><option value="rejected">Rejected</option>
+          <option value="device_blocked">Device blocked</option><option value="locked">Locked</option><option value="denied">Denied</option><option value="error">Error</option>
+        </select>
+        <input style={{ ...input, width: 160 }} placeholder="Name or username" value={f.actor} onChange={(e) => setF({ ...f, actor: e.target.value })} onKeyDown={(e) => e.key === "Enter" && apply()} />
+        <input style={input} type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} title="From" />
+        <input style={input} type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} title="To" />
+        <ActionButton primary onClick={apply}>Apply</ActionButton>
+        <ActionButton onClick={reset}>Reset</ActionButton>
+        <ActionButton onClick={exportCsv}>Export CSV</ActionButton>
+      </div>
+
+      {err && <p style={{ color: C.danger, fontSize: 13 }}>{err}</p>}
+
+      {!loading && rows.length === 0 && !err ? (
+        <EmptyState icon={<IconFileText size={26} />} text="No activity matches these filters yet." />
+      ) : (
+        <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflowX: "auto", opacity: loading ? 0.6 : 1 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+            <thead>
+              <tr>{["Time", "Portal", "Who", "Action", "Outcome", "Assessment", "Student", "IP"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <React.Fragment key={r.id}>
+                  <tr className="row-hover" style={{ cursor: "pointer" }} onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
+                    <Td style={{ fontSize: 12, color: C.textSec, whiteSpace: "nowrap" }}>{new Date(r.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" })}</Td>
+                    <Td><Chip text={r.portal || "—"} uppercase tone={r.portal === "admin" ? "accent" : "neutral"} /></Td>
+                    <Td>
+                      <div style={{ fontWeight: 600, color: C.textPri, fontSize: 13 }}>{r.actor_name || r.actor_username || "—"}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{r.actor_username && r.actor_name ? `${r.actor_username} · ` : ""}{r.actor_role}</div>
+                    </Td>
+                    <Td style={{ fontSize: 13, color: C.textPri }}>{ACTION_LABELS[r.action] || r.action}</Td>
+                    <Td><Chip text={String(r.outcome || "").replace("_", " ")} tone={OUTCOME_TONE[r.outcome] || "neutral"} /></Td>
+                    <Td style={{ fontSize: 12, color: C.textSec }}>{r.assessment_title || (r.assessment_id ? `#${r.assessment_id}` : "—")}</Td>
+                    <Td style={{ fontSize: 12, color: C.textSec }}>{r.student_name || r.student_username || (r.student_id ? `#${r.student_id}` : "—")}</Td>
+                    <Td style={{ fontSize: 12, color: C.textMuted, fontFamily: "monospace" }}>{r.ip || "—"}</Td>
+                  </tr>
+                  {expanded === r.id && (
+                    <tr>
+                      <td colSpan={8} style={{ padding: "10px 14px 14px", background: C.bgAlt, borderBottom: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6, wordBreak: "break-word" }}>Device: {r.device || "—"} · HTTP {r.http_status ?? "—"}</div>
+                        <pre style={{ margin: 0, fontSize: 12, color: C.textSec, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{prettyDetails(r.details) || "No extra details."}</pre>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, fontSize: 13, color: C.textSec }}>
+        <span>{total.toLocaleString()} event{total === 1 ? "" : "s"}</span>
+        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ActionButton onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</ActionButton>
+          Page {page} of {pages}
+          <ActionButton onClick={() => setPage((p) => Math.min(pages, p + 1))}>Next</ActionButton>
+        </span>
       </div>
     </>
   );
