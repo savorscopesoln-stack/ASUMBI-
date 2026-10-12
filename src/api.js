@@ -49,9 +49,26 @@ const API = axios.create({
 // (backend/utils/deviceRestriction.js). The User-Agent alone can't tell an
 // iPad from a MacBook (iPadOS sends a Mac UA), so we also report touch
 // support, which real Macs don't have.
+// A stable id for THIS browser (same key the exam page uses to bind a token to
+// a device). Sent so that when a phone is rejected, an admin can allow that
+// one device from the Device Locks tab.
+const examDeviceId = () => {
+  try {
+    let id = localStorage.getItem("exam_device_id");
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      localStorage.setItem("exam_device_id", id);
+    }
+    return id;
+  } catch {
+    return "";
+  }
+};
+
 const clientDeviceHeader = () => {
   try {
     return JSON.stringify({
+      deviceId: examDeviceId(),
       platform: navigator.platform || "",
       uaPlatform: navigator.userAgentData?.platform || "",
       mobile: navigator.userAgentData?.mobile === true,
