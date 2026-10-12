@@ -806,6 +806,7 @@ export default function TakeEAssessment() {
   // themselves, so it can never be taken silently. idle | sharing | off
   const [screenStatus, setScreenStatus] = useState("idle");
   const [screenSurface, setScreenSurface] = useState(""); // monitor | window | browser
+  const [screenError, setScreenError] = useState("");
   const [faceVisible, setFaceVisible] = useState(true); // true = "looking at the screen" (see isLookingAtScreen)
   const [faceAbsentSeconds, setFaceAbsentSeconds] = useState(0); // seconds of continuous not-looking-at-screen
   const [photosCaptured, setPhotosCaptured] = useState(0); // evidence photos sent this session — for the student-facing widget only
@@ -1121,6 +1122,13 @@ export default function TakeEAssessment() {
   const handleVerifySubmit = async (e) => {
     e.preventDefault();
     if (activating) return;
+
+    // Screen sharing (entire screen) must be live before the exam can start.
+    const liveTrack = screenStreamRef.current?.getVideoTracks?.()[0];
+    if (screenStatus !== "sharing" || !liveTrack || liveTrack.readyState !== "live") {
+      setVerifyError("You must share your entire screen before you can start the exam.");
+      return;
+    }
 
     if (verifyInput.trim().toUpperCase() !== token.trim().toUpperCase()) {
       setVerifyError("That doesn't match the token you were shown. Check it and try again.");
@@ -1835,24 +1843,54 @@ export default function TakeEAssessment() {
   };
 
   // Must be called from a click handler — browsers require a user gesture.
+  // Sharing the ENTIRE screen is mandatory: a tab or a single window is
+  // rejected here and the stream is stopped straight away.
   const startScreenShare = async () => {
-    if (!navigator.mediaDevices?.getDisplayMedia) { setScreenStatus("off"); return; }
+    setScreenError("");
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setScreenStatus("off");
+      setScreenError("This browser can't share the screen. Use Chrome or Edge on a laptop or desktop computer.");
+      return;
+    }
     try {
       if (screenStreamRef.current) stopScreenShare();
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "monitor" }, audio: false });
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "monitor" },
+        audio: false,
+        // Chromium hints: offer whole screens, hide this tab, and stop the
+        // student switching to another surface mid-share. Ignored elsewhere.
+        monitorTypeSurfaces: "include",
+        selfBrowserSurface: "exclude",
+        surfaceSwitching: "exclude",
+      });
       const track = stream.getVideoTracks()[0];
+      const surface = track?.getSettings?.().displaySurface || "";
+      // "monitor" = entire screen. If the browser doesn't report the surface
+      // at all (older Firefox/Safari) it can't be verified, so it is allowed.
+      if (surface && surface !== "monitor") {
+        stream.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+        setScreenSurface(surface);
+        setScreenStatus("off");
+        setScreenError(`You shared a ${surface === "browser" ? "browser tab" : "window"}. Please choose "Entire Screen" and try again.`);
+        return;
+      }
       const vid = document.createElement("video");
       vid.muted = true; vid.playsInline = true; vid.srcObject = stream;
       try { await vid.play(); } catch { /* frames still decode once metadata loads */ }
       screenStreamRef.current = stream;
       screenVideoRef.current = vid;
-      setScreenSurface(track?.getSettings?.().displaySurface || "");
+      setScreenSurface(surface);
       setScreenStatus("sharing");
-      // The student can stop sharing from the browser bar at any time.
-      if (track) track.onended = () => { screenStreamRef.current = null; screenVideoRef.current = null; setScreenStatus("off"); };
+      // If the student stops sharing from the browser bar, the exam is blocked
+      // (see the overlay in the active phase) until they share again.
+      if (track) track.onended = () => {
+        screenStreamRef.current = null; screenVideoRef.current = null;
+        setScreenStatus("off");
+        setScreenError("Screen sharing stopped. Share your entire screen to continue.");
+      };
     } catch {
-      // Declined / cancelled — the exam works exactly the same without it.
       setScreenStatus("off");
+      setScreenError("Screen sharing is required. Click the button and choose \"Entire Screen\".");
     }
   };
 
@@ -2256,30 +2294,31 @@ export default function TakeEAssessment() {
             This exam can optionally use your camera for eye-gaze monitoring. If your browser asks
             for camera permission, you can allow or decline it — either way, your exam will start.
           </p>
-          {typeof navigator !== "undefined" && navigator.mediaDevices?.getDisplayMedia && (
-            <div style={{ margin: "0 0 16px", padding: 12, border: "1px dashed var(--border)", borderRadius: "var(--radius-sm)", textAlign: "center" }}>
-              <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 8px" }}>
-                <MonitorUp size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
-                Optional: share your <strong>entire screen</strong> so a screenshot is saved with each camera
-                photo for your teacher to review. Your browser will ask you to choose the screen. Your exam
-                starts either way.
-              </p>
-              {screenStatus === "sharing" ? (
-                <>
-                  <p style={{ color: "var(--success)", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>
-                    Screen sharing is on{screenSurface && screenSurface !== "monitor" ? " — but you shared a " + (screenSurface === "browser" ? "tab" : "window") + ", not the entire screen" : ""}.
-                  </p>
-                  <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={startScreenShare} disabled={activating}>
-                    {screenSurface && screenSurface !== "monitor" ? "Choose Entire Screen" : "Change screen"}
-                  </button>
-                </>
-              ) : (
+          <div style={{ margin: "0 0 16px", padding: 12, border: `1px dashed ${screenStatus === "sharing" ? "var(--success)" : "var(--destructive)"}`, borderRadius: "var(--radius-sm)", textAlign: "center" }}>
+            <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 8px" }}>
+              <MonitorUp size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              <strong>Required:</strong> you must share your <strong>entire screen</strong> (not a single
+              window or tab) before the exam can start. When your browser asks, pick the
+              "Entire Screen" option and press Share.
+            </p>
+            {screenStatus === "sharing" ? (
+              <>
+                <p style={{ color: "var(--success)", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>
+                  Entire screen is being shared.
+                </p>
                 <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={startScreenShare} disabled={activating}>
-                  <MonitorUp size={14} /> {screenStatus === "off" ? "Try sharing screen again" : "Share my screen"}
+                  Change screen
                 </button>
-              )}
-            </div>
-          )}
+              </>
+            ) : (
+              <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={startScreenShare} disabled={activating}>
+                <MonitorUp size={14} /> {screenError ? "Try sharing screen again" : "Share my entire screen"}
+              </button>
+            )}
+            {screenError && screenStatus !== "sharing" && (
+              <p style={{ color: "var(--destructive)", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>{screenError}</p>
+            )}
+          </div>
           <input
             style={S.verifyInput}
             value={verifyInput}
@@ -2290,8 +2329,8 @@ export default function TakeEAssessment() {
             autoCapitalize="characters"
           />
           {verifyError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{verifyError}</p>}
-          <button style={{ ...S.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim()}>
-            {activating ? "Starting…" : "Start Exam"}
+          <button style={{ ...S.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim() || screenStatus !== "sharing"}>
+            {activating ? "Starting…" : screenStatus !== "sharing" ? "Share your screen to start" : "Start Exam"}
           </button>
           <button
             type="button"
@@ -2352,6 +2391,24 @@ export default function TakeEAssessment() {
         <div style={S.infoStrip}>
           <CameraOff size={16} color="var(--info)" style={{ flexShrink: 0 }} />
           <span>Camera monitoring is off for this session. Your exam will continue as normal.</span>
+        </div>
+      )}
+
+      {screenStatus !== "sharing" && !submitting && (
+        <div style={S.lockOverlay}>
+          <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}>
+            <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
+              <MonitorUp size={26} color="var(--destructive)" />
+            </div>
+            <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Screen sharing required</h2>
+            <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>
+              Your entire screen must stay shared for the whole exam. Share it again to continue. Your timer keeps running.
+            </p>
+            {screenError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "0 0 12px", textAlign: "center" }}>{screenError}</p>}
+            <button type="button" style={{ ...S.primaryBtn, justifyContent: "center" }} onClick={startScreenShare}>
+              <MonitorUp size={14} /> Share my entire screen
+            </button>
+          </div>
         </div>
       )}
 
