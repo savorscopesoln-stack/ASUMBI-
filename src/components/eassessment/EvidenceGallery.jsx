@@ -9,10 +9,6 @@ import { Camera, X, Monitor } from "lucide-react";
    moment (if the student shared their screen), the question they were on and
    what they had answered at that point. Uses CSS variables only, so it works
    in every theme. */
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 853e0a02d5414d2f5c3111bc55b224aa8926e443
 export default function EvidenceGallery({ evidence, title, emptyText, questionId }) {
   const [detail, setDetail] = useState(null); // { kind: "profile" } | { kind: "photo", photo }
   const [bigShot, setBigShot] = useState(null);
@@ -28,19 +24,6 @@ export default function EvidenceGallery({ evidence, title, emptyText, questionId
   const hiddenCount = filtering ? allPhotos.length - photos.length : 0;
 
   if (!profileUrl && !photos.length && !hiddenCount) {
-<<<<<<< HEAD
-=======
-=======
-export default function EvidenceGallery({ evidence, title, emptyText }) {
-  const [detail, setDetail] = useState(null); // { kind: "profile" } | { kind: "photo", photo }
-  const [bigShot, setBigShot] = useState(null);
-
-  const profileUrl = resolvePhotoUrl(evidence?.profile_photo_url);
-  const photos = evidence?.photos || [];
-
-  if (!profileUrl && !photos.length) {
->>>>>>> 875f706a1a1dacd88126fcb262f50b95bf8d9f60
->>>>>>> 853e0a02d5414d2f5c3111bc55b224aa8926e443
     return (
       <div style={st.empty}>
         <Camera size={13} /> {emptyText || "No camera photos were captured for this student."}
@@ -77,10 +60,6 @@ export default function EvidenceGallery({ evidence, title, emptyText }) {
         ))}
       </div>
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 853e0a02d5414d2f5c3111bc55b224aa8926e443
       {questionId != null && !photos.length && !showAll && (
         <div style={st.empty}><Camera size={13} /> No camera photos were taken while this question was open.</div>
       )}
@@ -90,11 +69,6 @@ export default function EvidenceGallery({ evidence, title, emptyText }) {
         </button>
       )}
 
-<<<<<<< HEAD
-=======
-=======
->>>>>>> 875f706a1a1dacd88126fcb262f50b95bf8d9f60
->>>>>>> 853e0a02d5414d2f5c3111bc55b224aa8926e443
       {detail && (
         <div style={st.overlay} onClick={() => { setDetail(null); setBigShot(null); }}>
           <div style={st.box} onClick={(e) => e.stopPropagation()}>
@@ -164,14 +138,7 @@ const st = {
   thumb: { width: 96, height: 72, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)", background: "#000", display: "block" },
   badge: { position: "absolute", right: 3, bottom: 3, background: "rgba(0,0,0,0.7)", color: "#fff", borderRadius: 4, padding: "2px 3px", display: "flex" },
   caption: { fontSize: 10, color: "var(--text-secondary)" },
-<<<<<<< HEAD
   linkBtn: { marginTop: 6, background: "none", border: "none", padding: 0, fontSize: 11, color: "var(--primary)", cursor: "pointer", textDecoration: "underline" },
-=======
-<<<<<<< HEAD
-  linkBtn: { marginTop: 6, background: "none", border: "none", padding: 0, fontSize: 11, color: "var(--primary)", cursor: "pointer", textDecoration: "underline" },
-=======
->>>>>>> 875f706a1a1dacd88126fcb262f50b95bf8d9f60
->>>>>>> 853e0a02d5414d2f5c3111bc55b224aa8926e443
   empty: { display: "flex", alignItems: "center", gap: 6, margin: "8px 0", fontSize: 12, color: "var(--text-secondary)" },
   overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 },
   box: { position: "relative", width: "100%", maxWidth: 860, maxHeight: "92vh", overflowY: "auto", background: "var(--card)", color: "var(--text)", borderRadius: 10, padding: 14 },
