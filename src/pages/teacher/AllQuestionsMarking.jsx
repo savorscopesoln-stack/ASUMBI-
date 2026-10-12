@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
+<<<<<<< HEAD
 import API, { BASE_URL } from "../../api";
+=======
+import API, { BASE_URL, resolvePhotoUrl } from "../../api";
+>>>>>>> 661d57f9538deffcbb79292c74d09561bc0c8d86
 import { sanitizeHtml } from "../../utils/safeHtml";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 import EvidenceGallery from "../../components/eassessment/EvidenceGallery";

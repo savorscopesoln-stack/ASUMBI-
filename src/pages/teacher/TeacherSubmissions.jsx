@@ -1,7 +1,11 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+<<<<<<< HEAD
 import API from "../../api";
 import EvidenceGallery from "../../components/eassessment/EvidenceGallery";
+=======
+import API, { resolvePhotoUrl } from "../../api";
+>>>>>>> 661d57f9538deffcbb79292c74d09561bc0c8d86
 import { useTheme } from "../../context/ThemeContext";
 import jsPDF from "jspdf";
 
