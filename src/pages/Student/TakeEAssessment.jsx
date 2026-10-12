@@ -193,6 +193,12 @@ const injectExamStyles = () => {
 
 const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
+const DEFAULT_SECURITY = {
+  require_camera: true,
+  require_screen_share: true,
+  require_fullscreen: true,
+  lock_on_violations: true,
+};
 const REVEAL_SECONDS = 5; // minimum time the student must sit with the token before continuing
 
 /* ── START-EXAM RETRY CONFIG — ported from exam.html's exam-login retry
@@ -805,6 +811,13 @@ export default function TakeEAssessment() {
   // webcam photo. Browsers force the student to pick and approve the screen
   // themselves, so it can never be taken silently. idle | sharing | off
   const [screenStatus, setScreenStatus] = useState("idle");
+  // Per-assessment security switches set by the admin (Admin > E-Assessments >
+  // Exam security). Defaults are STRICT (all ON), matching the server, and are
+  // replaced by the real values as soon as the exam-only session exists —
+  // see loadSecuritySettings(). Previously this page ignored the switches
+  // entirely, so screen sharing stayed mandatory even when switched OFF.
+  const [security, setSecurity] = useState(DEFAULT_SECURITY);
+  const securityRef = useRef(DEFAULT_SECURITY);
   const [screenSurface, setScreenSurface] = useState(""); // monitor | window | browser
   const [screenError, setScreenError] = useState("");
   const [faceVisible, setFaceVisible] = useState(true); // true = "looking at the screen" (see isLookingAtScreen)
@@ -879,6 +892,22 @@ export default function TakeEAssessment() {
       setLockReason(saved);
       setPhase("locked");
     }
+  }, [id]);
+
+  /* ── the admin's per-assessment security switches ──
+     Needs the exam-only session, so it runs after sign-in (bootStart) and
+     again before a locked exam is resumed (handleResume) — a refresh while
+     locked skips bootStart. A failed read keeps whatever is already set
+     (strict defaults on first load): the safe direction. */
+  const loadSecuritySettings = useCallback(async () => {
+    try {
+      const secRes = await API.get(`/e-assessments/${id}/security-settings`);
+      if (secRes.data?.security) {
+        const next = { ...DEFAULT_SECURITY, ...secRes.data.security };
+        securityRef.current = next;
+        setSecurity(next);
+      }
+    } catch { /* keep the current (strict) values */ }
   }, [id]);
 
   /* ── step 1: generate the token and show the reveal screen ── */
@@ -969,8 +998,13 @@ export default function TakeEAssessment() {
     setToken(t);
     setRevealCountdown(REVEAL_SECONDS);
 
+    // Read the admin's security switches BEFORE the verify screen is shown,
+    // so the screen-share requirement (and camera / fullscreen / lock rules)
+    // match what was configured for this assessment.
+    await loadSecuritySettings();
+
     setPhase("reveal");
-  }, [id]);
+  }, [id, loadSecuritySettings]);
 
   useEffect(() => {
     // Don't re-fetch a token if we booted straight into a persisted lock.
@@ -1124,10 +1158,12 @@ export default function TakeEAssessment() {
     if (activating) return;
 
     // Screen sharing (entire screen) must be live before the exam can start.
-    const liveTrack = screenStreamRef.current?.getVideoTracks?.()[0];
-    if (screenStatus !== "sharing" || !liveTrack || liveTrack.readyState !== "live") {
-      setVerifyError("You must share your entire screen before you can start the exam.");
-      return;
+    if (securityRef.current.require_screen_share) {
+      const liveTrack = screenStreamRef.current?.getVideoTracks?.()[0];
+      if (screenStatus !== "sharing" || !liveTrack || liveTrack.readyState !== "live") {
+        setVerifyError("You must share your entire screen before you can start the exam.");
+        return;
+      }
     }
 
     if (verifyInput.trim().toUpperCase() !== token.trim().toUpperCase()) {
@@ -1155,7 +1191,10 @@ export default function TakeEAssessment() {
     // eye-gaze monitoring; cameraStatus is set to "off" up front and the
     // camera-monitoring effect below leaves it that way instead of
     // trying again mid-exam.
-    if (navigator.mediaDevices?.getUserMedia) {
+    if (!securityRef.current.require_camera) {
+      // Camera switched OFF for this assessment: never prompt, never monitor.
+      setCameraStatus("off");
+    } else if (navigator.mediaDevices?.getUserMedia) {
       try {
         preGrantedStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
       } catch {
@@ -1207,7 +1246,7 @@ export default function TakeEAssessment() {
 
   /* ── request fullscreen when active ── */
   useEffect(() => {
-    if (phase === "active" && document.documentElement.requestFullscreen) {
+    if (phase === "active" && securityRef.current.require_fullscreen && document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(() => {});
     }
   }, [phase]);
@@ -1370,7 +1409,7 @@ export default function TakeEAssessment() {
   const registerViolation = useCallback((label) => {
     setViolations((v) => {
       const next = v + 1;
-      if (next >= MAX_VIOLATIONS) {
+      if (next >= MAX_VIOLATIONS && securityRef.current.lock_on_violations) {
         triggerLock(`Too many suspicious actions detected (${label}). This device has been locked for this exam.`);
       }
       return next;
@@ -1533,7 +1572,7 @@ export default function TakeEAssessment() {
         (e.ctrlKey && ["c", "v", "x", "u", "p"].includes(e.key.toLowerCase()));
       if (blocked) { e.preventDefault(); registerViolation("attempted a blocked shortcut"); }
     };
-    const onFullscreenChange = () => { if (!document.fullscreenElement) registerViolation("exited fullscreen"); };
+    const onFullscreenChange = () => { if (securityRef.current.require_fullscreen && !document.fullscreenElement) registerViolation("exited fullscreen"); };
 
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", onBlur);
@@ -1776,6 +1815,7 @@ export default function TakeEAssessment() {
         localStorage.removeItem(lockKey(id));
         setViolations(0);
         setCanResume(false);
+        await loadSecuritySettings(); // a refresh while locked never went through bootStart
         await enterActive();
       }
     } catch (err) {
@@ -2291,9 +2331,11 @@ export default function TakeEAssessment() {
           </p>
           <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 16px", textAlign: "center" }}>
             <Camera size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
-            This exam can optionally use your camera for eye-gaze monitoring. If your browser asks
-            for camera permission, you can allow or decline it — either way, your exam will start.
+            {security.require_camera
+              ? "This exam can optionally use your camera for eye-gaze monitoring. If your browser asks for camera permission, you can allow or decline it — either way, your exam will start."
+              : "Camera monitoring is not used for this exam."}
           </p>
+          {security.require_screen_share && (
           <div style={{ margin: "0 0 16px", padding: 12, border: `1px dashed ${screenStatus === "sharing" ? "var(--success)" : "var(--destructive)"}`, borderRadius: "var(--radius-sm)", textAlign: "center" }}>
             <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 8px" }}>
               <MonitorUp size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
@@ -2319,6 +2361,7 @@ export default function TakeEAssessment() {
               <p style={{ color: "var(--destructive)", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>{screenError}</p>
             )}
           </div>
+          )}
           <input
             style={S.verifyInput}
             value={verifyInput}
@@ -2329,8 +2372,8 @@ export default function TakeEAssessment() {
             autoCapitalize="characters"
           />
           {verifyError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{verifyError}</p>}
-          <button style={{ ...S.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim() || screenStatus !== "sharing"}>
-            {activating ? "Starting…" : screenStatus !== "sharing" ? "Share your screen to start" : "Start Exam"}
+          <button style={{ ...S.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim() || (security.require_screen_share && screenStatus !== "sharing")}>
+            {activating ? "Starting…" : (security.require_screen_share && screenStatus !== "sharing") ? "Share your screen to start" : "Start Exam"}
           </button>
           <button
             type="button"
@@ -2381,7 +2424,7 @@ export default function TakeEAssessment() {
       {violations > 0 && (
         <div style={S.warningStrip}>
           <ShieldAlert size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
-          <span>Warning {violations}/{MAX_VIOLATIONS}: suspicious activity detected on this device. Reaching {MAX_VIOLATIONS} will lock your exam.</span>
+          <span>Warning {violations}/{MAX_VIOLATIONS}: suspicious activity detected on this device. {security.lock_on_violations ? <>Reaching {MAX_VIOLATIONS} will lock your exam.</> : "This is being recorded."}</span>
         </div>
       )}
 
@@ -2394,7 +2437,7 @@ export default function TakeEAssessment() {
         </div>
       )}
 
-      {screenStatus !== "sharing" && !submitting && (
+      {security.require_screen_share && screenStatus !== "sharing" && !submitting && (
         <div style={S.lockOverlay}>
           <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}>
             <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
