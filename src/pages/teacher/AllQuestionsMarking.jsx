@@ -1,6 +1,16 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
+<<<<<<< HEAD
 import API, { BASE_URL } from "../../api";
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+=======
+import API, { BASE_URL, resolvePhotoUrl } from "../../api";
+>>>>>>> 661d57f9538deffcbb79292c74d09561bc0c8d86
+>>>>>>> 875f706a1a1dacd88126fcb262f50b95bf8d9f60
+>>>>>>> 853e0a02d5414d2f5c3111bc55b224aa8926e443
 import { sanitizeHtml } from "../../utils/safeHtml";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 import EvidenceGallery from "../../components/eassessment/EvidenceGallery";
@@ -1610,12 +1620,22 @@ export default function Marking() {
             </button>
           </div>
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> 853e0a02d5414d2f5c3111bc55b224aa8926e443
           <EvidenceGallery
             key={`${current._student_id}-${current.question_id}`}
             evidence={evidenceByStudent[current._student_id]}
             questionId={current.question_id}
             title="Camera photos for this question — compare before flagging"
           />
+<<<<<<< HEAD
+=======
+=======
+          <EvidenceGallery evidence={evidenceByStudent[current._student_id]} />
+>>>>>>> 875f706a1a1dacd88126fcb262f50b95bf8d9f60
+>>>>>>> 853e0a02d5414d2f5c3111bc55b224aa8926e443
 
           <FieldLabel>Question</FieldLabel>
           <div style={s.questionBox}>{current.question_text}</div>
