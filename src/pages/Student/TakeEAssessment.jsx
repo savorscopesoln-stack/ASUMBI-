@@ -3,6 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
 import { useTheme } from "../../context/ThemeContext";
 import {
+  examCacheKey, loadExamCache, saveExamCache, clearExamCache,
+  claimExamTab, examTabTakenByOther,
+} from "../../utils/examCache";
+import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
   Camera, CameraOff, Eye, EyeOff, ChevronLeft, ChevronRight, Home,
@@ -165,6 +169,12 @@ const injectExamStyles = () => {
     .essay-content:empty:before { content: attr(data-placeholder); color: var(--text-muted); }
     .essay-content sub { vertical-align: sub; font-size: 0.75em; }
     .essay-content sup { vertical-align: super; font-size: 0.75em; }
+    .essay-content table { border-collapse: collapse; margin: 8px 0; width: 100%; table-layout: fixed; }
+    .essay-content td, .essay-content th {
+      border: 1px solid var(--border); padding: 6px 8px; vertical-align: top;
+      min-width: 40px; word-break: break-word; overflow-wrap: anywhere;
+    }
+    .essay-content td:focus-within { background: var(--primary-tint); }
 
     @keyframes eyesOffFlash {
       0%, 100% { box-shadow: 0 0 0 0 var(--destructive); }
@@ -324,8 +334,9 @@ const tokenKey = (assessmentId) => `exam_token_${assessmentId}`;
 // saved answers belong to, so a resit never starts pre-filled with the
 // previous attempt's answers.
 const attemptKey = (assessmentId) => `exam_attempt_${assessmentId}`;
-// Answers are saved to the server this often while the exam is open.
-const AUTOSAVE_MS = 60 * 1000;
+// The exam is cached on this device; whatever changed is synced to the
+// server this often while the exam is open (and immediately on reconnect).
+const AUTOSAVE_MS = 30 * 1000;
 
 // Ported from exam.html's answersKey/saveAnswer — the React build never
 // persisted in-progress answers anywhere, so a refresh mid-exam (which
@@ -429,6 +440,158 @@ function EssayEditor({ id, initialValue, onChange }) {
     setCharCount(text.length);
   };
 
+  /* ── tables ──
+     Students can insert a table and grow/shrink it from the toolbar.
+     Everything here is plain DOM work on the contentEditable box and ends in
+     commit(), which reports the new innerHTML exactly like typing does.
+     NOTE: no window.prompt()/alert() anywhere in this flow — a native dialog
+     blurs the window, which the exam page counts as "switched away" (a
+     violation). The row/column picker is therefore an inline bar. Paste is
+     intentionally NOT handled: the exam page blocks it on purpose. */
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableCols, setTableCols] = useState(3);
+  const [inCell, setInCell] = useState(false);
+  const savedRange = useRef(null);
+
+  const MAX_ROWS = 30;
+  const MAX_COLS = 8;
+  const clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, Number.parseInt(v, 10) || lo));
+
+  const currentCell = () => {
+    const root = contentRef.current;
+    const sel = window.getSelection();
+    if (!root || !sel || sel.rangeCount === 0) return null;
+    let n = sel.anchorNode;
+    if (n && n.nodeType === 3) n = n.parentNode;
+    const cell = n && n.closest ? n.closest("td,th") : null;
+    return cell && root.contains(cell) ? cell : null;
+  };
+
+  const placeCaretIn = (cell) => {
+    if (!cell) return;
+    const r = document.createRange();
+    r.selectNodeContents(cell);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  };
+
+  const makeCell = () => {
+    const c = document.createElement("td");
+    c.innerHTML = "<br>"; // keeps an empty cell clickable/typeable
+    return c;
+  };
+
+  const commit = () => {
+    if (!contentRef.current) return;
+    onChange(contentRef.current.innerHTML);
+    countFrom(contentRef.current);
+    updateToolbarState();
+  };
+
+  const openTablePicker = () => {
+    const sel = window.getSelection();
+    const root = contentRef.current;
+    savedRange.current =
+      root && sel && sel.rangeCount > 0 && root.contains(sel.getRangeAt(0).commonAncestorContainer)
+        ? sel.getRangeAt(0).cloneRange()
+        : null;
+    setTablePickerOpen((o) => !o);
+  };
+
+  const insertTable = () => {
+    const root = contentRef.current;
+    if (!root) return;
+    const rows = clampNum(tableRows, 1, MAX_ROWS);
+    const cols = clampNum(tableCols, 1, MAX_COLS);
+    root.focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    if (savedRange.current) {
+      sel.addRange(savedRange.current);
+    } else {
+      const r = document.createRange(); // no caret yet — put the table at the end of the answer
+      r.selectNodeContents(root);
+      r.collapse(false);
+      sel.addRange(r);
+    }
+    const before = new Set(root.querySelectorAll("table"));
+    const row = `<tr>${"<td><br></td>".repeat(cols)}</tr>`;
+    // trailing paragraph so there is always somewhere to keep typing below the table
+    document.execCommand("insertHTML", false, `<table><tbody>${row.repeat(rows)}</tbody></table><p><br></p>`);
+    const created = Array.from(root.querySelectorAll("table")).find((t) => !before.has(t));
+    if (created) placeCaretIn(created.querySelector("td"));
+    setTablePickerOpen(false);
+    commit();
+  };
+
+  const addRowAfter = (row, caretCol) => {
+    const table = row.closest("table");
+    if (table.rows.length >= MAX_ROWS) return null;
+    const nr = document.createElement("tr");
+    for (let i = 0; i < row.children.length; i += 1) nr.appendChild(makeCell());
+    row.after(nr);
+    placeCaretIn(nr.children[Math.min(caretCol, nr.children.length - 1)]);
+    return nr;
+  };
+
+  const tableOp = (op) => {
+    const cell = currentCell();
+    if (!cell) return;
+    const row = cell.parentElement;
+    const table = cell.closest("table");
+    const col = Array.prototype.indexOf.call(row.children, cell);
+    const rows = Array.from(table.rows);
+
+    if (op === "rowAdd") {
+      addRowAfter(row, col);
+    } else if (op === "rowDelete") {
+      if (rows.length <= 1) table.remove();
+      else {
+        const next = row.nextElementSibling || row.previousElementSibling;
+        row.remove();
+        placeCaretIn(next.children[Math.min(col, next.children.length - 1)]);
+      }
+    } else if (op === "colAdd") {
+      if (row.children.length >= MAX_COLS) return;
+      rows.forEach((r) => {
+        const c = makeCell();
+        const ref = r.children[col];
+        if (ref) ref.after(c); else r.appendChild(c);
+      });
+      placeCaretIn(row.children[col + 1]);
+    } else if (op === "colDelete") {
+      if (row.children.length <= 1) table.remove();
+      else {
+        rows.forEach((r) => r.children[col]?.remove());
+        placeCaretIn(row.children[Math.min(col, row.children.length - 1)]);
+      }
+    } else if (op === "tableDelete") {
+      table.remove();
+    }
+    commit();
+  };
+
+  // Tab / Shift+Tab walk between cells (Tab in the last cell adds a row).
+  // Outside a table Tab keeps its normal focus-moving behaviour.
+  const onEditorKeyDown = (e) => {
+    if (e.key !== "Tab") return;
+    const cell = currentCell();
+    if (!cell) return;
+    e.preventDefault();
+    const cells = Array.from(cell.closest("table").querySelectorAll("td,th"));
+    const i = cells.indexOf(cell);
+    if (e.shiftKey) {
+      if (i > 0) placeCaretIn(cells[i - 1]);
+    } else if (i < cells.length - 1) {
+      placeCaretIn(cells[i + 1]);
+    } else if (addRowAfter(cell.parentElement, 0)) {
+      commit();
+    }
+  };
+
   // Seed this question's saved answer into the DOM exactly once per
   // question (id change = a fresh mount, thanks to key={q.id} on the
   // wrapper below) — never re-run from a parent re-render alone.
@@ -446,6 +609,7 @@ function EssayEditor({ id, initialValue, onChange }) {
       try { next[cmd] = document.queryCommandState(cmd); } catch { /* unsupported in this browser — leave un-toggled */ }
     });
     setActiveCmds(next);
+    setInCell(!!currentCell());
   };
 
   const runCommand = (cmd) => {
@@ -494,11 +658,64 @@ function EssayEditor({ id, initialValue, onChange }) {
             {item.label}
           </button>
         ))}
+        <span style={S.essaySep} />
+        <button
+          type="button"
+          title={inCell ? "Already inside a table" : "Insert table"}
+          disabled={inCell}
+          style={{ ...S.essayToolbarBtn, ...S.essayTextBtn, ...(tablePickerOpen ? S.essayToolbarBtnActive : {}), opacity: inCell ? 0.45 : 1, cursor: inCell ? "not-allowed" : "pointer" }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={openTablePicker}
+        >
+          ▦ Table
+        </button>
       </div>
+
+      {tablePickerOpen && !inCell && (
+        <div style={S.essayTableBar}>
+          <label style={S.essayTableLabel}>
+            Rows
+            <input type="number" min={1} max={MAX_ROWS} value={tableRows} onChange={(e) => setTableRows(e.target.value)} style={S.essayTableInput} />
+          </label>
+          <label style={S.essayTableLabel}>
+            Columns
+            <input type="number" min={1} max={MAX_COLS} value={tableCols} onChange={(e) => setTableCols(e.target.value)} style={S.essayTableInput} />
+          </label>
+          <button type="button" style={{ ...S.essayToolbarBtn, ...S.essayTextBtn, ...S.essayToolbarBtnActive }} onClick={insertTable}>Insert</button>
+          <button type="button" style={{ ...S.essayToolbarBtn, ...S.essayTextBtn }} onClick={() => setTablePickerOpen(false)}>Cancel</button>
+        </div>
+      )}
+
+      {inCell && (
+        <div style={S.essayTableBar} aria-label="Table tools">
+          <span style={S.essayTableHint}>Table</span>
+          {[
+            ["rowAdd", "+ Row", "Add a row below"],
+            ["colAdd", "+ Column", "Add a column to the right"],
+            ["rowDelete", "− Row", "Delete this row"],
+            ["colDelete", "− Column", "Delete this column"],
+            ["tableDelete", "Delete table", "Remove the whole table"],
+          ].map(([op, label, title]) => (
+            <button
+              key={op}
+              type="button"
+              title={title}
+              style={{ ...S.essayToolbarBtn, ...S.essayTextBtn, ...(op === "tableDelete" ? { color: "var(--destructive)" } : {}) }}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => tableOp(op)}
+            >
+              {label}
+            </button>
+          ))}
+          <span style={S.essayTableHint}>Tab moves between cells</span>
+        </div>
+      )}
       <div
         ref={contentRef}
+        className="essay-content"
         contentEditable
         suppressContentEditableWarning
+        onKeyDown={onEditorKeyDown}
         style={S.essayContent}
         data-placeholder="Type your answer here…"
         onInput={(e) => { onChange(e.currentTarget.innerHTML); countFrom(e.currentTarget); }}
@@ -574,6 +791,13 @@ export default function TakeEAssessment() {
   const submitRetryRef = useRef(0);
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [autosaveFailed, setAutosaveFailed] = useState(false);
+  const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  const cacheKeyRef = useRef("");          // device-cache key (student + assessment)
+  const answersUpdatedAtRef = useRef(0);   // when an answer last changed ON THIS DEVICE (ms)
+  const endsAtRef = useRef(null);          // absolute end time (ms) — keeps the clock right offline
+  const tabClaimRef = useRef(null);        // one-tab-per-exam lease
+  const timeUpRef = useRef(false);         // time ran out and the final submit is still pending
+  const syncingRef = useRef(false);        // a sync request is already in flight
   const [canResume, setCanResume] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [resumeMsg, setResumeMsg] = useState("");
@@ -652,7 +876,11 @@ export default function TakeEAssessment() {
 
     if (finalErr) {
       const err = finalErr;
-      if (isDeviceBlocked(err)) {
+      if (err?.response?.data?.code === "ACTIVE_EXAM_SESSION") {
+        // One session per student: another exam of theirs is still running.
+        setErrorMsg(err.response.data.message);
+        setPhase("error");
+      } else if (isDeviceBlocked(err)) {
         setErrorMsg(err.response.data.message);
         setPhase("devicedenied");
       } else if (err?.response?.status === 423) {
@@ -680,6 +908,7 @@ export default function TakeEAssessment() {
       // the previous one so it starts clean.
       localStorage.removeItem(answersKey(id));
       localStorage.removeItem(lockKey(id));
+      clearExamCache(examCacheKey(id));
     }
     localStorage.setItem(attemptKey(id), attemptNo);
     lastSavedRef.current = "";
@@ -763,32 +992,76 @@ export default function TakeEAssessment() {
 
   /* ── step 3: fetch the actual questions and enter the locked-down exam ── */
   const enterActive = useCallback(async () => {
-    const detail = await API.get(`/e-assessments/${id}`);
-    setAssessment(detail.data.assessment);
-    setQuestions(detail.data.questions || []);
-    setSecondsLeft((detail.data.assessment.duration_minutes || 30) * 60);
+    // ONE TAB PER EXAM: a second tab on this device would overwrite the
+    // first one's answers, so it is refused while the first is alive.
+    tabClaimRef.current?.release?.();
+    const claim = claimExamTab(id);
+    if (!claim.ok) throw new Error("EXAM_TAB_IN_USE");
+    tabClaimRef.current = claim;
 
-    // Restore answers from (a) the server's autosave and (b) this browser's
-    // local copy. The local copy is newer when both exist, so it wins per
-    // question; the server copy fills in anything this device doesn't have
-    // (e.g. the student is back on a different device after an unlock).
+    const cacheKey = examCacheKey(id);
+    cacheKeyRef.current = cacheKey;
+    const cached = await loadExamCache(cacheKey);
+
+    // The paper: from the server when reachable (and cached for the rest of
+    // the exam); from this device's cache when the network is down. Only a
+    // genuine "no response at all" falls back — a 403/423/409 is a real
+    // answer and must still be shown as such.
+    let paper = null;
+    try {
+      const detail = await API.get(`/e-assessments/${id}`);
+      paper = { assessment: detail.data.assessment, questions: detail.data.questions || [] };
+    } catch (err) {
+      if (!err?.response && cached?.paper?.assessment) paper = cached.paper;
+      else { claim.release(); tabClaimRef.current = null; throw err; }
+    }
+    setAssessment(paper.assessment);
+    setQuestions(paper.questions);
+    let remaining = (paper.assessment.duration_minutes || 30) * 60;
+
+    // Restore answers from (a) the server's autosave, (b) this browser's
+    // local copy and (c) the device cache. The device copies are newer
+    // when present, so they win per question; the server copy fills in
+    // anything this device doesn't have (e.g. back on a different device
+    // after an unlock).
     let serverAnswers = {};
+    let serverReached = false;
     try {
       const d = await API.get(`/e-assessments/${id}/draft`);
+      serverReached = true;
       serverAnswers = d.data?.answers || {};
       // Remaining time per the server clock (see getExamDraft). Null when
       // the server couldn't work it out — keep the full-duration fallback.
-      if (typeof d.data?.seconds_left === "number") setSecondsLeft(d.data.seconds_left);
+      if (typeof d.data?.seconds_left === "number") remaining = d.data.seconds_left;
     } catch { /* offline / no draft — fall back to the local copy */ }
+    // Offline resume: the countdown continues from the cached absolute end time.
+    if (!serverReached && cached?.endsAt) {
+      remaining = Math.max(0, Math.round((cached.endsAt - Date.now()) / 1000));
+    }
     let localAnswers = {};
     try {
       const saved = localStorage.getItem(answersKey(id));
       if (saved) localAnswers = JSON.parse(saved) || {};
     } catch { /* ignore a corrupted/unreadable saved-answers blob */ }
-    const merged = { ...serverAnswers, ...localAnswers };
+    const merged = { ...serverAnswers, ...localAnswers, ...(cached?.answers || {}) };
     setAnswers(merged);
     answersRef.current = merged;
-    lastSavedRef.current = "";
+    answersUpdatedAtRef.current = cached?.answersUpdatedAt || Date.now();
+    lastSavedRef.current = ""; // first tick re-syncs whatever the server may be missing
+
+    endsAtRef.current = Date.now() + remaining * 1000;
+    timeUpRef.current = false;
+    setSecondsLeft(remaining);
+
+    saveExamCache(cacheKey, {
+      paper,
+      answers: merged,
+      answersUpdatedAt: answersUpdatedAtRef.current,
+      dirty: true,
+      endsAt: endsAtRef.current,
+      attemptNo: Number(localStorage.getItem(attemptKey(id)) || 1),
+      cachedAt: Date.now(),
+    });
 
     setCurrentQuestionIndex(0);
     setPhase("active");
@@ -802,6 +1075,14 @@ export default function TakeEAssessment() {
 
     if (verifyInput.trim().toUpperCase() !== token.trim().toUpperCase()) {
       setVerifyError("That doesn't match the token you were shown. Check it and try again.");
+      return;
+    }
+
+    // One tab per exam: refuse BEFORE activating, because activation is what
+    // starts the exam clock on the server.
+    if (examTabTakenByOther(id)) {
+      setErrorMsg("This exam is already open in another tab or window on this device. Close this one and continue there.");
+      setPhase("error");
       return;
     }
 
@@ -845,7 +1126,10 @@ export default function TakeEAssessment() {
         preGrantedStreamRef.current.getTracks().forEach((t) => t.stop());
         preGrantedStreamRef.current = null;
       }
-      if (err?.response?.status === 423) {
+      if (err?.response?.data?.code === "ACTIVE_EXAM_SESSION") {
+        setErrorMsg(err.response.data.message);
+        setPhase("error");
+      } else if (err?.response?.status === 423) {
         const reason = err?.response?.data?.message || "This exam token is already in use on another device.";
         localStorage.setItem(lockKey(id), reason);
         setLockReason(reason);
@@ -853,6 +1137,9 @@ export default function TakeEAssessment() {
       } else if (err?.response?.status === 409) {
         setErrorMsg(err.response.data.message || "You have already completed this assessment.");
         setPhase("ended");
+      } else if (err?.message === "EXAM_TAB_IN_USE") {
+        setErrorMsg("This exam is already open in another tab or window on this device. Close this one and continue there.");
+        setPhase("error");
       } else {
         setVerifyError(err?.response?.data?.message || "Failed to start the assessment. Please try again.");
       }
@@ -896,22 +1183,36 @@ export default function TakeEAssessment() {
     return () => clearInterval(heartbeatRef.current);
   }, [phase, token, deviceId]);
 
-  /* ── autosave: every minute the current answers are saved to the DB. If
-       time runs out (or the device dies) before the student submits, the
-       server submits from this copy instead of the work being lost. ── */
+  /* ── device sync: the exam lives in this device's cache; every 30s (and the
+       moment the network comes back, and when the tab is hidden/closed) the
+       answers that changed are pushed to the server. If time runs out (or
+       the device dies) before the student submits, the server submits from
+       its copy instead of the work being lost. ── */
   const autosaveNow = useCallback(async () => {
     const current = answersRef.current || {};
     const hasAny = Object.values(current).some((v) => (typeof v === "string" ? v.trim() !== "" : !!v));
     if (!hasAny) return;
     const snapshot = JSON.stringify(current);
-    if (snapshot === lastSavedRef.current) return; // nothing new since the last save
+    if (snapshot === lastSavedRef.current) return; // nothing new since the last sync
+    if (syncingRef.current) return;                // one sync in flight at a time
+    syncingRef.current = true;
     try {
-      await API.post(`/e-assessments/${id}/autosave`, {
+      const res = await API.post(`/e-assessments/${id}/autosave`, {
         answers: current,
         token: tokenRef.current || undefined,
         device_id: deviceId,
+        client_saved_at: answersUpdatedAtRef.current || Date.now(),
       });
-      lastSavedRef.current = snapshot;
+      // Only mark clean if nothing changed while the request was in flight.
+      if (JSON.stringify(answersRef.current || {}) === snapshot) {
+        lastSavedRef.current = snapshot;
+        if (cacheKeyRef.current) saveExamCache(cacheKeyRef.current, { dirty: false, lastSyncedAt: Date.now() });
+      }
+      // The server clock is the authority — re-sync the (possibly offline-drifted) countdown.
+      if (typeof res?.data?.seconds_left === "number" && !timeUpRef.current) {
+        endsAtRef.current = Date.now() + res.data.seconds_left * 1000;
+        if (cacheKeyRef.current) saveExamCache(cacheKeyRef.current, { endsAt: endsAtRef.current });
+      }
       setLastSavedAt(new Date());
       setAutosaveFailed(false);
     } catch (err) {
@@ -919,7 +1220,9 @@ export default function TakeEAssessment() {
       if (status === 409) { setErrorMsg(err.response?.data?.message || "This assessment has already been completed."); setPhase("ended"); return; }
       if (status === 423) return; // locked — the heartbeat shows the lock screen
       if (isDeviceBlocked(err)) return; // desktop-only switch — the heartbeat shows the screen
-      setAutosaveFailed(true);    // transient — the next tick retries
+      setAutosaveFailed(true);    // transient/offline — answers stay safe in the device cache; next tick retries
+    } finally {
+      syncingRef.current = false;
     }
   }, [id, deviceId]);
 
@@ -927,22 +1230,60 @@ export default function TakeEAssessment() {
     if (phase !== "active") return;
     const iv = setInterval(autosaveNow, AUTOSAVE_MS);
     const onHidden = () => { if (document.visibilityState === "hidden") autosaveNow(); };
+    const onOnline = () => {
+      setOnline(true);
+      autosaveNow();
+      // Time ran out while offline: finish the pending submit as soon as we're back.
+      if (timeUpRef.current) handleSubmitRef.current?.(true);
+    };
+    const onOffline = () => setOnline(false);
     document.addEventListener("visibilitychange", onHidden);
     window.addEventListener("pagehide", autosaveNow);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
     return () => {
       clearInterval(iv);
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", autosaveNow);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
     };
   }, [phase, autosaveNow]);
+
+  /* ── a second tab took over this exam on this device → stop this one ── */
+  useEffect(() => {
+    if (phase !== "active") return;
+    const iv = setInterval(() => {
+      if (examTabTakenByOther(id)) {
+        clearInterval(timerRef.current);
+        clearInterval(heartbeatRef.current);
+        setErrorMsg("This exam was opened in another tab or window. Only one session per student is allowed — continue there.");
+        setPhase("error");
+      }
+    }, 4000);
+    return () => clearInterval(iv);
+  }, [phase, id]);
+
+  // Release the one-tab lease when this screen goes away.
+  useEffect(() => () => { tabClaimRef.current?.release?.(); }, []);
 
   /* ── countdown timer ── */
   useEffect(() => {
     if (phase !== "active") return;
     timerRef.current = setInterval(() => {
       setSecondsLeft((s) => {
-        if (s <= 1) { clearInterval(timerRef.current); handleSubmitRef.current?.(true); return 0; }
-        return s - 1;
+        // Derived from the absolute end time so a throttled background tab
+        // or a stretch offline can't make the clock drift.
+        const left = endsAtRef.current != null
+          ? Math.max(0, Math.ceil((endsAtRef.current - Date.now()) / 1000))
+          : s - 1;
+        if (left <= 0) {
+          clearInterval(timerRef.current);
+          timeUpRef.current = true;
+          handleSubmitRef.current?.(true);
+          return 0;
+        }
+        return left;
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
@@ -1354,6 +1695,8 @@ export default function TakeEAssessment() {
       } else if (status === 401) {
         localStorage.removeItem(lockKey(id));
         setPhase("examlogin");
+      } else if (err?.message === "EXAM_TAB_IN_USE") {
+        setResumeMsg("This exam is open in another tab or window on this device. Close it and try again.");
       } else {
         setResumeMsg("Couldn't reach the server. Check your connection and try again.");
       }
@@ -1371,7 +1714,12 @@ export default function TakeEAssessment() {
     setAnswers((prev) => {
       const next = { ...prev, [questionId]: val };
       answersRef.current = next;
+      answersUpdatedAtRef.current = Date.now();
       try { localStorage.setItem(answersKey(id), JSON.stringify(next)); } catch { /* storage full/unavailable — exam continues, just unsaved locally */ }
+      // Device cache (IndexedDB): the copy the 30-second sync pushes to the server.
+      if (cacheKeyRef.current) {
+        saveExamCache(cacheKeyRef.current, { answers: next, answersUpdatedAt: answersUpdatedAtRef.current, dirty: true });
+      }
       return next;
     });
   };
@@ -1393,6 +1741,10 @@ export default function TakeEAssessment() {
     localStorage.removeItem(lockKey(id));
     localStorage.removeItem(tokenKey(id));
     localStorage.removeItem(answersKey(id));
+    if (cacheKeyRef.current) clearExamCache(cacheKeyRef.current);
+    tabClaimRef.current?.release?.();
+    tabClaimRef.current = null;
+    timeUpRef.current = false;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 
     // Submitting the exam doubles as logging the student out — the
@@ -1442,13 +1794,17 @@ export default function TakeEAssessment() {
       }
       // Time ran out and the submit couldn't reach the server (network
       // blip). Keep trying — the server's own autosave sweep is the backstop.
-      if (auto && status !== 423 && status !== 403 && submitRetryRef.current < 30) {
+      if (auto && status !== 423 && status !== 403 && (!err?.response || submitRetryRef.current < 30)) {
         submitRetryRef.current += 1;
         setErrorMsg("Time's up — saving your answers, reconnecting…");
         setTimeout(() => handleSubmitRef.current?.(true), 8000);
         return;
       }
-      setErrorMsg(err?.response?.data?.message || "Submission failed. Please try again.");
+      setErrorMsg(
+        err?.response
+          ? (err.response.data?.message || "Submission failed. Please try again.")
+          : "No connection — your answers are safe on this device. Reconnect and press Submit again."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1613,6 +1969,7 @@ export default function TakeEAssessment() {
           </p>
           <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13, textAlign: "center", margin: "0 0 16px" }}>
             Open this exam link on a Windows or Mac computer and sign in again. Your answers so far were saved.
+            If your teacher has allowed this device, press Try again.
           </p>
           <button style={S.primaryBtn} onClick={() => window.location.reload()}>
             Try again
@@ -1807,12 +2164,14 @@ export default function TakeEAssessment() {
         <div>
           <h1 style={S.examTitle}>{assessment?.title}</h1>
           <p style={S.examMeta}>{assessment?.subject} · Token <strong style={{ color: "var(--primary)" }}>{token}</strong></p>
-          <p style={{ ...S.examMeta, fontSize: 11, marginTop: 2, color: autosaveFailed ? "var(--destructive)" : "var(--text-muted)" }}>
-            {autosaveFailed
-              ? "Autosave failed — will retry in a minute"
-              : lastSavedAt
-                ? `Answers autosaved at ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                : "Answers are autosaved every minute"}
+          <p style={{ ...S.examMeta, fontSize: 11, marginTop: 2, color: (autosaveFailed || !online) ? "var(--destructive)" : "var(--text-muted)" }}>
+            {!online
+              ? "Offline — your answers are saved on this device and will sync when you're back online"
+              : autosaveFailed
+                ? "Couldn't reach the server — answers are safe on this device, retrying in 30 seconds"
+                : lastSavedAt
+                  ? `Saved on this device · synced to the server at ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                  : "Answers are saved on this device and synced to the server every 30 seconds"}
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -2137,6 +2496,17 @@ const S = {
     background: "var(--primary-tint)", color: "var(--primary)", borderColor: "var(--primary)",
   },
   essaySep: { width: 1, height: 18, background: "var(--border)", margin: "0 4px", flexShrink: 0 },
+  essayTextBtn: { width: "auto", padding: "0 10px", fontSize: 12, whiteSpace: "nowrap" },
+  essayTableBar: {
+    display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+    padding: "6px 8px", borderBottom: "1px solid var(--border)", background: "var(--bg)",
+  },
+  essayTableLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" },
+  essayTableInput: {
+    width: 56, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)",
+    background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "inherit",
+  },
+  essayTableHint: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", margin: "0 4px" },
   essayContent: {
     minHeight: 120, maxHeight: 420, overflowY: "auto", padding: "12px 14px",
     fontSize: 14, lineHeight: 1.6, outline: "none", color: "var(--text)",

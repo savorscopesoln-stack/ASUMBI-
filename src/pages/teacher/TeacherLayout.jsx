@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTheme } from "../../context/ThemeContext";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { usePortalPageAccess } from "../../hooks/usePortalPageAccess";
 import {
@@ -8,22 +9,6 @@ import {
 } from "lucide-react";
 import useUnreadNotifications from "../../hooks/useUnreadNotifications";
 
-/* ─── self-contained theme hook — mirrors StudentLayout's so both
-   portals read/write the same "theme" key and stay in sync. ─── */
-const useTheme = () => {
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("theme") || "light"
-  );
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
-
-  return { theme, toggleTheme };
-};
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    student and admin dashboards so all three portals render from

@@ -2,9 +2,10 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
 import {
-  ArrowLeft, Loader2, AlertTriangle, FileQuestion, MessageSquareText,
+  ArrowLeft, Loader2, AlertTriangle, FileQuestion, MessageSquareText, Check, X, Sparkles,
 } from "lucide-react";
 import { round2, fmt2 } from "../../utils/format";
+import { sanitizeHtml, answerToSafeHtml } from "../../utils/safeHtml";
 
 /* ─── shared design-token stylesheet, plus a couple of things unique
    to this "physical exam script" page: a handwriting face for the
@@ -98,6 +99,39 @@ const injectStyles = () => {
   document.head.appendChild(el);
 };
 
+/* Rules for the rich answer + point-by-point marking. Its own <style> tag
+   (not part of injectStyles) because injectStyles returns early when another
+   page has already mounted the shared "dash-tokens" sheet. */
+const injectAnswerStyles = () => {
+  if (document.getElementById("marked-paper-answer-styles")) return;
+  const el = document.createElement("style");
+  el.id = "marked-paper-answer-styles";
+  el.textContent = `
+    .mp-answer { overflow-x: auto; word-break: break-word; }
+    .mp-answer p, .mp-answer div { margin: 0 0 6px; }
+    .mp-answer ul, .mp-answer ol { padding-left: 22px; margin: 0 0 8px; }
+    .mp-answer sub { vertical-align: sub; font-size: .75em; }
+    .mp-answer sup { vertical-align: super; font-size: .75em; }
+    .mp-answer table { border-collapse: collapse; margin: 8px 0; max-width: 100%; }
+    .mp-answer th, .mp-answer td { border: 1px solid var(--border); padding: 6px 10px; vertical-align: top; min-width: 48px; }
+    .mp-answer th { background: var(--card); font-weight: 700; }
+
+    /* the teacher's highlights, read-only for the student */
+    .mp-answer mark.hl-mark { color: inherit; border-radius: 3px; padding: 1px 3px; cursor: default; animation: none; }
+    .mp-answer mark.hl-mark[data-status="correct"] { background: var(--success-tint); border-bottom: 2px solid var(--success); }
+    .mp-answer mark.hl-mark[data-status="wrong"] { background: var(--destructive-tint); border-bottom: 2px solid var(--destructive); text-decoration: line-through; text-decoration-color: var(--destructive); }
+    .mp-answer .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; vertical-align: middle; color: #fff; pointer-events: none; text-decoration: none; }
+    .mp-answer .hl-status[data-status="correct"] { background: var(--success); }
+    .mp-answer .hl-status[data-status="wrong"] { background: var(--destructive); }
+  `;
+  document.head.appendChild(el);
+};
+
+const fmtMark = (n) => {
+  const v = Number(n) || 0;
+  return Number.isInteger(v) ? String(v) : String(round2(v));
+};
+
 const gradeFor = (pct) => {
   if (pct === null) return { label: "—", bg: "var(--bg)", fg: "var(--text-muted)" };
   if (pct >= 75) return { label: "DISTINCTION", bg: "var(--success-tint)", fg: "var(--success)" };
@@ -169,6 +203,7 @@ function HandCircle({ children, size = 118, strokeWidth = 4 }) {
 
 export default function StudentMarkedPaper() {
   injectStyles();
+  injectAnswerStyles();
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -378,20 +413,101 @@ function QuestionCard({ q, index }) {
           )}
         </div>
       ) : (
-        <div style={D.essayWrap}>
-          <div style={D.essayLabel}>Your Answer</div>
-          <div style={D.essayText}>
-            {q.essay_answer?.trim() ? q.essay_answer : <em style={{ color: "var(--text-muted)" }}>Not answered</em>}
-          </div>
-          {q.remarks && (
-            <div style={D.remarksBox}>
-              <MessageSquareText size={13} color="var(--info)" />
-              <span>{q.remarks}</span>
-            </div>
-          )}
-        </div>
+        <EssayAnswer q={q} />
       )}
     </section>
+  );
+}
+
+/* ── essay: the student's own answer (tables and all), with the teacher's
+   point-by-point marking laid over it, then the reasons. ── */
+function EssayAnswer({ q }) {
+  const highlights = Array.isArray(q.highlights) ? q.highlights : [];
+  const hasMarkedHtml = highlights.length > 0 && !!q.highlighted_html;
+  const answered = !!(q.essay_answer && String(q.essay_answer).replace(/<[^>]*>/g, "").trim()) || /<table/i.test(q.essay_answer || "");
+
+  // The saved marked-up HTML already has the ✓/✗ highlights baked in; fall back
+  // to the plain answer for work marked by an override score / the AI flow.
+  const answerHtml = hasMarkedHtml
+    ? sanitizeHtml(q.highlighted_html, { stripTitles: true })
+    : answerToSafeHtml(q.essay_answer);
+
+  const earned = highlights.filter((h) => h.status === "correct").length;
+  const remarksHtml = q.remarks ? answerToSafeHtml(q.remarks) : "";
+  const hasRemarks = !!String(remarksHtml).replace(/<[^>]*>/g, "").trim();
+
+  return (
+    <div style={D.essayWrap}>
+      <div style={D.essayLabel}>Your Answer</div>
+      {answered ? (
+        <div className="mp-answer" style={D.essayText} dangerouslySetInnerHTML={{ __html: answerHtml }} />
+      ) : (
+        <div style={D.essayText}><em style={{ color: "var(--text-muted)" }}>Not answered</em></div>
+      )}
+
+      {highlights.length > 0 && (
+        <div style={D.pointsBox}>
+          <div style={D.pointsTitle}>
+            How your answer was marked
+            <span style={D.pointsCount}>{earned} of {highlights.length} point{highlights.length === 1 ? "" : "s"} earned credit</span>
+          </div>
+          {highlights.map((h, i) => {
+            const ok = h.status === "correct";
+            return (
+              <div key={h.id || i} style={{ ...D.pointRow, ...(ok ? D.pointRowOk : D.pointRowBad) }}>
+                <span style={{ ...D.pointIcon, background: ok ? "var(--success)" : "var(--destructive)" }}>
+                  {ok ? <Check size={12} color="#fff" strokeWidth={3} /> : <X size={12} color="#fff" strokeWidth={3} />}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={D.pointText}>&ldquo;{h.text}&rdquo;</div>
+                  {h.reason && <div style={D.pointReason}>{h.reason}</div>}
+                </div>
+                <span style={{ ...D.pointMark, color: ok ? "var(--success)" : "var(--destructive)" }}>
+                  {ok ? `+${fmtMark(h.mark)}` : "0"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {q.ai_points && Array.isArray(q.ai_points.criteria) && q.ai_points.criteria.length > 0 && (
+        <div style={D.pointsBox}>
+          <div style={D.pointsTitle}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Sparkles size={13} color="var(--info)" /> Marking points
+            </span>
+          </div>
+          {q.ai_points.adjusted && (
+            <div style={D.aiNote}>Your teacher reviewed this answer and set the final mark, so only the points are shown here.</div>
+          )}
+          {q.ai_points.criteria.map((c, ci) => (
+            <div key={ci} style={D.criterionBox}>
+              <div style={D.criterionHead}>
+                <span style={{ flex: 1 }}>{c.label}</span>
+                {c.marks != null && <span style={D.criterionMarks}>{fmtMark(c.marks)} / {fmtMark(c.max_marks)}</span>}
+              </div>
+              {c.points.map((pt, pi) => (
+                <div key={pi} style={D.criterionPoint}>
+                  <span style={{ ...D.pointIcon, width: 18, height: 18, background: pt.met ? "var(--success)" : "var(--destructive)" }}>
+                    {pt.met ? <Check size={11} color="#fff" strokeWidth={3} /> : <X size={11} color="#fff" strokeWidth={3} />}
+                  </span>
+                  <span style={{ flex: 1, color: pt.met ? "var(--text)" : "var(--text-secondary)" }}>{pt.text}</span>
+                </div>
+              ))}
+              {c.explanation && <div style={D.pointReason}>{c.explanation}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasRemarks && (
+        <div style={D.remarksBox}>
+          <MessageSquareText size={13} color="var(--info)" style={{ marginTop: 3, flexShrink: 0 }} />
+          <div className="mp-answer" style={{ flex: 1, minWidth: 0 }} dangerouslySetInnerHTML={{ __html: remarksHtml }} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -496,10 +612,31 @@ const D = {
   noAnswerNote: { fontSize: 12.5, color: "var(--text-muted)", fontStyle: "italic", marginTop: 2 },
 
   essayWrap: { display: "flex", flexDirection: "column", gap: 8 },
+  pointsBox: {
+    display: "flex", flexDirection: "column", gap: 7, background: "var(--card)",
+    border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px",
+  },
+  pointsTitle: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap",
+    fontSize: 11.5, fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.03em",
+  },
+  pointsCount: { fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "none", letterSpacing: 0 },
+  pointRow: { display: "flex", alignItems: "flex-start", gap: 9, padding: "8px 10px", borderRadius: 9, border: "1px solid var(--border)" },
+  pointRowOk: { background: "var(--success-tint)", borderColor: "var(--success)" },
+  pointRowBad: { background: "var(--destructive-tint)", borderColor: "var(--destructive)" },
+  pointIcon: { width: 20, height: 20, minWidth: 20, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 1 },
+  pointText: { fontSize: 13, color: "var(--text)", lineHeight: 1.5, fontStyle: "italic", wordBreak: "break-word" },
+  pointReason: { fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5, marginTop: 4 },
+  pointMark: { fontSize: 12.5, fontWeight: 800, flexShrink: 0 },
+  aiNote: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" },
+  criterionBox: { display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 9, background: "var(--bg)" },
+  criterionHead: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" },
+  criterionMarks: { fontSize: 12, fontWeight: 800, color: "var(--text-secondary)" },
+  criterionPoint: { display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, lineHeight: 1.5 },
   essayLabel: { fontSize: 11, fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.03em" },
   essayText: {
     fontSize: 13.5, color: "var(--text)", lineHeight: 1.6, background: "var(--bg)",
-    border: "1px solid var(--border)", borderRadius: 9, padding: "10px 12px", whiteSpace: "pre-wrap",
+    border: "1px solid var(--border)", borderRadius: 9, padding: "10px 12px",
   },
   remarksBox: {
     display: "flex", alignItems: "flex-start", gap: 7, background: "var(--info-tint)",

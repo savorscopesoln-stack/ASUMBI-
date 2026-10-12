@@ -30,6 +30,7 @@ import PortalPages from "./pages/PortalPages";
 import Practicum from "./pages/Practicum";
 import Meals from "./pages/Meals";
 import AttendanceReport from "./pages/AttendanceReport";
+import { ExamThemeScope } from "./context/ThemeContext";
 import AdminEAssessments from "./pages/AdminEAssessments";
 import MainExaminations from "./pages/MainExaminations";
 import MainExaminationDashboard from "./pages/MainExaminationDashboard";
@@ -369,7 +370,7 @@ export default function App() {
       ===================================================== */}
       <Route
         path="/take-assessment"
-        element={<TakeAssessmentPicker />}
+        element={<ExamThemeScope><TakeAssessmentPicker /></ExamThemeScope>}
       />
 
       {/* =====================================================
@@ -384,7 +385,7 @@ export default function App() {
       ===================================================== */}
       <Route
         path="/take-assessment/:id"
-        element={<TakeAssessment />}
+        element={<ExamThemeScope><TakeAssessment /></ExamThemeScope>}
       />
 
       {/* FORCE PASSWORD CHANGE — any logged-in role, no allowedRoles filter */}
@@ -464,7 +465,7 @@ export default function App() {
             allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
-            <AdminEAssessments />
+            <ExamThemeScope><AdminEAssessments /></ExamThemeScope>
           </ProtectedRoute>
         }
       />
@@ -481,7 +482,7 @@ export default function App() {
             allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
-            <MainExaminations />
+            <ExamThemeScope><MainExaminations /></ExamThemeScope>
           </ProtectedRoute>
         }
       />
@@ -493,7 +494,7 @@ export default function App() {
             allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
-            <MainExaminationDashboard />
+            <ExamThemeScope><MainExaminationDashboard /></ExamThemeScope>
           </ProtectedRoute>
         }
       />
@@ -663,7 +664,7 @@ export default function App() {
             allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
-            <AdminEAssessments />
+            <ExamThemeScope><AdminEAssessments /></ExamThemeScope>
           </ProtectedRoute>
         }
       />
@@ -681,7 +682,7 @@ export default function App() {
             allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="E-Assessments"
           >
-            <AddQuestions />
+            <ExamThemeScope><AddQuestions /></ExamThemeScope>
           </ProtectedRoute>
         }
       />
@@ -819,7 +820,7 @@ export default function App() {
 
         <Route
           path="assessments"
-          element={<TeacherAssessments />}
+          element={<ExamThemeScope><TeacherAssessments /></ExamThemeScope>}
         />
 
         <Route
@@ -834,22 +835,22 @@ export default function App() {
 
         <Route
           path="e-assessments"
-          element={<TeacherEAssessments />}
+          element={<ExamThemeScope><TeacherEAssessments /></ExamThemeScope>}
         />
 
         <Route
           path="e-assessments/:id/questions"
-          element={<AddQuestions />}
+          element={<ExamThemeScope><AddQuestions /></ExamThemeScope>}
         />
 
         <Route
           path="e-assessments/:id/submissions"
-          element={<TeacherSubmissions />}
+          element={<ExamThemeScope><TeacherSubmissions /></ExamThemeScope>}
         />
 
         <Route
           path="e-assessments/marking/:id"
-          element={<Marking />}
+          element={<ExamThemeScope><Marking /></ExamThemeScope>}
         />
 
         <Route
@@ -858,7 +859,7 @@ export default function App() {
         />
         <Route
   path="/teacher/e-assessments/:id/all-questions-marking"
-  element={<AllQuestionsMarking />}
+  element={<ExamThemeScope><AllQuestionsMarking /></ExamThemeScope>}
 />
       </Route>
 
@@ -926,7 +927,7 @@ export default function App() {
         {/* LIST OF AVAILABLE EXAMS */}
         <Route
           path="e-assessments"
-          element={<StudentEAssessments />}
+          element={<ExamThemeScope><StudentEAssessments /></ExamThemeScope>}
         />
 
         {/* TAKE EXAM — moved to the standalone /take-assessment/:id
@@ -945,7 +946,7 @@ export default function App() {
             ProtectedRoute above), unlike the exam-taking flow. */}
         <Route
           path="e-assessments/:id/result"
-          element={<StudentMarkedPaper />}
+          element={<ExamThemeScope><StudentMarkedPaper /></ExamThemeScope>}
         />
 
         {/* RESULTS SUMMARY — the "Results Summary" sidebar item already
@@ -966,7 +967,7 @@ export default function App() {
             :mainExamId/timetable (item 3 in NOT_DONE.md). */}
         <Route
           path="timetable"
-          element={<StudentMainExamTimetable />}
+          element={<ExamThemeScope><StudentMainExamTimetable /></ExamThemeScope>}
         />
       </Route>
 

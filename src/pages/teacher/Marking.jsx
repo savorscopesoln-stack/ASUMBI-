@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useParams } from "react-router-dom";
 import { PenLine, AlertTriangle, Flag, BookOpen, X } from "lucide-react";
 import API from "../../api";
+import { sanitizeHtml } from "../../utils/safeHtml";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 
 /* ═══════════════════════════════════════════════════════════
@@ -153,6 +154,9 @@ const injectMarkingStyles = () => {
 
     .mkp-essay-readonly { user-select: text; caret-color: transparent; outline: none; }
     .mkp-essay-readonly:focus { outline: none; }
+    .mkp-essay-readonly table { border-collapse: collapse; margin: 8px 0; max-width: 100%; }
+    .mkp-essay-readonly th, .mkp-essay-readonly td { border: 1px solid var(--border); padding: 6px 10px; vertical-align: top; min-width: 48px; }
+    .mkp-essay-readonly th { background: var(--card); font-weight: 700; }
     .hl-mark { background: rgba(239,68,68,.20); border-bottom: 2px solid #ef4444; border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; color: inherit; }
     .hl-mark:hover { background: rgba(239,68,68,.35); }
     .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; cursor: pointer; vertical-align: middle; color: #fff; user-select: none; }
@@ -443,7 +447,7 @@ function RichEditor({ value, onChange, placeholder }) {
 // Block-level tags a contentEditable box may use for its own line breaks
 // (Chrome wraps each typed line in its own <div>; other editors may use
 // <p> or <li>). Each one is treated as a whole line on its own.
-const HL_BLOCK_TAGS = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "TR", "TD"]);
+const HL_BLOCK_TAGS = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "TABLE", "THEAD", "TBODY", "TFOOT", "TR", "TH", "TD", "CAPTION"]);
 
 // Split the answer box into an ordered list of "lines" — each one just an
 // array of the DOM sibling nodes that make it up, broken at a <br> or a
@@ -512,7 +516,7 @@ function intersectRanges(lineRange, rawRange) {
   return r;
 }
 
-function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onLimitReached }) {
+function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onReason, onLimitReached }) {
   const containerRef = useRef(null);
   const totalMarks = highlights.reduce((sum, h) => sum + (h.mark || 0), 0);
 
@@ -695,7 +699,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         onMouseUp={handleMouseUp}
         onClick={handleContainerClick}
         style={s.essayText}
-        dangerouslySetInnerHTML={{ __html: html || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
       />
 
       {highlights.length > 0 && (
@@ -711,6 +715,16 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
                 <button className="mkp-stepper-btn" style={s.stepperBtn} onClick={() => adjust(h.id, 1)} disabled={maxMarks != null && totalMarks >= maxMarks}>+</button>
               </div>
               <button onClick={() => removeMark(h.id)} style={s.hlItemRemove}>Remove</button>
+              {onReason && !h.prior && (
+                <input
+                  type="text"
+                  value={h.reason || ""}
+                  maxLength={500}
+                  onChange={(e) => onReason(h.id, e.target.value)}
+                  placeholder={(h.mark || 0) > 0 ? "Why this point earned credit (optional — the student sees this)" : "Why this point was marked wrong (optional — the student sees this)"}
+                  style={s.hlReasonInput}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -1020,6 +1034,15 @@ export default function Marking() {
     setEssayHTML((prev) => ({ ...prev, [current.id]: newHtml }));
   }, [current, adjustHighlight]);
 
+  const handleEssayReason = useCallback((hlId, text) => {
+    if (!current) return;
+    setHighlights((prev) => ({
+      ...prev,
+      [current.id]: (prev[current.id] || []).map((h) => (h.id === hlId ? { ...h, reason: text } : h)),
+    }));
+    setSaved(false);
+  }, [current]);
+
   const handleLimitReached = useCallback(() => {
     showToast("This question's full marks are already awarded", "info");
   }, [showToast]);
@@ -1322,6 +1345,7 @@ export default function Marking() {
                 onAdd={handleEssayAdd}
                 onRemove={handleEssayRemove}
                 onAdjust={handleEssayAdjust}
+                onReason={handleEssayReason}
                 onLimitReached={handleLimitReached}
               />
 
@@ -1536,6 +1560,7 @@ const s = {
   hlListTitle: { fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 6px" },
   hlItem: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, flexWrap: "wrap" },
   hlItemDot: { width: 7, height: 7, borderRadius: "50%", background: "var(--warning)", flexShrink: 0 },
+  hlReasonInput: { flexBasis: "100%", width: "100%", boxSizing: "border-box", padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--card)", color: "var(--text)", fontSize: 12.5, fontFamily: "inherit", outline: "none" },
   hlItemText: { flex: 1, color: "var(--text-secondary)", fontStyle: "italic", minWidth: 120 },
   stepper: { display: "flex", alignItems: "center", gap: 6, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "2px 4px" },
   stepperBtn: { background: "none", border: "none", color: "var(--text)", width: 22, height: 22, borderRadius: 5, cursor: "pointer", fontSize: 14, lineHeight: 1, fontFamily: "inherit" },

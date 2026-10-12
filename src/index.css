@@ -21,6 +21,31 @@ body {
   transition: all 0.25s ease;
 }
 
+/* ---- THEME SWITCH: never animate a whole-page theme change ----
+   ThemeContext adds .theme-switching for ~1 frame while it flips the theme.
+   Without this the global transition above smears every colour change
+   (and let the page look stuck half-dark). */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+}
+
+/* ---- EXAM FEATURE: the page itself is LIGHT unless the user chose dark ----
+   The body above is a dark gradient for the rest of the app. Inside the exam
+   feature (ThemeContext adds .exam-scope) the body follows the exam theme, so
+   there is never a black strip, overscroll area or loading flash behind a
+   light exam page. Fallback colours match the page tokens, so this works
+   even before a page has injected its own --bg / --text. */
+html.exam-scope body {
+  background: var(--bg, #F8FAFC);
+  color: var(--text, #0B0F19);
+}
+html.exam-scope[data-theme='dark'] body {
+  background: var(--bg, #0F1115);
+  color: var(--text, #FFFFFF);
+}
+
 /* glass card */
 .glass {
   background: var(--glass);
