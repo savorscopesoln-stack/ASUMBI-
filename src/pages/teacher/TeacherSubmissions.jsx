@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../../api";
+import EvidenceGallery from "../../components/eassessment/EvidenceGallery";
+import { useTheme } from "../../context/ThemeContext";
 import jsPDF from "jspdf";
 
 /* ─────────────────────────────────────────────
@@ -410,38 +412,9 @@ export default function TeacherSubmissions() {
             </h2>
             {photoView.loading ? (
               <p style={{ color: C.textSec, fontSize: 13 }}>Loading photos…</p>
-            ) : (() => {
-              const ev = photoView.evidence || {};
-              const items = [
-                ...(ev.profile_photo_url ? [{ key: "profile", url: resolvePhotoUrl(ev.profile_photo_url), label: "Profile photo", caption: "Profile" }] : []),
-                ...(ev.photos || []).map(ph => ({
-                  key: ph.id, url: resolvePhotoUrl(ph.photo_url),
-                  label: `${ph.reason || "Camera photo"} · ${ph.created_at ? new Date(ph.created_at).toLocaleString() : ""}`,
-                  caption: ph.reason === "exam start" ? "Exam start" : (ph.created_at ? new Date(ph.created_at).toLocaleTimeString() : "Photo"),
-                })),
-              ];
-              if (!items.length) return <p style={{ color: C.textSec, fontSize: 13 }}>No camera photos were captured for this student.</p>;
-              return (
-                <>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
-                    {items.map(it => (
-                      <button key={it.key} type="button" title={it.label}
-                        onClick={() => setPhotoView(v => ({ ...v, zoom: it }))}
-                        style={{ background: "none", border: "none", padding: 0, cursor: "zoom-in", textAlign: "center" }}>
-                        <img src={it.url} alt={it.label} loading="lazy" style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 8, border: `1px solid ${C.border}`, background: "#000" }} />
-                        <div style={{ fontSize: 11, color: C.textSec, marginTop: 3 }}>{it.caption}</div>
-                      </button>
-                    ))}
-                  </div>
-                  {photoView.zoom && (
-                    <div style={{ marginTop: 14 }}>
-                      <img src={photoView.zoom.url} alt={photoView.zoom.label} style={{ width: "100%", borderRadius: 8 }} />
-                      <div style={{ fontSize: 12, color: C.textSec, marginTop: 4 }}>{photoView.zoom.label}</div>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+            ) : (
+              <EvidenceGallery evidence={photoView.evidence} title={null} />
+            )}
             <div style={{ marginTop: 16, textAlign: "right" }}>
               <button className="tv-btn tv-btn-ghost tv-btn-sm" onClick={() => setPhotoView(null)}>Close</button>
             </div>
