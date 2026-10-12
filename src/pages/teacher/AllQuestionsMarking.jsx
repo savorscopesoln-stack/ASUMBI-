@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import API, { BASE_URL } from "../../api";
+import { sanitizeHtml } from "../../utils/safeHtml";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
+import EvidenceGallery from "../../components/eassessment/EvidenceGallery";
 import {
   ClipboardCheck,
   AlertTriangle,
@@ -16,74 +18,7 @@ import {
   Users,
   ArrowRight,
   Inbox,
-  Camera,
-  X,
 } from "lucide-react";
-
-/* ═══════════════════════════════════════════════════════════
-   STUDENT EVIDENCE PANEL
-   Shows the student's profile photo next to the camera photos taken
-   while they sat the assessment, so a teacher who flags a response
-   has something to compare. Click any photo to enlarge it.
-═══════════════════════════════════════════════════════════ */
-function EvidencePanel({ evidence }) {
-  const [zoom, setZoom] = useState(null); // { url, label }
-  const profileUrl = resolvePhotoUrl(evidence?.profile_photo_url);
-  const photos = evidence?.photos || [];
-  if (!profileUrl && !photos.length) {
-    return (
-      <div style={evStyles.empty}>
-        <Camera size={13} /> No camera photos were captured for this student.
-      </div>
-    );
-  }
-  const Thumb = ({ url, label, caption }) => (
-    <button type="button" onClick={() => setZoom({ url, label })} style={evStyles.thumbBtn} title={label}>
-      <img src={url} alt={label} style={evStyles.thumb} loading="lazy" />
-      <span style={evStyles.caption}>{caption}</span>
-    </button>
-  );
-  return (
-    <div style={evStyles.wrap}>
-      <div style={evStyles.title}><Camera size={13} /> Student photos — compare before flagging</div>
-      <div style={evStyles.row}>
-        {profileUrl && <Thumb url={profileUrl} label="Profile photo" caption="Profile" />}
-        {photos.map((ph) => (
-          <Thumb
-            key={ph.id}
-            url={resolvePhotoUrl(ph.photo_url)}
-            label={`${ph.reason || "Camera photo"} · ${ph.created_at ? new Date(ph.created_at).toLocaleString() : ""}`}
-            caption={ph.reason === "exam start" ? "Exam start" : ph.created_at ? new Date(ph.created_at).toLocaleTimeString() : "Photo"}
-          />
-        ))}
-      </div>
-      {zoom && (
-        <div style={evStyles.overlay} onClick={() => setZoom(null)}>
-          <div style={evStyles.zoomBox} onClick={(e) => e.stopPropagation()}>
-            <button type="button" onClick={() => setZoom(null)} style={evStyles.close} aria-label="Close"><X size={16} /></button>
-            <img src={zoom.url} alt={zoom.label} style={evStyles.zoomImg} />
-            <div style={evStyles.zoomLabel}>{zoom.label}</div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const evStyles = {
-  wrap: { margin: "10px 0 14px", padding: 10, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" },
-  title: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 8 },
-  row: { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 },
-  thumbBtn: { flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", padding: 0, cursor: "zoom-in" },
-  thumb: { width: 96, height: 72, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)", background: "#000" },
-  caption: { fontSize: 10, color: "var(--text-secondary)" },
-  empty: { display: "flex", alignItems: "center", gap: 6, margin: "8px 0", fontSize: 12, color: "var(--text-secondary)" },
-  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 },
-  zoomBox: { position: "relative", maxWidth: "min(92vw, 720px)", background: "var(--card)", borderRadius: 10, padding: 10 },
-  zoomImg: { display: "block", maxWidth: "100%", maxHeight: "78vh", borderRadius: 6 },
-  zoomLabel: { marginTop: 6, fontSize: 12, color: "var(--text-secondary)", textAlign: "center" },
-  close: { position: "absolute", top: 6, right: 6, width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" },
-};
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -1675,7 +1610,7 @@ export default function Marking() {
             </button>
           </div>
 
-          <EvidencePanel evidence={evidenceByStudent[current._student_id]} />
+          <EvidenceGallery evidence={evidenceByStudent[current._student_id]} />
 
           <FieldLabel>Question</FieldLabel>
           <div style={s.questionBox}>{current.question_text}</div>
