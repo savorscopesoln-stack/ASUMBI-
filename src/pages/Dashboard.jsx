@@ -323,6 +323,12 @@ function Dashboard() {
   const [graduatedLoading, setGraduatedLoading] = useState(true);
   const [graduatedError, setGraduatedError]     = useState(false);
   const [confirmDelete, setConfirmDelete]       = useState(false);
+  // Multi-row selection for bulk delete (set of primary-key values as strings).
+  const [checkedIds, setCheckedIds]             = useState(() => new Set());
+  const [bulkConfirm, setBulkConfirm]           = useState(false);
+  const [bulkTyped, setBulkTyped]               = useState("");
+  const [bulkDeleting, setBulkDeleting]         = useState(false);
+  const lastCheckedIdxRef = useRef(null);
   const firstStatsLoad = useRef(true);
   const firstGradLoad  = useRef(true);
 
@@ -415,6 +421,68 @@ function Dashboard() {
     })();
   }, [isAdmin]);
 
+  /* ── bulk selection helpers ── */
+  const rowKey = (row) => {
+    const v = row?.[primaryKeyCol] ?? row?.id ?? row?._id;
+    return v === undefined || v === null || v === "" ? null : String(v);
+  };
+  const clearChecked = () => {
+    setCheckedIds(new Set());
+    setBulkConfirm(false);
+    setBulkTyped("");
+    lastCheckedIdxRef.current = null;
+  };
+  const selectableKeys = activeData.map(rowKey).filter((k) => k !== null);
+  const allChecked = selectableKeys.length > 0 && selectableKeys.every((k) => checkedIds.has(k));
+  const someChecked = checkedIds.size > 0 && !allChecked;
+  const toggleAllChecked = () => {
+    setBulkConfirm(false); setBulkTyped("");
+    setCheckedIds(allChecked ? new Set() : new Set(selectableKeys));
+  };
+  // Click toggles one row; shift-click selects the whole range since the last click.
+  const toggleChecked = (i, shift) => {
+    const key = rowKey(activeData[i]);
+    if (key === null) return;
+    setBulkConfirm(false); setBulkTyped("");
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (shift && lastCheckedIdxRef.current !== null) {
+        const [a, b] = [lastCheckedIdxRef.current, i].sort((x, y) => x - y);
+        const turnOn = !prev.has(key);
+        for (let n = a; n <= b; n++) {
+          const k = rowKey(activeData[n]);
+          if (k === null) continue;
+          if (turnOn) next.add(k); else next.delete(k);
+        }
+      } else if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    lastCheckedIdxRef.current = i;
+  };
+
+  const handleBulkDelete = async () => {
+    if (!checkedIds.size || bulkDeleting) return;
+    const ids = [...checkedIds];
+    try {
+      setBulkDeleting(true);
+      const res = await API.post("/update-records/bulk-delete", { type: uploadType, ids });
+      const idSet = new Set(ids);
+      setActiveData((prev) => prev.filter((r) => !idSet.has(rowKey(r))));
+      setPreviewData((prev) => prev.filter((r) => !idSet.has(rowKey(r))));
+      setSelectedIndex(null);
+      setEditMode(false);
+      setConfirmDelete(false);
+      clearChecked();
+      showToast(res.data?.message || `Deleted ${ids.length} records`);
+    } catch (err) {
+      console.log(err);
+      showToast(err?.response?.data?.message || "Bulk delete failed — nothing was deleted.", "error");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const handleFileSelect = (f) => {
     setFile(f);
     if (!f) return;
@@ -428,6 +496,7 @@ function Dashboard() {
       setActiveData(JSON.parse(JSON.stringify(json)));
       setSelectedIndex(null);
       setEditMode(false);
+      clearChecked();
     };
     reader.readAsBinaryString(f);
   };
@@ -451,6 +520,7 @@ function Dashboard() {
       setIdentityColumn(res.data?.identityColumn || null);
       setSelectedIndex(null);
       setEditMode(false);
+      clearChecked();
     } catch (err) { console.log(err); showToast("Search failed", "error"); }
     finally { setSearchLoading(false); }
   };
@@ -468,6 +538,7 @@ function Dashboard() {
       setIdentityColumn(res.data?.identityColumn || null);
       setSelectedIndex(null);
       setEditMode(false);
+      clearChecked();
     } catch (err) { console.log(err); showToast("Failed to load records", "error"); }
   };
 
@@ -930,6 +1001,47 @@ function Dashboard() {
               )}
             </div>
 
+            {/* Bulk selection bar — appears once one or more rows are ticked */}
+            {checkedIds.size > 0 && !bulkConfirm && (
+              <div style={D.selectionBar}>
+                <span style={D.selectionInfo}>{checkedIds.size} row{checkedIds.size !== 1 ? "s" : ""} selected</span>
+                {!allChecked && selectableKeys.length > checkedIds.size && (
+                  <SecondaryBtn onClick={toggleAllChecked}>Select all {selectableKeys.length}</SecondaryBtn>
+                )}
+                <SecondaryBtn onClick={clearChecked}>Clear</SecondaryBtn>
+                <DestructiveBtn onClick={() => { setBulkConfirm(true); setBulkTyped(""); }} Icon={Trash2}>
+                  Delete selected ({checkedIds.size})
+                </DestructiveBtn>
+              </div>
+            )}
+            {checkedIds.size > 0 && bulkConfirm && (
+              <div style={{ ...D.confirmBar, flexWrap: "wrap" }} role="alertdialog" aria-label="Confirm bulk delete">
+                <AlertTriangle size={16} color="var(--destructive)" style={{ flexShrink:0 }} />
+                <span style={{ fontSize:13, fontWeight:600, color:"var(--text)", flex:1, minWidth: 220 }}>
+                  Permanently delete {checkedIds.size} record{checkedIds.size !== 1 ? "s" : ""} from this table? This can't be undone.
+                  {checkedIds.size > 10 && <> Type <strong>DELETE</strong> to confirm.</>}
+                </span>
+                {checkedIds.size > 10 && (
+                  <input
+                    value={bulkTyped}
+                    onChange={(e) => setBulkTyped(e.target.value)}
+                    placeholder="DELETE"
+                    aria-label="Type DELETE to confirm"
+                    style={{ ...D.cellInput, width: 110 }}
+                    autoFocus
+                  />
+                )}
+                <SecondaryBtn onClick={() => { setBulkConfirm(false); setBulkTyped(""); }} disabled={bulkDeleting}>Cancel</SecondaryBtn>
+                <DestructiveBtn
+                  onClick={handleBulkDelete}
+                  Icon={Trash2}
+                  disabled={bulkDeleting || (checkedIds.size > 10 && bulkTyped.trim() !== "DELETE")}
+                >
+                  {bulkDeleting ? "Deleting…" : `Delete ${checkedIds.size}`}
+                </DestructiveBtn>
+              </div>
+            )}
+
             {/* Selection actions */}
             {selectedIndex !== null && !confirmDelete && (
               <div style={D.selectionBar}>
@@ -1013,6 +1125,17 @@ function Dashboard() {
               <table style={D.table}>
                 <thead>
                   <tr>
+                    <th style={{ ...D.th, width: 36 }}>
+                      <input
+                        type="checkbox"
+                        checked={allChecked}
+                        ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                        onChange={toggleAllChecked}
+                        disabled={selectableKeys.length === 0}
+                        aria-label="Select all rows"
+                        title="Select all rows"
+                      />
+                    </th>
                     {previewHeaders.map((h) => (
                       <th key={h} style={D.th}>{h}</th>
                     ))}
@@ -1025,7 +1148,18 @@ function Dashboard() {
                       key={i}
                       className={`dash-row${selectedIndex === i ? " selected-row" : ""}`}
                       onClick={() => handleSelect(i)}
+                      style={rowKey(row) !== null && checkedIds.has(rowKey(row)) ? { background: "var(--primary-tint)" } : undefined}
                     >
+                      <td style={D.td} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={rowKey(row) !== null && checkedIds.has(rowKey(row))}
+                          disabled={rowKey(row) === null}
+                          onChange={() => {}}
+                          onClick={(e) => { e.stopPropagation(); toggleChecked(i, e.shiftKey); }}
+                          aria-label={`Select row ${i + 1} for bulk delete`}
+                        />
+                      </td>
                       {previewHeaders.map((h) => (
                         <td key={h} style={D.td}>
                           {editMode && selectedIndex === i ? (

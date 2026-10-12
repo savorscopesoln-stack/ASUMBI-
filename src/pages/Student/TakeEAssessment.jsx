@@ -9,7 +9,7 @@ import {
 import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
-  Camera, CameraOff, Eye, EyeOff, ChevronLeft, ChevronRight, Home,
+  Camera, CameraOff, Eye, EyeOff, ChevronLeft, ChevronRight, Home, MonitorUp,
 } from "lucide-react";
 
 // The admin's "Desktop only" switch rejects phones/tablets with a 403 whose
@@ -290,6 +290,23 @@ const isFrameBlank = (video) => {
     return sum / (d.length / 4) / 3 < 6; // mean brightness out of 255
   } catch {
     return false; // can't tell — don't block the photo
+  }
+};
+
+// One JPEG frame of the shared screen (downscaled to keep the upload small),
+// or null if sharing isn't active / the frame isn't ready.
+const grabScreenshot = (video) => {
+  try {
+    if (!video || video.readyState < 2 || !video.videoWidth) return null;
+    const maxW = 1280;
+    const scale = Math.min(1, maxW / video.videoWidth);
+    const c = document.createElement("canvas");
+    c.width = Math.round(video.videoWidth * scale);
+    c.height = Math.round(video.videoHeight * scale);
+    c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.7);
+  } catch {
+    return null;
   }
 };
 
@@ -784,6 +801,11 @@ export default function TakeEAssessment() {
   // it to the <video> once that element has actually mounted — see the
   // "attach stream to preview" effect below. This is the fix for the black camera.
   const [cameraStream, setCameraStream] = useState(null);
+  // Optional full-screen sharing, used ONLY to take a screenshot alongside each
+  // webcam photo. Browsers force the student to pick and approve the screen
+  // themselves, so it can never be taken silently. idle | sharing | off
+  const [screenStatus, setScreenStatus] = useState("idle");
+  const [screenSurface, setScreenSurface] = useState(""); // monitor | window | browser
   const [faceVisible, setFaceVisible] = useState(true); // true = "looking at the screen" (see isLookingAtScreen)
   const [faceAbsentSeconds, setFaceAbsentSeconds] = useState(0); // seconds of continuous not-looking-at-screen
   const [photosCaptured, setPhotosCaptured] = useState(0); // evidence photos sent this session — for the student-facing widget only
@@ -827,6 +849,10 @@ export default function TakeEAssessment() {
   const faceCheckIntervalRef = useRef(null);
   const faceAbsentSinceRef = useRef(null); // timestamp, or null while looking at the screen
   const lastViolationPhotoAtRef = useRef(null); // timestamp of the last evidence photo sent for the current absence
+  const screenStreamRef = useRef(null);
+  const screenVideoRef = useRef(null); // off-DOM <video> the screen stream plays into
+  const questionsRef = useRef([]);
+  const currentQIdxRef = useRef(0);
   const startPhotoSentRef = useRef(false); // one identity photo per sitting, taken once the camera shows a real picture
   // A camera stream captured during the optional pre-start check in
   // handleVerifySubmit, held here so the monitoring effect below can
@@ -840,6 +866,8 @@ export default function TakeEAssessment() {
   // camera stream every time it changed).
   const assessmentRef = useRef(null);
   useEffect(() => { assessmentRef.current = assessment; }, [assessment]);
+  useEffect(() => { questionsRef.current = questions; }, [questions]);
+  useEffect(() => { currentQIdxRef.current = currentQuestionIndex; }, [currentQuestionIndex]);
 
   /* ── restore a persisted local lock (survives refresh) ── */
   useEffect(() => {
@@ -1389,6 +1417,13 @@ export default function TakeEAssessment() {
       const examTitle = assessmentRef.current?.title || "Unknown exam";
       const examSubject = assessmentRef.current?.subject ? ` · ${assessmentRef.current.subject}` : "";
       const when = new Date().toLocaleString();
+      // Which question the student is on right now, and what they've put down.
+      const qs = questionsRef.current || [];
+      const qIdx = Math.min(currentQIdxRef.current || 0, Math.max(qs.length - 1, 0));
+      const curQ = qs[qIdx];
+      const rawAns = curQ ? answersRef.current?.[curQ.id] : null;
+      const answerSnapshot = rawAns == null ? null : (typeof rawAns === "string" ? rawAns : String(rawAns));
+      const qLabel = curQ ? `  ·  Q${qIdx + 1}` : "";
       const maxTextWidth = vw - Math.round(barHeight * 0.32);
       const pad = Math.round(barHeight * 0.16);
       const line1Size = Math.round(barHeight * 0.32);
@@ -1398,15 +1433,19 @@ export default function TakeEAssessment() {
       ctx.fillText(fitCaptionText(ctx, `${name}${usernameSuffix}`, maxTextWidth), pad, vh + pad + line1Size / 2);
 
       ctx.font = `800 ${line2Size}px system-ui, sans-serif`;
-      ctx.fillText(fitCaptionText(ctx, `${examTitle}${examSubject}  ·  ${when}`, maxTextWidth), pad, vh + pad + line1Size + 4 + line2Size / 2);
+      ctx.fillText(fitCaptionText(ctx, `${examTitle}${examSubject}${qLabel}  ·  ${when}`, maxTextWidth), pad, vh + pad + line1Size + 4 + line2Size / 2);
 
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
       API.post("/e-assessments/violation-photo", {
         assessment_id: Number(id),
         token,
         device_id: deviceId,
         image: dataUrl,
         reason,
+        screenshot: grabScreenshot(screenVideoRef.current), // null unless the student shared their screen
+        question_id: curQ?.id ?? null,
+        question_number: curQ ? qIdx + 1 : null,
+        answer_text: answerSnapshot,
       }).then(() => setPhotosCaptured((c) => c + 1)).catch(() => {});
       return true;
     } catch {
@@ -1785,8 +1824,46 @@ export default function TakeEAssessment() {
     return typeof val === "string" ? val.trim().length > 0 : !!val;
   };
 
+  /* ── optional screen sharing (for the screenshot taken with each photo) ── */
+  const stopScreenShare = () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+      screenStreamRef.current = null;
+    }
+    if (screenVideoRef.current) { screenVideoRef.current.srcObject = null; screenVideoRef.current = null; }
+    setScreenStatus((st) => (st === "sharing" ? "off" : st));
+  };
+
+  // Must be called from a click handler — browsers require a user gesture.
+  const startScreenShare = async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia) { setScreenStatus("off"); return; }
+    try {
+      if (screenStreamRef.current) stopScreenShare();
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "monitor" }, audio: false });
+      const track = stream.getVideoTracks()[0];
+      const vid = document.createElement("video");
+      vid.muted = true; vid.playsInline = true; vid.srcObject = stream;
+      try { await vid.play(); } catch { /* frames still decode once metadata loads */ }
+      screenStreamRef.current = stream;
+      screenVideoRef.current = vid;
+      setScreenSurface(track?.getSettings?.().displaySurface || "");
+      setScreenStatus("sharing");
+      // The student can stop sharing from the browser bar at any time.
+      if (track) track.onended = () => { screenStreamRef.current = null; screenVideoRef.current = null; setScreenStatus("off"); };
+    } catch {
+      // Declined / cancelled — the exam works exactly the same without it.
+      setScreenStatus("off");
+    }
+  };
+
+  // Release the screen share if the student leaves the page.
+  useEffect(() => () => {
+    if (screenStreamRef.current) screenStreamRef.current.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+  }, []);
+
   // Everything that happens once the server has the submission.
   const finishAfterSubmit = (auto) => {
+    stopScreenShare();
     localStorage.removeItem(lockKey(id));
     localStorage.removeItem(tokenKey(id));
     localStorage.removeItem(answersKey(id));
@@ -2179,6 +2256,30 @@ export default function TakeEAssessment() {
             This exam can optionally use your camera for eye-gaze monitoring. If your browser asks
             for camera permission, you can allow or decline it — either way, your exam will start.
           </p>
+          {typeof navigator !== "undefined" && navigator.mediaDevices?.getDisplayMedia && (
+            <div style={{ margin: "0 0 16px", padding: 12, border: "1px dashed var(--border)", borderRadius: "var(--radius-sm)", textAlign: "center" }}>
+              <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 8px" }}>
+                <MonitorUp size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                Optional: share your <strong>entire screen</strong> so a screenshot is saved with each camera
+                photo for your teacher to review. Your browser will ask you to choose the screen. Your exam
+                starts either way.
+              </p>
+              {screenStatus === "sharing" ? (
+                <>
+                  <p style={{ color: "var(--success)", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>
+                    Screen sharing is on{screenSurface && screenSurface !== "monitor" ? " — but you shared a " + (screenSurface === "browser" ? "tab" : "window") + ", not the entire screen" : ""}.
+                  </p>
+                  <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={startScreenShare} disabled={activating}>
+                    {screenSurface && screenSurface !== "monitor" ? "Choose Entire Screen" : "Change screen"}
+                  </button>
+                </>
+              ) : (
+                <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={startScreenShare} disabled={activating}>
+                  <MonitorUp size={14} /> {screenStatus === "off" ? "Try sharing screen again" : "Share my screen"}
+                </button>
+              )}
+            </div>
+          )}
           <input
             style={S.verifyInput}
             value={verifyInput}
@@ -2251,6 +2352,12 @@ export default function TakeEAssessment() {
         <div style={S.infoStrip}>
           <CameraOff size={16} color="var(--info)" style={{ flexShrink: 0 }} />
           <span>Camera monitoring is off for this session. Your exam will continue as normal.</span>
+        </div>
+      )}
+
+      {screenStatus === "sharing" && (
+        <div style={{ position: "fixed", bottom: 18, left: 18, zIndex: 500, display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", boxShadow: "0 8px 24px rgba(0,0,0,0.18)" }}>
+          <MonitorUp size={12} /> Screen shared for review
         </div>
       )}
 

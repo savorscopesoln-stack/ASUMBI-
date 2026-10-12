@@ -6,9 +6,10 @@ import {
   Search, X, RefreshCw, Download, Plus, UserPlus, ChevronDown, ArrowLeft, Pencil, Trash2,
   Check, CheckCircle2, AlertTriangle, Lock, Unlock, Zap, Rocket, MessageSquare, Mail,
   BarChart3, ClipboardList, FileText, Award, LockKeyhole, Users, Inbox, Clock, TrendingUp,
-  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle,
+  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle, Smartphone, ShieldCheck, Camera,
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
+import EvidenceGallery from "../components/eassessment/EvidenceGallery";
 import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
 import { fmt2 } from "../utils/format";
 
@@ -1982,38 +1983,9 @@ export default function AdminEAssessments() {
         <Modal title={`Camera photos — ${photoModal.name || "Student"}`} onClose={() => setPhotoModal(null)}>
           {photoModal.loading ? (
             <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>Loading photos…</p>
-          ) : (() => {
-            const ev = photoModal.evidence || {};
-            const items = [
-              ...(ev.profile_photo_url ? [{ key: "profile", url: resolveFileUrl(ev.profile_photo_url), label: "Profile photo", caption: "Profile" }] : []),
-              ...(ev.photos || []).map((ph) => ({
-                key: ph.id, url: resolveFileUrl(ph.photo_url),
-                label: `${ph.reason || "Camera photo"} · ${ph.created_at ? new Date(ph.created_at).toLocaleString() : ""}`,
-                caption: ph.reason === "exam start" ? "Exam start" : (ph.created_at ? new Date(ph.created_at).toLocaleTimeString() : "Photo"),
-              })),
-            ];
-            if (!items.length) return <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No camera photos were captured for this student.</p>;
-            return (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
-                  {items.map((it) => (
-                    <button key={it.key} type="button" title={it.label}
-                      onClick={() => setPhotoModal((m) => ({ ...m, zoom: it }))}
-                      style={{ background: "none", border: "none", padding: 0, cursor: "zoom-in", textAlign: "center" }}>
-                      <img src={it.url} alt={it.label} loading="lazy" style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)", background: "#000" }} />
-                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3 }}>{it.caption}</div>
-                    </button>
-                  ))}
-                </div>
-                {photoModal.zoom && (
-                  <div style={{ marginTop: 14 }}>
-                    <img src={photoModal.zoom.url} alt={photoModal.zoom.label} style={{ width: "100%", borderRadius: 8 }} />
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{photoModal.zoom.label}</div>
-                  </div>
-                )}
-              </>
-            );
-          })()}
+          ) : (
+            <EvidenceGallery evidence={photoModal.evidence} title={null} />
+          )}
         </Modal>
       )}
 
