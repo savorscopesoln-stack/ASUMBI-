@@ -37,6 +37,11 @@ const openDb = () => {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
       req.onblocked = () => resolve(null);
+      // Some locked-down browsers (e.g. Safe Exam Browser profiles) never fire
+      // success OR error for indexedDB.open(), which used to hang the exam on
+      // "Starting…" forever. Give up after 2.5s and use the localStorage /
+      // memory fallbacks instead.
+      setTimeout(() => resolve(null), 2500);
     } catch {
       resolve(null);
     }
@@ -47,7 +52,7 @@ const openDb = () => {
 const idbRun = async (mode, fn) => {
   const db = await openDb();
   if (!db) throw new Error("no-idb");
-  return new Promise((resolve, reject) => {
+  const run = new Promise((resolve, reject) => {
     try {
       const tx = db.transaction(STORE, mode);
       const result = fn(tx.objectStore(STORE));
@@ -58,6 +63,10 @@ const idbRun = async (mode, fn) => {
       reject(e);
     }
   });
+  // Never let a stalled IndexedDB transaction block the exam: callers already
+  // fall back to localStorage / memory when this rejects.
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("idb-timeout")), 3000));
+  return Promise.race([run, timeout]);
 };
 
 /* key = one student + one assessment, so two students sharing a lab PC can
