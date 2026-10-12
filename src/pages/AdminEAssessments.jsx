@@ -6,7 +6,7 @@ import {
   Search, X, RefreshCw, Download, Plus, UserPlus, ChevronDown, ArrowLeft, Pencil, Trash2,
   Check, CheckCircle2, AlertTriangle, Lock, Unlock, Zap, Rocket, MessageSquare, Mail,
   BarChart3, ClipboardList, FileText, Award, LockKeyhole, Users, Inbox, Clock, TrendingUp,
-  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle,
+  Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle, Smartphone, ShieldCheck, Camera,
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
@@ -271,6 +271,7 @@ export default function AdminEAssessments() {
   const [remarkRequests,   setRemarkRequests]   = useState([]);
   const [releasedMarks,    setReleasedMarks]    = useState([]);
   const [examSessions,     setExamSessions]     = useState([]);
+  const [deviceAccess,     setDeviceAccess]     = useState([]); // phones/tablets the Desktop-only switch rejected
   const [gradingSystem,    setGradingSystem]    = useState(null);
   const [gradingDraft,     setGradingDraft]     = useState(null);
   const [gradingSaving,    setGradingSaving]    = useState(false);
@@ -296,6 +297,7 @@ export default function AdminEAssessments() {
   const [resitModal,     setResitModal]     = useState(null); // { student_id, e_assessment_id, student_name, assessment_title, hasPrevious }
   const [resitPolicy,    setResitPolicy]    = useState("replace");
   const [answerModal,  setAnswerModal]  = useState(null);
+  const [photoModal,   setPhotoModal]   = useState(null); // { name, loading, evidence, zoom }
   const [quickStats,   setQuickStats]   = useState(null);
 
   /* selections */
@@ -319,7 +321,7 @@ export default function AdminEAssessments() {
   const loadAll = useCallback(async () => {
     try {
       setLoading(true);
-      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions, grading, noSub] =
+      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions, grading, noSub, devAccess] =
         await Promise.all([
           API.get("/e-assessments"),
           API.get("/e-assessments/classes"),
@@ -332,6 +334,7 @@ export default function AdminEAssessments() {
           API.get("/e-assessments/admin/exam-sessions").catch(() => ({ data: [] })),
           API.get("/e-assessments/grading-system").catch(() => ({ data: null })),
           API.get("/e-assessments/admin/exam-sessions/unsubmitted").catch(() => ({ data: [] })),
+          API.get("/e-assessments/admin/device-access").catch(() => ({ data: [] })),
         ]);
 
       setList(extract(assessments));
@@ -344,6 +347,7 @@ export default function AdminEAssessments() {
       setReleasedMarks(extract(released));
       setExamSessions(extract(sessions));
       setUnsubmitted(extract(noSub));
+      setDeviceAccess(extract(devAccess));
       if (grading.data) {
         setGradingSystem(grading.data);
         setGradingDraft(grading.data);
@@ -607,6 +611,26 @@ export default function AdminEAssessments() {
     }
   };
 
+  // Printable attendance register (school logo + header): students who did
+  // this exam and those who didn't. Downloaded as a PDF.
+  const [attendanceBusy, setAttendanceBusy] = useState(null);
+  const downloadAttendance = async (a) => {
+    if (attendanceBusy) return;
+    try {
+      setAttendanceBusy(a.id);
+      const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })();
+      const r = await API.get(`/e-assessments/admin/${a.id}/attendance-pdf`, { params: tz ? { tz } : {}, responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const link = document.createElement("a");
+      const safe = String(a.title || "assessment").replace(/[^A-Za-z0-9 _.-]+/g, "_").trim().slice(0, 60) || "assessment";
+      link.href = url; link.download = `Attendance - ${safe}.pdf`;
+      document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+      showToast("Attendance PDF downloaded");
+    } catch {
+      showToast("Could not create the attendance PDF", "error");
+    } finally { setAttendanceBusy(null); }
+  };
+
   // "Desktop only" switch — restricts the assessment to Windows/Mac laptops
   // & desktops (phones/tablets rejected). Sets an explicit on/off value, and
   // works at any time, including mid-exam: a phone already inside the exam is
@@ -672,6 +696,17 @@ export default function AdminEAssessments() {
       } catch { setQuickStats(null); }
     } else {
       setQuickStats(null);
+    }
+  };
+
+  const openPhotoModal = async (eAssessmentId, studentId, name) => {
+    setPhotoModal({ name, loading: true, evidence: null, zoom: null });
+    try {
+      const res = await API.get(`/e-assessments/admin/student-photos/${eAssessmentId}/${studentId}`);
+      setPhotoModal({ name, loading: false, evidence: res.data, zoom: null });
+    } catch {
+      setPhotoModal(null);
+      showToast("Failed to load photos", "error");
     }
   };
 
@@ -899,6 +934,19 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
+  // Allow / revoke one rejected phone-or-tablet for the Desktop-only switch.
+  const changeDeviceAccess = async (row, allow) => {
+    try {
+      setSaving(true);
+      const res = await API.put(`/e-assessments/admin/device-access/${row.id}/${allow ? "allow" : "revoke"}`);
+      showToast(res.data?.message || (allow ? "Device allowed" : "Device blocked again"));
+      setDeviceAccess((prev) => prev.map((d) => (d.id === row.id ? { ...d, status: allow ? "allowed" : "blocked" } : d)));
+      loadAll();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not update the device", "error");
+    } finally { setSaving(false); }
+  };
+
   /* ── Grading System (Admin → E-Assessments → Grading System tab) ──
      Edits the shared bands every report screen (Reports, Teacher
      Reports, Student Report) reads via useGradingSystem(). */
@@ -1089,7 +1137,7 @@ export default function AdminEAssessments() {
             {t.label}
             {i === 1 && subStats.unassigned > 0 && <NotifPill n={subStats.unassigned} tone="warning" />}
             {i === 2 && pendingRemarks > 0        && <NotifPill n={pendingRemarks}        tone="accent" />}
-            {i === 4 && lockedSessions > 0        && <NotifPill n={lockedSessions}        tone="danger" />}
+            {i === 4 && (lockedSessions + deviceAccess.filter((d) => d.status === "blocked").length) > 0 && <NotifPill n={lockedSessions + deviceAccess.filter((d) => d.status === "blocked").length} tone="danger" />}
           </button>
         ))}
       </div>
@@ -1248,6 +1296,8 @@ export default function AdminEAssessments() {
                   onStop={() => stopAssessment(a)}
                   onToggleDesktop={() => toggleDesktopOnly(a)}
                   onStats={() => openQuickStats(a)}
+                  onAttendance={() => downloadAttendance(a)}
+                  attendanceBusy={attendanceBusy === a.id}
                   onEdit={() => openEditModal(a)}
                   onDelete={() => deleteAssessments([a.id])}
                   onAddQuestions={() => navigate(`/admin-e-assessments/${a.id}/questions`)}
@@ -1368,6 +1418,7 @@ export default function AdminEAssessments() {
                                   )}
                                   <MiniBtn tone="warning" onClick={() => grantResit(sub)} icon={<IconZap size={12} />} title="Give this student another attempt">Allow resit</MiniBtn>
                                   <MiniBtn onClick={() => openAnswerModal(sub)} icon={<IconFileText size={12} />}>Answers</MiniBtn>
+                                  <MiniBtn onClick={() => openPhotoModal(sub.e_assessment_id, sub.student_id, sub.student_name)} icon={<Camera size={12} />} title="Camera photos taken during the exam">Photos{sub.photo_count ? ` (${sub.photo_count})` : ""}</MiniBtn>
                                   <MiniBtn onClick={() => openQuickStats(sub)} neutral>View</MiniBtn>
                                 </div>
                               </Td>
@@ -1534,7 +1585,7 @@ export default function AdminEAssessments() {
             <div className="dash-card" style={sx.tableWrap}>
               <table style={sx.table}>
                 <thead>
-                  <tr>{["Student","Assessment","Token","Status","Device","Last Activity","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                  <tr>{["Student","Assessment","Token","Status","Device","Last Activity","Photos","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
                 </thead>
                 <tbody>
                   {examSessions.map((sess) => (
@@ -1552,6 +1603,13 @@ export default function AdminEAssessments() {
                       <Td style={{ color: C.textMuted, fontSize: 12, maxWidth: 220 }}>{sess.device_label || "—"}</Td>
                       <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(sess.last_heartbeat || sess.activated_at)}</Td>
                       <Td>
+                        {sess.photo_count > 0 ? (
+                          <MiniBtn neutral icon={<Camera size={12} />} onClick={() => openPhotoModal(sess.e_assessment_id, sess.student_id, sess.student_name)}>{sess.photo_count}</MiniBtn>
+                        ) : (
+                          <span style={{ color: C.textMuted, fontSize: 12 }}>—</span>
+                        )}
+                      </Td>
+                      <Td>
                         {sess.status === "locked" ? (
                           <MiniBtn tone="success" icon={<IconUnlock size={12} />} onClick={() => unlockSession(sess.id)}>Unlock</MiniBtn>
                         ) : (sess.status === "issued" && sess.resit_allowed) ? (
@@ -1566,6 +1624,8 @@ export default function AdminEAssessments() {
               </table>
             </div>
           )}
+
+          <BlockedDevicesPanel rows={deviceAccess} saving={saving} onAllow={(d) => changeDeviceAccess(d, true)} onRevoke={(d) => changeDeviceAccess(d, false)} />
 
           <div style={{ ...sx.tabTopRow, marginTop: 28 }}>
             <div>
@@ -1918,6 +1978,45 @@ export default function AdminEAssessments() {
         </Modal>
       )}
 
+      {photoModal && (
+        <Modal title={`Camera photos — ${photoModal.name || "Student"}`} onClose={() => setPhotoModal(null)}>
+          {photoModal.loading ? (
+            <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>Loading photos…</p>
+          ) : (() => {
+            const ev = photoModal.evidence || {};
+            const items = [
+              ...(ev.profile_photo_url ? [{ key: "profile", url: resolveFileUrl(ev.profile_photo_url), label: "Profile photo", caption: "Profile" }] : []),
+              ...(ev.photos || []).map((ph) => ({
+                key: ph.id, url: resolveFileUrl(ph.photo_url),
+                label: `${ph.reason || "Camera photo"} · ${ph.created_at ? new Date(ph.created_at).toLocaleString() : ""}`,
+                caption: ph.reason === "exam start" ? "Exam start" : (ph.created_at ? new Date(ph.created_at).toLocaleTimeString() : "Photo"),
+              })),
+            ];
+            if (!items.length) return <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No camera photos were captured for this student.</p>;
+            return (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+                  {items.map((it) => (
+                    <button key={it.key} type="button" title={it.label}
+                      onClick={() => setPhotoModal((m) => ({ ...m, zoom: it }))}
+                      style={{ background: "none", border: "none", padding: 0, cursor: "zoom-in", textAlign: "center" }}>
+                      <img src={it.url} alt={it.label} loading="lazy" style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)", background: "#000" }} />
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3 }}>{it.caption}</div>
+                    </button>
+                  ))}
+                </div>
+                {photoModal.zoom && (
+                  <div style={{ marginTop: 14 }}>
+                    <img src={photoModal.zoom.url} alt={photoModal.zoom.label} style={{ width: "100%", borderRadius: 8 }} />
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{photoModal.zoom.label}</div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </Modal>
+      )}
+
       {answerModal && (
         <Modal title={`Answers — ${answerModal.sub?.student_name || "Student"}`} onClose={() => setAnswerModal(null)}>
           <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
@@ -2103,7 +2202,7 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDesktop, onStats, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDesktop, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
   const C = useC();
   // Exact-match against "Active" — kept in lockstep with the backend's
   // toggle-active logic (see eAssessment.controller.js), which only ever
@@ -2176,6 +2275,7 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDeskto
         <MiniBtn tone="success" grow icon={<IconCheck size={12} />} onClick={onStart} disabled={isActive} title={isActive ? "Already started" : "Approve (if needed) and open this assessment to students"}>Start</MiniBtn>
         <MiniBtn tone="danger"  grow icon={<IconX size={12} />}     onClick={onStop}  disabled={!isActive} title={!isActive ? "Already stopped" : "Close this assessment to students"}>Stop</MiniBtn>
         <MiniBtn grow icon={<IconBarChart size={12} />} onClick={onStats}>Stats</MiniBtn>
+        <MiniBtn icon={<Download size={12} />} onClick={onAttendance} disabled={attendanceBusy} title="Download a PDF (with the school logo) listing the students who did this exam and those who did not">{attendanceBusy ? "Preparing…" : "Attendance PDF"}</MiniBtn>
         <MiniBtn icon={<IconQuestions size={12} />} onClick={onAddQuestions} title="Add / manage questions on this assessment" />
         <MiniBtn icon={<IconEdit size={12} />} onClick={onEdit} title="Edit" />
         <MiniBtn tone="danger" icon={<IconTrash size={12} />} onClick={onDelete} title="Delete" />
@@ -2270,6 +2370,112 @@ function MarkPill({ status, score }) {
   if (status === "marked" || score != null) return <Chip text="Marked" tone="success" />;
   if (status === "submitted") return <Chip text="Awaiting Marking" tone="warning" />;
   return <Chip text={status || "Pending"} tone="neutral" />;
+}
+
+/* ── Blocked devices (Desktop-only switch) ──
+   Every phone/tablet the switch turned away, per student and assessment,
+   with the platform it reported (Android, iPhone, ...). "Allow" lets that ONE
+   device in for that student + exam; "Revoke" puts the block back. */
+const PLATFORM_LABEL = {
+  android: "Android", ios: "iPhone", ipados: "iPad", chromeos: "Chromebook",
+  linux: "Linux", windows: "Windows", mac: "Mac", unknown: "Unknown",
+};
+const deviceModel = (ua = "") => {
+  const a = /Android [\d.]+; ([^)]+?)(?: Build|\))/i.exec(ua);
+  if (a) return a[1].trim();
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua)) return "iPad";
+  return "";
+};
+
+function BlockedDevicesPanel({ rows, saving, onAllow, onRevoke }) {
+  const C = useC();
+  const sx = s(C);
+  const [statusF, setStatusF] = useState("blocked");
+  const [platformF, setPlatformF] = useState("all");
+  const select = { padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 13 };
+
+  const blockedCount = rows.filter((d) => d.status === "blocked").length;
+  const shown = rows.filter((d) =>
+    (statusF === "all" || d.status === statusF) && (platformF === "all" || d.platform === platformF));
+
+  return (
+    <>
+      <div style={{ ...sx.tabTopRow, marginTop: 28 }}>
+        <div>
+          <h2 style={sx.tabTitle}>Blocked Devices</h2>
+          <p style={sx.tabSub}>
+            Phones and tablets that tried to open a "Desktop only" exam and were turned away. Press
+            <b> Allow </b>to let that one device take the exam for that student — it works straight away,
+            and the student just presses Try again. <b>Revoke</b> blocks it again.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <select style={select} value={statusF} onChange={(e) => setStatusF(e.target.value)} aria-label="Filter by status">
+            <option value="blocked">Blocked{blockedCount ? ` (${blockedCount})` : ""}</option>
+            <option value="allowed">Allowed</option>
+            <option value="all">All</option>
+          </select>
+          <select style={select} value={platformF} onChange={(e) => setPlatformF(e.target.value)} aria-label="Filter by device type">
+            <option value="all">All device types</option>
+            <option value="android">Android</option>
+            <option value="ios">iPhone</option>
+            <option value="ipados">iPad</option>
+            <option value="chromeos">Chromebook</option>
+            <option value="linux">Linux</option>
+            <option value="unknown">Unknown</option>
+          </select>
+        </div>
+      </div>
+
+      {shown.length === 0 ? (
+        <EmptyState icon={<Smartphone size={26} />} text={rows.length === 0 ? "No phone or tablet has been turned away yet." : "Nothing matches these filters."} />
+      ) : (
+        <div className="dash-card" style={sx.tableWrap}>
+          <table style={sx.table}>
+            <thead>
+              <tr>{["Student", "Assessment", "Device", "Attempts", "Last attempt", "Status", "Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+            </thead>
+            <tbody>
+              {shown.map((d) => {
+                const model = deviceModel(d.user_agent);
+                return (
+                  <tr key={d.id} className="row-hover">
+                    <Td>
+                      <div style={{ fontWeight: 600, color: C.textPri }}>{d.student_name || (d.student_id ? `#${d.student_id}` : "Unknown student")}</div>
+                      <div style={{ color: C.textMuted, fontSize: 11 }}>{[d.student_class, d.student_username].filter(Boolean).join(" · ")}</div>
+                    </Td>
+                    <Td style={{ color: C.textSec, fontSize: 13 }}>
+                      {d.assessment_title || "—"}
+                      {!d.desktop_only && <div style={{ color: C.textMuted, fontSize: 11 }}>Desktop-only is off now</div>}
+                    </Td>
+                    <Td style={{ maxWidth: 230 }}>
+                      <Chip icon={<Smartphone size={11} />} text={PLATFORM_LABEL[d.platform] || d.platform || "Unknown"} tone="warning" />
+                      <div style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }} title={d.user_agent || ""}>
+                        {model || (d.user_agent ? `${d.user_agent.slice(0, 48)}…` : "—")}
+                      </div>
+                    </Td>
+                    <Td style={{ color: C.textSec, fontSize: 13 }}>{d.attempts}</Td>
+                    <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(d.last_seen)}</Td>
+                    <Td>
+                      {d.status === "allowed"
+                        ? <Chip icon={<ShieldCheck size={11} />} text={d.allowed_by_name ? `Allowed by ${d.allowed_by_name}` : "Allowed"} tone="success" />
+                        : <Chip icon={<IconLock size={11} />} text="Blocked" tone="danger" />}
+                    </Td>
+                    <Td>
+                      {d.status === "allowed"
+                        ? <MiniBtn tone="warning" disabled={saving} onClick={() => onRevoke(d)}>Revoke</MiniBtn>
+                        : <MiniBtn tone="success" disabled={saving} icon={<ShieldCheck size={12} />} onClick={() => onAllow(d)}>Allow</MiniBtn>}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
 }
 
 function Chip({ text, tone = "neutral", icon, uppercase }) {

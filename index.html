@@ -30,6 +30,29 @@
     />
 
     <!-- =======================
+         EXAM THEME — PRE-PAINT
+         On exam screens the page must be LIGHT from the very first paint
+         (the global body below is dark). This tiny script runs before
+         React, applies the exam theme (light unless the user switched to
+         dark this session) so there is no black flash/"hang" while the app
+         loads. ThemeContext takes over afterwards with the same values.
+    ======================== -->
+    <script>
+      (function () {
+        try {
+          var examPath = /^\/(take-assessment|e-assessments|admin-e-assessments|main-exams|teacher\/e-assessments|student\/e-assessments|student\/main-exam)/;
+          if (!examPath.test(location.pathname)) return;
+          var t = sessionStorage.getItem("exam_theme");
+          t = t === "dark" ? "dark" : "light";
+          var r = document.documentElement;
+          r.classList.add("exam-scope", t);
+          r.setAttribute("data-theme", t);
+          r.style.colorScheme = t;
+        } catch (e) {}
+      })();
+    </script>
+
+    <!-- =======================
          GLOBAL STYLE (fallback if Tailwind fails)
     ======================== -->
     <style>
@@ -43,6 +66,10 @@
       #root {
         min-height: 100vh;
       }
+
+      /* exam screens: light (or the chosen dark) from first paint */
+      html.exam-scope body { background: #F8FAFC; color: #0B0F19; }
+      html.exam-scope[data-theme="dark"] body { background: #0F1115; color: #fff; }
 
       /* loading screen feel */
       .boot {

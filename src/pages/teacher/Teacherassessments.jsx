@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../api";
+import { useTheme } from "../../context/ThemeContext";
 
 /* ─────────────────────────────────────────────
    Design tokens — now shares the same palette as
@@ -25,7 +26,6 @@ const C = {
 
 const FONT_UI   = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
 const FONT_MONO = "'IBM Plex Mono', 'SF Mono', ui-monospace, monospace";
-const THEME_KEY = "tv_theme_preference";
 
 /* ─────────────────────────────────────────────
    Icon set — thin, single-stroke, one family.
@@ -69,21 +69,9 @@ export default function TeacherEAssessments() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  /* ── Theme ── */
-  const [theme, setTheme] = useState(() => {
-    try {
-      const stored = localStorage.getItem(THEME_KEY);
-      if (stored === "light" || stored === "dark") return stored;
-    } catch { /* ignore */ }
-    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: light)").matches) {
-      return "light";
-    }
-    return "dark";
-  });
-  useEffect(() => {
-    try { localStorage.setItem(THEME_KEY, theme); } catch { /* ignore */ }
-  }, [theme]);
-  const toggleTheme = () => setTheme(t => (t === "dark" ? "light" : "dark"));
+  
+  /* ── Theme — shared app-wide context (exam screens open light) ── */
+  const { theme, toggleTheme } = useTheme();
 
   /* ── Fetch ── */
   const fetchAssessments = async () => {

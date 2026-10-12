@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTheme } from "../../context/ThemeContext";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { usePortalPageAccess } from "../../hooks/usePortalPageAccess";
 import useUnreadNotifications from "../../hooks/useUnreadNotifications";
@@ -8,26 +9,6 @@ import {
   Settings, ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut,
   Sun, Moon, GraduationCap, Vote,
 } from "lucide-react";
-/* ─── self-contained theme hook — no dependency on an external
-   ThemeContext file/path, which varies by project structure.
-   Reads/writes localStorage + the document's data-theme attribute,
-   the same attribute the token stylesheet below keys off of. If
-   your app already has its own ThemeProvider/useTheme elsewhere,
-   swap this out for that import instead so both stay in sync. ─── */
-const useTheme = () => {
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("theme") || "light"
-  );
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
-
-  return { theme, toggleTheme };
-};
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    admin dashboard so both layouts render from one consistent

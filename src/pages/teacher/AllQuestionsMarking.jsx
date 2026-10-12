@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import API, { BASE_URL } from "../../api";
+import API, { BASE_URL, resolvePhotoUrl } from "../../api";
+import { sanitizeHtml } from "../../utils/safeHtml";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 import {
   ClipboardCheck,
@@ -16,7 +17,74 @@ import {
   Users,
   ArrowRight,
   Inbox,
+  Camera,
+  X,
 } from "lucide-react";
+
+/* ═══════════════════════════════════════════════════════════
+   STUDENT EVIDENCE PANEL
+   Shows the student's profile photo next to the camera photos taken
+   while they sat the assessment, so a teacher who flags a response
+   has something to compare. Click any photo to enlarge it.
+═══════════════════════════════════════════════════════════ */
+function EvidencePanel({ evidence }) {
+  const [zoom, setZoom] = useState(null); // { url, label }
+  const profileUrl = resolvePhotoUrl(evidence?.profile_photo_url);
+  const photos = evidence?.photos || [];
+  if (!profileUrl && !photos.length) {
+    return (
+      <div style={evStyles.empty}>
+        <Camera size={13} /> No camera photos were captured for this student.
+      </div>
+    );
+  }
+  const Thumb = ({ url, label, caption }) => (
+    <button type="button" onClick={() => setZoom({ url, label })} style={evStyles.thumbBtn} title={label}>
+      <img src={url} alt={label} style={evStyles.thumb} loading="lazy" />
+      <span style={evStyles.caption}>{caption}</span>
+    </button>
+  );
+  return (
+    <div style={evStyles.wrap}>
+      <div style={evStyles.title}><Camera size={13} /> Student photos — compare before flagging</div>
+      <div style={evStyles.row}>
+        {profileUrl && <Thumb url={profileUrl} label="Profile photo" caption="Profile" />}
+        {photos.map((ph) => (
+          <Thumb
+            key={ph.id}
+            url={resolvePhotoUrl(ph.photo_url)}
+            label={`${ph.reason || "Camera photo"} · ${ph.created_at ? new Date(ph.created_at).toLocaleString() : ""}`}
+            caption={ph.reason === "exam start" ? "Exam start" : ph.created_at ? new Date(ph.created_at).toLocaleTimeString() : "Photo"}
+          />
+        ))}
+      </div>
+      {zoom && (
+        <div style={evStyles.overlay} onClick={() => setZoom(null)}>
+          <div style={evStyles.zoomBox} onClick={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => setZoom(null)} style={evStyles.close} aria-label="Close"><X size={16} /></button>
+            <img src={zoom.url} alt={zoom.label} style={evStyles.zoomImg} />
+            <div style={evStyles.zoomLabel}>{zoom.label}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const evStyles = {
+  wrap: { margin: "10px 0 14px", padding: 10, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" },
+  title: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 8 },
+  row: { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 },
+  thumbBtn: { flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", padding: 0, cursor: "zoom-in" },
+  thumb: { width: 96, height: 72, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)", background: "#000" },
+  caption: { fontSize: 10, color: "var(--text-secondary)" },
+  empty: { display: "flex", alignItems: "center", gap: 6, margin: "8px 0", fontSize: 12, color: "var(--text-secondary)" },
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 },
+  zoomBox: { position: "relative", maxWidth: "min(92vw, 720px)", background: "var(--card)", borderRadius: 10, padding: 10 },
+  zoomImg: { display: "block", maxWidth: "100%", maxHeight: "78vh", borderRadius: 6 },
+  zoomLabel: { marginTop: 6, fontSize: 12, color: "var(--text-secondary)", textAlign: "center" },
+  close: { position: "absolute", top: 6, right: 6, width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" },
+};
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -217,6 +285,9 @@ function injectMarkingStyles() {
 
     .mkp-essay-readonly { user-select: text; caret-color: transparent; outline: none; }
     .mkp-essay-readonly:focus { outline: none; }
+    .mkp-essay-readonly table { border-collapse: collapse; margin: 8px 0; max-width: 100%; }
+    .mkp-essay-readonly th, .mkp-essay-readonly td { border: 1px solid var(--border); padding: 6px 10px; vertical-align: top; min-width: 48px; }
+    .mkp-essay-readonly th { background: var(--card); font-weight: 700; }
     .hl-mark { color: inherit; background: rgba(239,68,68,.20); border-bottom: 2px solid #ef4444; border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
     .hl-mark:hover { background: rgba(239,68,68,.35); }
     .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; cursor: pointer; vertical-align: middle; color: #fff; user-select: none; }
@@ -522,7 +593,7 @@ function RichEditor({ value, onChange, placeholder }) {
 // Block-level tags a contentEditable box may use for its own line breaks
 // (Chrome wraps each typed line in its own <div>; other editors may use
 // <p> or <li>). Each one is treated as a whole line on its own.
-const HL_BLOCK_TAGS = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "TR", "TD"]);
+const HL_BLOCK_TAGS = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "TABLE", "THEAD", "TBODY", "TFOOT", "TR", "TH", "TD", "CAPTION"]);
 
 // Split the answer box into an ordered list of "lines" — each one just an
 // array of the DOM sibling nodes that make it up, broken at a <br> or a
@@ -591,7 +662,7 @@ function intersectRanges(lineRange, rawRange) {
   return r;
 }
 
-function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onLimitReached }) {
+function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onReason, onLimitReached }) {
   const containerRef = useRef(null);
   const totalMarks = highlights.reduce((sum, h) => sum + (h.mark || 0), 0);
 
@@ -774,7 +845,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         onMouseUp={handleMouseUp}
         onClick={handleContainerClick}
         style={s.essayText}
-        dangerouslySetInnerHTML={{ __html: html || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
       />
 
       {highlights.length > 0 && (
@@ -790,6 +861,16 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
                 <button className="mkp-stepper-btn" style={s.stepperBtn} onClick={() => adjust(h.id, 1)} disabled={maxMarks != null && totalMarks >= maxMarks}>+</button>
               </div>
               <button onClick={() => removeMark(h.id)} style={s.hlItemRemove}>Remove</button>
+              {onReason && !h.prior && (
+                <input
+                  type="text"
+                  value={h.reason || ""}
+                  maxLength={500}
+                  onChange={(e) => onReason(h.id, e.target.value)}
+                  placeholder={(h.mark || 0) > 0 ? "Why this point earned credit (optional — the student sees this)" : "Why this point was marked wrong (optional — the student sees this)"}
+                  style={s.hlReasonInput}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -815,6 +896,7 @@ export default function Marking() {
   const [flags, setFlags]           = useState({});
 
   const [submissions, setSubmissions] = useState([]);
+  const [evidenceByStudent, setEvidenceByStudent] = useState({}); // student_id -> { profile_photo_url, photos[] }
   // Auto-graded MCQ marks — kept out of the essay `queue` (nothing for a
   // teacher to do with them) but still need to count toward the total
   // score/max shown here, same as Marking.jsx's autoScores does for a
@@ -885,6 +967,13 @@ export default function Marking() {
           setQueue([]);
           return;
         }
+
+        const evMap = {};
+        data.forEach((s) => {
+          const sid = (s.submission || s).student_id;
+          if (sid != null && s.evidence) evMap[sid] = s.evidence;
+        });
+        setEvidenceByStudent(evMap);
 
         setSubmissions(
           data.map((s) => {
@@ -1268,6 +1357,15 @@ export default function Marking() {
     setEssayHTML((prev) => ({ ...prev, [current.id]: newHtml }));
   }, [current, adjustHighlight]);
 
+  const handleEssayReason = useCallback((hlId, text) => {
+    if (!current) return;
+    setHighlights((prev) => ({
+      ...prev,
+      [current.id]: (prev[current.id] || []).map((h) => (h.id === hlId ? { ...h, reason: text } : h)),
+    }));
+    setSaved(false);
+  }, [current]);
+
   const handleLimitReached = useCallback(() => {
     showToast("This question's full marks are already awarded", "info");
   }, [showToast]);
@@ -1578,6 +1676,8 @@ export default function Marking() {
             </button>
           </div>
 
+          <EvidencePanel evidence={evidenceByStudent[current._student_id]} />
+
           <FieldLabel>Question</FieldLabel>
           <div style={s.questionBox}>{current.question_text}</div>
 
@@ -1593,6 +1693,7 @@ export default function Marking() {
                 onAdd={handleEssayAdd}
                 onRemove={handleEssayRemove}
                 onAdjust={handleEssayAdjust}
+                onReason={handleEssayReason}
                 onLimitReached={handleLimitReached}
               />
 
@@ -2114,6 +2215,7 @@ const s = {
   hlListTitle: { fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 6px" },
   hlItem: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, flexWrap: "wrap" },
   hlItemDot: { width: 7, height: 7, borderRadius: "50%", background: "var(--warning)", flexShrink: 0 },
+  hlReasonInput: { flexBasis: "100%", width: "100%", boxSizing: "border-box", padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--card)", color: "var(--text)", fontSize: 12.5, fontFamily: "inherit", outline: "none" },
   hlItemText: { flex: 1, color: "var(--text-secondary)", fontStyle: "italic", minWidth: 120 },
   stepper: { display: "flex", alignItems: "center", gap: 6, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 4px" },
   stepperBtn: { background: "none", border: "none", color: "var(--text)", width: 22, height: 22, borderRadius: 4, cursor: "pointer", fontSize: 14, lineHeight: 1, fontFamily: "inherit" },

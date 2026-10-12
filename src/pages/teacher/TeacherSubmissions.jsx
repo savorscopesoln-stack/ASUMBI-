@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import API from "../../api";
+import API, { resolvePhotoUrl } from "../../api";
+import { useTheme } from "../../context/ThemeContext";
 import jsPDF from "jspdf";
 
 /* ─────────────────────────────────────────────
@@ -28,7 +29,6 @@ const C = {
 const FONT_UI   = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
 const FONT_MONO = "'IBM Plex Mono', 'SF Mono', ui-monospace, monospace";
 
-const THEME_KEY = "tv_theme_preference";
 
 /* ─────────────────────────────────────────────
    Icon set — thin, precise, single-stroke.
@@ -80,6 +80,7 @@ export default function TeacherSubmissions() {
   const assessmentId = id;
 
   const [submissions, setSubmissions]   = useState([]);
+  const [photoView, setPhotoView]        = useState(null); // { name, loading, evidence, zoom }
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState("");
   const [search, setSearch]             = useState("");
@@ -98,22 +99,8 @@ export default function TeacherSubmissions() {
      Theme — persisted in localStorage, falls back
      to the OS-level preference on first visit.
   ───────────────────────────────────────────── */
-  const [theme, setTheme] = useState(() => {
-    try {
-      const stored = localStorage.getItem(THEME_KEY);
-      if (stored === "light" || stored === "dark") return stored;
-    } catch { /* ignore */ }
-    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: light)").matches) {
-      return "light";
-    }
-    return "dark";
-  });
-
-  useEffect(() => {
-    try { localStorage.setItem(THEME_KEY, theme); } catch { /* ignore */ }
-  }, [theme]);
-
-  const toggleTheme = () => setTheme(t => (t === "dark" ? "light" : "dark"));
+  /* ── Theme — shared app-wide context (exam screens open light) ── */
+  const { theme, toggleTheme } = useTheme();
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -355,6 +342,18 @@ export default function TeacherSubmissions() {
     sub.remark_completed == 1 || sub.remark_status === "completed";
 
   /* ── Single PDF ── */
+  const openPhotos = async (sub) => {
+    const name = sub.student_name || `Student #${sub.student_id}`;
+    setPhotoView({ name, loading: true, evidence: null, zoom: null });
+    try {
+      const res = await API.get(`/e-assessments/marking/submission/${sub.id}`);
+      setPhotoView({ name, loading: false, evidence: res.data?.evidence || null, zoom: null });
+    } catch {
+      setPhotoView(null);
+      showToast("Failed to load photos.", "error");
+    }
+  };
+
   const downloadReport = (s) => {
     const doc = new jsPDF();
     doc.setFontSize(18);
@@ -400,6 +399,54 @@ export default function TeacherSubmissions() {
             {toast.type === "error" ? <IconX size={15} /> : <IconCheck size={15} />}
           </span>
           {toast.msg}
+        </div>
+      )}
+
+      {/* Camera photos modal */}
+      {photoView && (
+        <div style={s.modalBackdrop} onClick={() => setPhotoView(null)}>
+          <div style={{ ...s.modalBox, maxWidth: 560, maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 800, color: C.textPri }}>
+              Camera photos — {photoView.name}
+            </h2>
+            {photoView.loading ? (
+              <p style={{ color: C.textSec, fontSize: 13 }}>Loading photos…</p>
+            ) : (() => {
+              const ev = photoView.evidence || {};
+              const items = [
+                ...(ev.profile_photo_url ? [{ key: "profile", url: resolvePhotoUrl(ev.profile_photo_url), label: "Profile photo", caption: "Profile" }] : []),
+                ...(ev.photos || []).map(ph => ({
+                  key: ph.id, url: resolvePhotoUrl(ph.photo_url),
+                  label: `${ph.reason || "Camera photo"} · ${ph.created_at ? new Date(ph.created_at).toLocaleString() : ""}`,
+                  caption: ph.reason === "exam start" ? "Exam start" : (ph.created_at ? new Date(ph.created_at).toLocaleTimeString() : "Photo"),
+                })),
+              ];
+              if (!items.length) return <p style={{ color: C.textSec, fontSize: 13 }}>No camera photos were captured for this student.</p>;
+              return (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
+                    {items.map(it => (
+                      <button key={it.key} type="button" title={it.label}
+                        onClick={() => setPhotoView(v => ({ ...v, zoom: it }))}
+                        style={{ background: "none", border: "none", padding: 0, cursor: "zoom-in", textAlign: "center" }}>
+                        <img src={it.url} alt={it.label} loading="lazy" style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 8, border: `1px solid ${C.border}`, background: "#000" }} />
+                        <div style={{ fontSize: 11, color: C.textSec, marginTop: 3 }}>{it.caption}</div>
+                      </button>
+                    ))}
+                  </div>
+                  {photoView.zoom && (
+                    <div style={{ marginTop: 14 }}>
+                      <img src={photoView.zoom.url} alt={photoView.zoom.label} style={{ width: "100%", borderRadius: 8 }} />
+                      <div style={{ fontSize: 12, color: C.textSec, marginTop: 4 }}>{photoView.zoom.label}</div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            <div style={{ marginTop: 16, textAlign: "right" }}>
+              <button className="tv-btn tv-btn-ghost tv-btn-sm" onClick={() => setPhotoView(null)}>Close</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -574,6 +621,7 @@ export default function TeacherSubmissions() {
                 <Th onClick={() => handleSort("submitted_at")} style={{ cursor: "pointer" }}>
                   Submitted <SortIcon field="submitted_at" />
                 </Th>
+                <Th>Photos</Th>
                 <Th>Actions</Th>
               </tr>
             </thead>
@@ -637,6 +685,19 @@ export default function TeacherSubmissions() {
                       {sub.submitted_at
                         ? new Date(sub.submitted_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
                         : "—"}
+                    </Td>
+                    <Td>
+                      {Number(sub.photo_count) > 0 ? (
+                        <button
+                          className="tv-btn tv-btn-ghost tv-btn-sm"
+                          onClick={() => openPhotos(sub)}
+                          title="View camera photos taken during the exam"
+                        >
+                          📷 {sub.photo_count}
+                        </button>
+                      ) : (
+                        <span style={{ color: C.textMuted, fontSize: 13 }}>—</span>
+                      )}
                     </Td>
                     <Td>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
