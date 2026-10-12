@@ -3,6 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
 import { useTheme } from "../../context/ThemeContext";
 import {
+  examCacheKey, loadExamCache, saveExamCache, clearExamCache,
+  claimExamTab, examTabTakenByOther,
+} from "../../utils/examCache";
+import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
   Camera, CameraOff, Eye, EyeOff, ChevronLeft, ChevronRight, Home,
@@ -324,8 +328,9 @@ const tokenKey = (assessmentId) => `exam_token_${assessmentId}`;
 // saved answers belong to, so a resit never starts pre-filled with the
 // previous attempt's answers.
 const attemptKey = (assessmentId) => `exam_attempt_${assessmentId}`;
-// Answers are saved to the server this often while the exam is open.
-const AUTOSAVE_MS = 60 * 1000;
+// The exam is cached on this device; whatever changed is synced to the
+// server this often while the exam is open (and immediately on reconnect).
+const AUTOSAVE_MS = 30 * 1000;
 
 // Ported from exam.html's answersKey/saveAnswer — the React build never
 // persisted in-progress answers anywhere, so a refresh mid-exam (which
@@ -574,6 +579,13 @@ export default function TakeEAssessment() {
   const submitRetryRef = useRef(0);
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [autosaveFailed, setAutosaveFailed] = useState(false);
+  const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  const cacheKeyRef = useRef("");          // device-cache key (student + assessment)
+  const answersUpdatedAtRef = useRef(0);   // when an answer last changed ON THIS DEVICE (ms)
+  const endsAtRef = useRef(null);          // absolute end time (ms) — keeps the clock right offline
+  const tabClaimRef = useRef(null);        // one-tab-per-exam lease
+  const timeUpRef = useRef(false);         // time ran out and the final submit is still pending
+  const syncingRef = useRef(false);        // a sync request is already in flight
   const [canResume, setCanResume] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [resumeMsg, setResumeMsg] = useState("");
@@ -652,7 +664,11 @@ export default function TakeEAssessment() {
 
     if (finalErr) {
       const err = finalErr;
-      if (isDeviceBlocked(err)) {
+      if (err?.response?.data?.code === "ACTIVE_EXAM_SESSION") {
+        // One session per student: another exam of theirs is still running.
+        setErrorMsg(err.response.data.message);
+        setPhase("error");
+      } else if (isDeviceBlocked(err)) {
         setErrorMsg(err.response.data.message);
         setPhase("devicedenied");
       } else if (err?.response?.status === 423) {
@@ -680,6 +696,7 @@ export default function TakeEAssessment() {
       // the previous one so it starts clean.
       localStorage.removeItem(answersKey(id));
       localStorage.removeItem(lockKey(id));
+      clearExamCache(examCacheKey(id));
     }
     localStorage.setItem(attemptKey(id), attemptNo);
     lastSavedRef.current = "";
@@ -763,32 +780,76 @@ export default function TakeEAssessment() {
 
   /* ── step 3: fetch the actual questions and enter the locked-down exam ── */
   const enterActive = useCallback(async () => {
-    const detail = await API.get(`/e-assessments/${id}`);
-    setAssessment(detail.data.assessment);
-    setQuestions(detail.data.questions || []);
-    setSecondsLeft((detail.data.assessment.duration_minutes || 30) * 60);
+    // ONE TAB PER EXAM: a second tab on this device would overwrite the
+    // first one's answers, so it is refused while the first is alive.
+    tabClaimRef.current?.release?.();
+    const claim = claimExamTab(id);
+    if (!claim.ok) throw new Error("EXAM_TAB_IN_USE");
+    tabClaimRef.current = claim;
 
-    // Restore answers from (a) the server's autosave and (b) this browser's
-    // local copy. The local copy is newer when both exist, so it wins per
-    // question; the server copy fills in anything this device doesn't have
-    // (e.g. the student is back on a different device after an unlock).
+    const cacheKey = examCacheKey(id);
+    cacheKeyRef.current = cacheKey;
+    const cached = await loadExamCache(cacheKey);
+
+    // The paper: from the server when reachable (and cached for the rest of
+    // the exam); from this device's cache when the network is down. Only a
+    // genuine "no response at all" falls back — a 403/423/409 is a real
+    // answer and must still be shown as such.
+    let paper = null;
+    try {
+      const detail = await API.get(`/e-assessments/${id}`);
+      paper = { assessment: detail.data.assessment, questions: detail.data.questions || [] };
+    } catch (err) {
+      if (!err?.response && cached?.paper?.assessment) paper = cached.paper;
+      else { claim.release(); tabClaimRef.current = null; throw err; }
+    }
+    setAssessment(paper.assessment);
+    setQuestions(paper.questions);
+    let remaining = (paper.assessment.duration_minutes || 30) * 60;
+
+    // Restore answers from (a) the server's autosave, (b) this browser's
+    // local copy and (c) the device cache. The device copies are newer
+    // when present, so they win per question; the server copy fills in
+    // anything this device doesn't have (e.g. back on a different device
+    // after an unlock).
     let serverAnswers = {};
+    let serverReached = false;
     try {
       const d = await API.get(`/e-assessments/${id}/draft`);
+      serverReached = true;
       serverAnswers = d.data?.answers || {};
       // Remaining time per the server clock (see getExamDraft). Null when
       // the server couldn't work it out — keep the full-duration fallback.
-      if (typeof d.data?.seconds_left === "number") setSecondsLeft(d.data.seconds_left);
+      if (typeof d.data?.seconds_left === "number") remaining = d.data.seconds_left;
     } catch { /* offline / no draft — fall back to the local copy */ }
+    // Offline resume: the countdown continues from the cached absolute end time.
+    if (!serverReached && cached?.endsAt) {
+      remaining = Math.max(0, Math.round((cached.endsAt - Date.now()) / 1000));
+    }
     let localAnswers = {};
     try {
       const saved = localStorage.getItem(answersKey(id));
       if (saved) localAnswers = JSON.parse(saved) || {};
     } catch { /* ignore a corrupted/unreadable saved-answers blob */ }
-    const merged = { ...serverAnswers, ...localAnswers };
+    const merged = { ...serverAnswers, ...localAnswers, ...(cached?.answers || {}) };
     setAnswers(merged);
     answersRef.current = merged;
-    lastSavedRef.current = "";
+    answersUpdatedAtRef.current = cached?.answersUpdatedAt || Date.now();
+    lastSavedRef.current = ""; // first tick re-syncs whatever the server may be missing
+
+    endsAtRef.current = Date.now() + remaining * 1000;
+    timeUpRef.current = false;
+    setSecondsLeft(remaining);
+
+    saveExamCache(cacheKey, {
+      paper,
+      answers: merged,
+      answersUpdatedAt: answersUpdatedAtRef.current,
+      dirty: true,
+      endsAt: endsAtRef.current,
+      attemptNo: Number(localStorage.getItem(attemptKey(id)) || 1),
+      cachedAt: Date.now(),
+    });
 
     setCurrentQuestionIndex(0);
     setPhase("active");
@@ -802,6 +863,14 @@ export default function TakeEAssessment() {
 
     if (verifyInput.trim().toUpperCase() !== token.trim().toUpperCase()) {
       setVerifyError("That doesn't match the token you were shown. Check it and try again.");
+      return;
+    }
+
+    // One tab per exam: refuse BEFORE activating, because activation is what
+    // starts the exam clock on the server.
+    if (examTabTakenByOther(id)) {
+      setErrorMsg("This exam is already open in another tab or window on this device. Close this one and continue there.");
+      setPhase("error");
       return;
     }
 
@@ -845,7 +914,10 @@ export default function TakeEAssessment() {
         preGrantedStreamRef.current.getTracks().forEach((t) => t.stop());
         preGrantedStreamRef.current = null;
       }
-      if (err?.response?.status === 423) {
+      if (err?.response?.data?.code === "ACTIVE_EXAM_SESSION") {
+        setErrorMsg(err.response.data.message);
+        setPhase("error");
+      } else if (err?.response?.status === 423) {
         const reason = err?.response?.data?.message || "This exam token is already in use on another device.";
         localStorage.setItem(lockKey(id), reason);
         setLockReason(reason);
@@ -853,6 +925,9 @@ export default function TakeEAssessment() {
       } else if (err?.response?.status === 409) {
         setErrorMsg(err.response.data.message || "You have already completed this assessment.");
         setPhase("ended");
+      } else if (err?.message === "EXAM_TAB_IN_USE") {
+        setErrorMsg("This exam is already open in another tab or window on this device. Close this one and continue there.");
+        setPhase("error");
       } else {
         setVerifyError(err?.response?.data?.message || "Failed to start the assessment. Please try again.");
       }
@@ -896,22 +971,36 @@ export default function TakeEAssessment() {
     return () => clearInterval(heartbeatRef.current);
   }, [phase, token, deviceId]);
 
-  /* ── autosave: every minute the current answers are saved to the DB. If
-       time runs out (or the device dies) before the student submits, the
-       server submits from this copy instead of the work being lost. ── */
+  /* ── device sync: the exam lives in this device's cache; every 30s (and the
+       moment the network comes back, and when the tab is hidden/closed) the
+       answers that changed are pushed to the server. If time runs out (or
+       the device dies) before the student submits, the server submits from
+       its copy instead of the work being lost. ── */
   const autosaveNow = useCallback(async () => {
     const current = answersRef.current || {};
     const hasAny = Object.values(current).some((v) => (typeof v === "string" ? v.trim() !== "" : !!v));
     if (!hasAny) return;
     const snapshot = JSON.stringify(current);
-    if (snapshot === lastSavedRef.current) return; // nothing new since the last save
+    if (snapshot === lastSavedRef.current) return; // nothing new since the last sync
+    if (syncingRef.current) return;                // one sync in flight at a time
+    syncingRef.current = true;
     try {
-      await API.post(`/e-assessments/${id}/autosave`, {
+      const res = await API.post(`/e-assessments/${id}/autosave`, {
         answers: current,
         token: tokenRef.current || undefined,
         device_id: deviceId,
+        client_saved_at: answersUpdatedAtRef.current || Date.now(),
       });
-      lastSavedRef.current = snapshot;
+      // Only mark clean if nothing changed while the request was in flight.
+      if (JSON.stringify(answersRef.current || {}) === snapshot) {
+        lastSavedRef.current = snapshot;
+        if (cacheKeyRef.current) saveExamCache(cacheKeyRef.current, { dirty: false, lastSyncedAt: Date.now() });
+      }
+      // The server clock is the authority — re-sync the (possibly offline-drifted) countdown.
+      if (typeof res?.data?.seconds_left === "number" && !timeUpRef.current) {
+        endsAtRef.current = Date.now() + res.data.seconds_left * 1000;
+        if (cacheKeyRef.current) saveExamCache(cacheKeyRef.current, { endsAt: endsAtRef.current });
+      }
       setLastSavedAt(new Date());
       setAutosaveFailed(false);
     } catch (err) {
@@ -919,7 +1008,9 @@ export default function TakeEAssessment() {
       if (status === 409) { setErrorMsg(err.response?.data?.message || "This assessment has already been completed."); setPhase("ended"); return; }
       if (status === 423) return; // locked — the heartbeat shows the lock screen
       if (isDeviceBlocked(err)) return; // desktop-only switch — the heartbeat shows the screen
-      setAutosaveFailed(true);    // transient — the next tick retries
+      setAutosaveFailed(true);    // transient/offline — answers stay safe in the device cache; next tick retries
+    } finally {
+      syncingRef.current = false;
     }
   }, [id, deviceId]);
 
@@ -927,22 +1018,60 @@ export default function TakeEAssessment() {
     if (phase !== "active") return;
     const iv = setInterval(autosaveNow, AUTOSAVE_MS);
     const onHidden = () => { if (document.visibilityState === "hidden") autosaveNow(); };
+    const onOnline = () => {
+      setOnline(true);
+      autosaveNow();
+      // Time ran out while offline: finish the pending submit as soon as we're back.
+      if (timeUpRef.current) handleSubmitRef.current?.(true);
+    };
+    const onOffline = () => setOnline(false);
     document.addEventListener("visibilitychange", onHidden);
     window.addEventListener("pagehide", autosaveNow);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
     return () => {
       clearInterval(iv);
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", autosaveNow);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
     };
   }, [phase, autosaveNow]);
+
+  /* ── a second tab took over this exam on this device → stop this one ── */
+  useEffect(() => {
+    if (phase !== "active") return;
+    const iv = setInterval(() => {
+      if (examTabTakenByOther(id)) {
+        clearInterval(timerRef.current);
+        clearInterval(heartbeatRef.current);
+        setErrorMsg("This exam was opened in another tab or window. Only one session per student is allowed — continue there.");
+        setPhase("error");
+      }
+    }, 4000);
+    return () => clearInterval(iv);
+  }, [phase, id]);
+
+  // Release the one-tab lease when this screen goes away.
+  useEffect(() => () => { tabClaimRef.current?.release?.(); }, []);
 
   /* ── countdown timer ── */
   useEffect(() => {
     if (phase !== "active") return;
     timerRef.current = setInterval(() => {
       setSecondsLeft((s) => {
-        if (s <= 1) { clearInterval(timerRef.current); handleSubmitRef.current?.(true); return 0; }
-        return s - 1;
+        // Derived from the absolute end time so a throttled background tab
+        // or a stretch offline can't make the clock drift.
+        const left = endsAtRef.current != null
+          ? Math.max(0, Math.ceil((endsAtRef.current - Date.now()) / 1000))
+          : s - 1;
+        if (left <= 0) {
+          clearInterval(timerRef.current);
+          timeUpRef.current = true;
+          handleSubmitRef.current?.(true);
+          return 0;
+        }
+        return left;
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
@@ -1354,6 +1483,8 @@ export default function TakeEAssessment() {
       } else if (status === 401) {
         localStorage.removeItem(lockKey(id));
         setPhase("examlogin");
+      } else if (err?.message === "EXAM_TAB_IN_USE") {
+        setResumeMsg("This exam is open in another tab or window on this device. Close it and try again.");
       } else {
         setResumeMsg("Couldn't reach the server. Check your connection and try again.");
       }
@@ -1371,7 +1502,12 @@ export default function TakeEAssessment() {
     setAnswers((prev) => {
       const next = { ...prev, [questionId]: val };
       answersRef.current = next;
+      answersUpdatedAtRef.current = Date.now();
       try { localStorage.setItem(answersKey(id), JSON.stringify(next)); } catch { /* storage full/unavailable — exam continues, just unsaved locally */ }
+      // Device cache (IndexedDB): the copy the 30-second sync pushes to the server.
+      if (cacheKeyRef.current) {
+        saveExamCache(cacheKeyRef.current, { answers: next, answersUpdatedAt: answersUpdatedAtRef.current, dirty: true });
+      }
       return next;
     });
   };
@@ -1393,6 +1529,10 @@ export default function TakeEAssessment() {
     localStorage.removeItem(lockKey(id));
     localStorage.removeItem(tokenKey(id));
     localStorage.removeItem(answersKey(id));
+    if (cacheKeyRef.current) clearExamCache(cacheKeyRef.current);
+    tabClaimRef.current?.release?.();
+    tabClaimRef.current = null;
+    timeUpRef.current = false;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 
     // Submitting the exam doubles as logging the student out — the
@@ -1442,13 +1582,17 @@ export default function TakeEAssessment() {
       }
       // Time ran out and the submit couldn't reach the server (network
       // blip). Keep trying — the server's own autosave sweep is the backstop.
-      if (auto && status !== 423 && status !== 403 && submitRetryRef.current < 30) {
+      if (auto && status !== 423 && status !== 403 && (!err?.response || submitRetryRef.current < 30)) {
         submitRetryRef.current += 1;
         setErrorMsg("Time's up — saving your answers, reconnecting…");
         setTimeout(() => handleSubmitRef.current?.(true), 8000);
         return;
       }
-      setErrorMsg(err?.response?.data?.message || "Submission failed. Please try again.");
+      setErrorMsg(
+        err?.response
+          ? (err.response.data?.message || "Submission failed. Please try again.")
+          : "No connection — your answers are safe on this device. Reconnect and press Submit again."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1613,6 +1757,7 @@ export default function TakeEAssessment() {
           </p>
           <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13, textAlign: "center", margin: "0 0 16px" }}>
             Open this exam link on a Windows or Mac computer and sign in again. Your answers so far were saved.
+            If your teacher has allowed this device, press Try again.
           </p>
           <button style={S.primaryBtn} onClick={() => window.location.reload()}>
             Try again
@@ -1807,12 +1952,14 @@ export default function TakeEAssessment() {
         <div>
           <h1 style={S.examTitle}>{assessment?.title}</h1>
           <p style={S.examMeta}>{assessment?.subject} · Token <strong style={{ color: "var(--primary)" }}>{token}</strong></p>
-          <p style={{ ...S.examMeta, fontSize: 11, marginTop: 2, color: autosaveFailed ? "var(--destructive)" : "var(--text-muted)" }}>
-            {autosaveFailed
-              ? "Autosave failed — will retry in a minute"
-              : lastSavedAt
-                ? `Answers autosaved at ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                : "Answers are autosaved every minute"}
+          <p style={{ ...S.examMeta, fontSize: 11, marginTop: 2, color: (autosaveFailed || !online) ? "var(--destructive)" : "var(--text-muted)" }}>
+            {!online
+              ? "Offline — your answers are saved on this device and will sync when you're back online"
+              : autosaveFailed
+                ? "Couldn't reach the server — answers are safe on this device, retrying in 30 seconds"
+                : lastSavedAt
+                  ? `Saved on this device · synced to the server at ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                  : "Answers are saved on this device and synced to the server every 30 seconds"}
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
