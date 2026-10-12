@@ -193,6 +193,7 @@ const injectExamStyles = () => {
 
 const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
+const START_PAPER_TIMEOUT_MS = 25000; // max wait for the paper to load after activation
 const DEFAULT_SECURITY = {
   require_camera: true,
   require_screen_share: true,
@@ -838,6 +839,7 @@ export default function TakeEAssessment() {
   const [verifyInput, setVerifyInput] = useState("");
   const [verifyError, setVerifyError] = useState("");
   const [activating, setActivating] = useState(false);
+  const [startStep, setStartStep] = useState(""); // what "Starting…" is currently doing
 
   const heartbeatRef = useRef(null);
   const tokenRef = useRef("");
@@ -1181,6 +1183,7 @@ export default function TakeEAssessment() {
 
     setVerifyError("");
     setActivating(true);
+    setStartStep("Preparing…");
 
     // Camera access is OPTIONAL for this exam. We still try to grab it
     // here, before the token is spent, purely so the monitoring effect
@@ -1206,6 +1209,7 @@ export default function TakeEAssessment() {
     }
 
     try {
+      setStartStep("Activating this device…");
       const activateRes = await API.post("/e-assessments/exam-session/activate", {
         token, device_id: deviceId, device_label: navigator.userAgent,
       });
@@ -1214,7 +1218,13 @@ export default function TakeEAssessment() {
         throw new Error("Could not activate exam session");
       }
 
-      await enterActive();
+      setStartStep("Loading your paper…");
+      // Bounded: if anything in here stalls (cache, network), the student gets
+      // a message and can press Start again, instead of an endless "Starting…".
+      await Promise.race([
+        enterActive(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("START_TIMEOUT")), START_PAPER_TIMEOUT_MS)),
+      ]);
     } catch (err) {
       // Activation failed after all — release the pre-granted camera so
       // the indicator light doesn't stay on for a student who isn't starting.
@@ -1236,11 +1246,16 @@ export default function TakeEAssessment() {
       } else if (err?.message === "EXAM_TAB_IN_USE") {
         setErrorMsg("This exam is already open in another tab or window on this device. Close this one and continue there.");
         setPhase("error");
+      } else if (err?.message === "START_TIMEOUT") {
+        tabClaimRef.current?.release?.();
+        tabClaimRef.current = null;
+        setVerifyError("Loading your paper is taking too long. Check your connection and press Start Exam again — your token is already accepted on this device.");
       } else {
-        setVerifyError(err?.response?.data?.message || "Failed to start the assessment. Please try again.");
+        setVerifyError(err?.response?.data?.message || err?.message || "Failed to start the assessment. Please try again.");
       }
     } finally {
       setActivating(false);
+      setStartStep("");
     }
   };
 
@@ -2373,7 +2388,7 @@ export default function TakeEAssessment() {
           />
           {verifyError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{verifyError}</p>}
           <button style={{ ...S.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim() || (security.require_screen_share && screenStatus !== "sharing")}>
-            {activating ? "Starting…" : (security.require_screen_share && screenStatus !== "sharing") ? "Share your screen to start" : "Start Exam"}
+            {activating ? (startStep || "Starting…") : (security.require_screen_share && screenStatus !== "sharing") ? "Share your screen to start" : "Start Exam"}
           </button>
           <button
             type="button"
