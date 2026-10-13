@@ -272,6 +272,7 @@ export default function AdminEAssessments() {
   const [remarkRequests,   setRemarkRequests]   = useState([]);
   const [releasedMarks,    setReleasedMarks]    = useState([]);
   const [examSessions,     setExamSessions]     = useState([]);
+  const [assignBatches,    setAssignBatches]    = useState([]); // history of assignments/allocations (for Undo)
   const [deviceAccess,     setDeviceAccess]     = useState([]); // phones/tablets the Desktop-only switch rejected
   const [gradingSystem,    setGradingSystem]    = useState(null);
   const [gradingDraft,     setGradingDraft]     = useState(null);
@@ -322,7 +323,7 @@ export default function AdminEAssessments() {
   const loadAll = useCallback(async () => {
     try {
       setLoading(true);
-      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions, grading, noSub, devAccess] =
+      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions, grading, noSub, devAccess, batchRes] =
         await Promise.all([
           API.get("/e-assessments"),
           API.get("/e-assessments/classes"),
@@ -336,6 +337,7 @@ export default function AdminEAssessments() {
           API.get("/e-assessments/grading-system").catch(() => ({ data: null })),
           API.get("/e-assessments/admin/exam-sessions/unsubmitted").catch(() => ({ data: [] })),
           API.get("/e-assessments/admin/device-access").catch(() => ({ data: [] })),
+          API.get("/e-assessments/admin/assignment-batches").catch(() => ({ data: [] })),
         ]);
 
       setList(extract(assessments));
@@ -349,6 +351,7 @@ export default function AdminEAssessments() {
       setExamSessions(extract(sessions));
       setUnsubmitted(extract(noSub));
       setDeviceAccess(extract(devAccess));
+      setAssignBatches(extract(batchRes));
       if (grading.data) {
         setGradingSystem(grading.data);
         setGradingDraft(grading.data);
@@ -806,26 +809,27 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
+  // "Distribute Equally" / "Auto-Assign All". The server decides how to split:
+  // MORE TEACHERS THAN SUBMISSIONS -> the answered questions are counted and
+  // shared out among all the teachers; otherwise whole submissions are shared
+  // out. Every action is added to the history below, so it can be undone.
+  const isUnassigned = (sub) => !sub.assigned_teacher_id && !(Number(sub.alloc_count) > 0);
+  const teacherIdsForSubject = (subjectName) => [...new Set(
+    assignedTeachers.filter((t) => String(t.subject_name) === String(subjectName)).map((t) => t.teacher_id)
+  )]; // a teacher assigned to several classes still counts once
+
   const bulkAssignBySubject = async (subjectName) => {
-    const unassigned = submissions.filter(
-      (s) => String(s.subject_name) === String(subjectName) && !s.assigned_teacher_id
-    );
+    const unassigned = submissions.filter((sub) => String(sub.subject_name) === String(subjectName) && isUnassigned(sub));
     if (!unassigned.length) { showToast("No unassigned submissions for this subject", "error"); return; }
-
-    const teacherIds = assignedTeachers
-      .filter((t) => String(t.subject_name) === String(subjectName))
-      .map((t) => t.teacher_id);
-
+    const teacherIds = teacherIdsForSubject(subjectName);
     if (!teacherIds.length) { showToast("No teachers assigned to this subject yet", "error"); return; }
-
     try {
       setSaving(true);
-      await API.post("/e-assessments/admin/bulk-assign-submissions", {
-        subject_id:     subjectName,
-        submission_ids: unassigned.map((s) => s.id),
-        teacher_ids:    teacherIds,
+      const res = await API.post("/e-assessments/admin/smart-distribute", {
+        submission_ids: unassigned.map((x) => x.id),
+        teacher_ids: teacherIds,
       });
-      showToast(`${unassigned.length} submissions split across ${teacherIds.length} teacher(s)`);
+      showToast(res.data?.message || "Distributed");
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Bulk assignment failed", "error");
@@ -834,31 +838,41 @@ export default function AdminEAssessments() {
 
   const bulkAssignAll = async () => {
     const groups = {};
-    submissions.filter((s) => !s.assigned_teacher_id).forEach((s) => {
-      const k = s.subject_name || "unknown";
-      if (!groups[k]) groups[k] = [];
-      groups[k].push(s);
+    submissions.filter(isUnassigned).forEach((sub) => {
+      const k = sub.subject_name || "unknown";
+      (groups[k] ||= []).push(sub);
     });
     const keys = Object.keys(groups);
     if (!keys.length) { showToast("No unassigned submissions found", "error"); return; }
-
     try {
       setSaving(true);
+      let byQuestion = 0, bySubmission = 0, skipped = 0;
       for (const subName of keys) {
-        const tids = assignedTeachers
-          .filter((t) => String(t.subject_name) === String(subName))
-          .map((t) => t.teacher_id);
-        if (!tids.length) continue;
-        await API.post("/e-assessments/admin/bulk-assign-submissions", {
-          subject_id: subName,
-          submission_ids: groups[subName].map((s) => s.id),
+        const tids = teacherIdsForSubject(subName);
+        if (!tids.length) { skipped++; continue; }
+        const res = await API.post("/e-assessments/admin/smart-distribute", {
+          submission_ids: groups[subName].map((x) => x.id),
           teacher_ids: tids,
         });
+        if (res.data?.mode === "question") byQuestion++; else bySubmission++;
       }
-      showToast("All subjects processed");
+      showToast(`Done: ${bySubmission} subject(s) split by submission, ${byQuestion} by answered question${skipped ? `, ${skipped} skipped (no teachers assigned)` : ""}`);
       loadAll();
     } catch { showToast("Some assignments failed", "error"); }
     finally { setSaving(false); }
+  };
+
+  // Undo any earlier assignment / allocation (see AssignmentHistory below).
+  const undoAssignment = async (batch) => {
+    if (!window.confirm(`Undo this action?\n\n${batch.summary}\n\nWork a teacher has already marked is kept with them.`)) return;
+    try {
+      setSaving(true);
+      const res = await API.post(`/e-assessments/admin/assignment-batches/${batch.id}/undo`);
+      showToast(res.data?.message || "Undone");
+      loadAll();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not undo that action", "error");
+    } finally { setSaving(false); }
   };
 
   const assignSubmissionToTeacher = async (submissionId, teacherId) => {
@@ -1126,7 +1140,7 @@ export default function AdminEAssessments() {
 
   const subStats = useMemo(() => ({
     total:      submissions.length,
-    unassigned: submissions.filter((s) => !s.assigned_teacher_id).length,
+    unassigned: submissions.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length,
     marked:     submissions.filter((s) => s.score != null).length,
     released:   submissions.filter((s) => s.status === "released").length,
   }), [submissions]);
@@ -1339,6 +1353,8 @@ export default function AdminEAssessments() {
             </div>
           )}
 
+          <AssignmentHistory batches={assignBatches} saving={saving} onUndo={undoAssignment} />
+
           <SectionHeader
             title={`Assessments (${filtered.length})`}
             right={filtered.length > 0 && (
@@ -1406,6 +1422,8 @@ export default function AdminEAssessments() {
             <StatCard label="Marked"     value={subStats.marked}     icon={<IconCheck size={18} />} tone="success" />
             <StatCard label="Released"   value={subStats.released}   icon={<IconTrendUp size={18} />} />
           </div>
+
+          <AssignmentHistory batches={assignBatches} saving={saving} onUndo={undoAssignment} />
 
           <div style={{ ...sx.filterRow, marginBottom: 28 }}>
             <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)} style={sx.select}>
@@ -1481,14 +1499,16 @@ export default function AdminEAssessments() {
                               <Td>
                                 {sub.assigned_teacher_id
                                   ? <Chip text={sub.assigned_teacher_name || `#${sub.assigned_teacher_id}`} tone="success" />
-                                  : <Chip text="Unassigned" tone="danger" />}
+                                  : Number(sub.alloc_count) > 0
+                                    ? <Chip text={`By question: ${sub.alloc_teachers || "several teachers"}`} tone="success" />
+                                    : <Chip text="Unassigned" tone="danger" />}
                               </Td>
                               <Td>{sub.score != null ? <ScoreBadge score={sub.score} total={sub.total_marks || 100} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
                               <Td>{sub.score != null ? <GradeBadge grade={computeGrade(sub.score, sub.total_marks, gradingSystem)} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
                               <Td><MarkPill status={sub.status} score={sub.score} /></Td>
                               <Td>
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                                  {!sub.assigned_teacher_id && subjectTeachers.length > 0 && (
+                                  {!sub.assigned_teacher_id && !(Number(sub.alloc_count) > 0) && subjectTeachers.length > 0 && (
                                     <select
                                       style={{ ...sx.select, padding: "5px 8px", fontSize: 12 }}
                                       defaultValue=""
@@ -2540,6 +2560,44 @@ const deviceModel = (ua = "") => {
   if (/iPad/i.test(ua)) return "iPad";
   return "";
 };
+
+/* Recent assignments and allocations, each with an Undo button. Covers
+   assigning teachers to subjects/classes, removing those, handing out whole
+   submissions and splitting answered questions between teachers. */
+function AssignmentHistory({ batches, saving, onUndo }) {
+  const C = useC();
+  const [all, setAll] = useState(false);
+  if (!batches || batches.length === 0) return null;
+  const shown = all ? batches : batches.slice(0, 5);
+  const KIND = { submission: "Submissions", question: "By question", teacher_subject: "Teacher / subject / class" };
+  return (
+    <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: C.textPri }}>Recent assignments & allocations</p>
+        {batches.length > 5 && (
+          <button type="button" onClick={() => setAll((v) => !v)} style={{ border: "none", background: "transparent", color: C.accent, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+            {all ? "Show fewer" : `Show all ${batches.length}`}
+          </button>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        {shown.map((b) => (
+          <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.border}`, opacity: b.undone_at ? 0.6 : 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 13, color: C.textPri, textDecoration: b.undone_at ? "line-through" : "none" }}>{b.summary}</p>
+              <p style={{ margin: "3px 0 0", fontSize: 11, color: C.textMuted }}>
+                {KIND[b.kind] || b.kind} · {b.created_by_name || "Admin"} · {fmtDateTime(b.created_at)}
+              </p>
+            </div>
+            {b.undone_at
+              ? <Chip text="Undone" tone="neutral" />
+              : <MiniBtn tone="warning" disabled={saving} onClick={() => onUndo(b)} title="Put things back the way they were before this action">Undo</MiniBtn>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function BlockedDevicesPanel({ rows, saving, onAllow, onRevoke }) {
   const C = useC();
