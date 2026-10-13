@@ -835,6 +835,12 @@ export default function TakeEAssessment() {
   // entirely, so screen sharing stayed mandatory even when switched OFF.
   const [security, setSecurity] = useState(DEFAULT_SECURITY);
   const securityRef = useRef(DEFAULT_SECURITY);
+  // True once this device has pressed Resume and the server activated it. From
+  // then on "active" on the server means "unlocked and mine", NOT "my lock
+  // never reached the server" — the locked screen must not re-report a lock.
+  const resumeAttemptedRef = useRef(false);
+  const [needsRelogin, setNeedsRelogin] = useState(false);
+  const [pollNotice, setPollNotice] = useState("");
   const [screenSurface, setScreenSurface] = useState(""); // monitor | window | browser
   const [screenError, setScreenError] = useState("");
   const [faceVisible, setFaceVisible] = useState(true); // true = "looking at the screen" (see isLookingAtScreen)
@@ -1311,6 +1317,13 @@ export default function TakeEAssessment() {
           setPhase("ended");
         }
       } catch (err) {
+        // The server answers a locked session with HTTP 423, which axios throws —
+        // so the `res.data.locked` branch above never ran and a server-side lock
+        // (admin lock, token used on a second device) never reached the screen.
+        if (err?.response?.status === 423 && err?.response?.data?.locked) {
+          triggerLock("This exam session was locked by an administrator or because the token was used on another device.", { fromServer: true });
+          return;
+        }
         // Admin switched "Desktop only" on while this phone/tablet was
         // mid-exam: stop the exam UI here. The session is NOT locked, so
         // nothing is lost — answers were already autosaved, and the student
@@ -1437,6 +1450,7 @@ export default function TakeEAssessment() {
   /* ── local anti-cheat detection (best-effort, client-side) ── */
   const triggerLock = useCallback((reason, opts = {}) => {
     localStorage.setItem(lockKey(id), reason);
+    resumeAttemptedRef.current = false; // a brand-new lock: allow it to be reported
     setLockReason(reason);
     setCanResume(false);
     setResumeMsg("");
@@ -1800,6 +1814,8 @@ export default function TakeEAssessment() {
     if (!t) return false;
     try {
       const res = await API.post("/e-assessments/exam-session/status", { token: t, device_id: deviceId });
+      setPollNotice("");
+      setNeedsRelogin(false);
       if (res.data.ended) {
         localStorage.removeItem(lockKey(id));
         localStorage.removeItem(tokenKey(id));
@@ -1807,16 +1823,32 @@ export default function TakeEAssessment() {
         setPhase("ended");
         return false;
       }
-      const resumable = !!res.data.can_resume && res.data.status === "issued";
+      const status = res.data.status;
+      // "issued" = an admin unlocked it. "active" only counts as resumable once
+      // THIS device has pressed Resume (otherwise it is a lock the server never saw).
+      const resumable = !!res.data.can_resume && (status === "issued" || (status === "active" && resumeAttemptedRef.current));
       setCanResume(resumable);
-      // The server still thinks this device is active — the lock never
-      // reached it (e.g. offline when it happened). Report it again.
-      if (res.data.status === "active") {
+      // The server still thinks this device is active — the lock never reached
+      // it (e.g. offline when it happened). Report it again — but NEVER after
+      // a Resume, or an unlocked session gets locked again behind the student's back.
+      if (status === "active" && !resumeAttemptedRef.current) {
         API.post("/e-assessments/exam-session/lock", { token: t, device_id: deviceId, reason: localStorage.getItem(lockKey(id)) || "Locked by this device" }).catch(() => {});
       }
       return resumable;
-    } catch {
-      /* transient — try again next tick */
+    } catch (err) {
+      // Used to be swallowed silently, which left the screen "locked" forever
+      // even after an admin unlocked it. Now the student is told what to do.
+      const code = err?.response?.status;
+      if (code === 401) {
+        setNeedsRelogin(true);
+        setPollNotice("Your exam sign-in expired while this screen was locked, so it can't see the unlock. Sign in again to continue — your answers are saved.");
+      } else if (code === 404) {
+        tokenRef.current = "";
+        localStorage.removeItem(tokenKey(id));
+        setToken("");
+        setPollNotice("Your exam token is out of date. Press \"Check again\" to fetch a fresh one.");
+      }
+      /* other errors (network) are transient — try again next tick */
       return false;
     }
   }, [id, deviceId]);
@@ -1867,6 +1899,19 @@ export default function TakeEAssessment() {
     }
   };
 
+  // Sign in again from the locked screen (expired exam sign-in). The server is
+  // the source of truth: if the session is still locked, signing in shows the lock again.
+  const reloginAfterLock = () => {
+    localStorage.removeItem(lockKey(id));
+    localStorage.removeItem(tokenKey(id));
+    resumeAttemptedRef.current = false;
+    tokenRef.current = "";
+    setToken("");
+    setNeedsRelogin(false);
+    setPollNotice("");
+    setPhase("examlogin");
+  };
+
   const handleResume = async () => {
     if (resuming) return;
     setResuming(true);
@@ -1877,15 +1922,29 @@ export default function TakeEAssessment() {
         token: tokenRef.current, device_id: deviceId, device_label: navigator.userAgent,
       });
       if (res.data.success) {
+        // The server now treats this device as the active one. Remember that so
+        // the locked screen's status poll can never re-lock the session.
+        resumeAttemptedRef.current = true;
         localStorage.removeItem(lockKey(id));
         setViolations(0);
-        setCanResume(false);
         await loadSecuritySettings(); // a refresh while locked never went through bootStart
-        await enterActive();
+        try {
+          await enterActive();
+        } catch (loadErr) {
+          if (loadErr?.message === "EXAM_TAB_IN_USE") throw loadErr;
+          // Unlocked on the server, but the paper didn't load. Keep Resume
+          // available (activation is safe to repeat on the same device) rather
+          // than stranding the student on a screen that still says "locked".
+          setCanResume(true);
+          setResumeMsg("Your exam is unlocked, but the paper could not be loaded. Check your connection and press Resume again — your answers are saved.");
+          return;
+        }
+        setCanResume(false);
       }
     } catch (err) {
       const status = err?.response?.status;
       if (status === 423) {
+        resumeAttemptedRef.current = false;
         setCanResume(false);
         setResumeMsg(err?.response?.data?.message || "This session is still locked. Please wait for the administrator.");
       } else if (status === 409) {
@@ -2346,6 +2405,17 @@ export default function TakeEAssessment() {
           )}
           {resumeMsg && (
             <p style={{ color: "var(--destructive)", fontSize: 12, lineHeight: 1.5, textAlign: "center", margin: "10px 0 0" }}>{resumeMsg}</p>
+          )}
+          {pollNotice && (
+            <p style={{ color: "var(--destructive)", fontSize: 12, lineHeight: 1.5, textAlign: "center", margin: "10px 0 0" }}>{pollNotice}</p>
+          )}
+          {needsRelogin && (
+            <button
+              onClick={reloginAfterLock}
+              style={{ width: "100%", marginTop: 10, padding: "10px 16px", borderRadius: 10, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+            >
+              Sign in again
+            </button>
           )}
           <HomeButton />
         </div>
