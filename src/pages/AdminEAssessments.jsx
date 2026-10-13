@@ -309,7 +309,7 @@ export default function AdminEAssessments() {
   const blank = { title: "", subject: "", subjects: [], class_ids: [], duration_minutes: 30, instructions: "", total_marks: 100, exam_password: "", questions_deadline: "", question_setter_teacher_ids: [] };
   const [form,          setForm]          = useState(blank);
   const [editForm,      setEditForm]      = useState(blank);
-  const [assignForm,    setAssignForm]    = useState({ teacher_id: "", subject_id: "", class_ids: [] });
+  const [assignForm,    setAssignForm]    = useState({ teacher_ids: [], subject_ids: [], class_ids: [] });
   const [remarkComment, setRemarkComment] = useState("");
 
   /* ── Toast ── */
@@ -384,6 +384,23 @@ export default function AdminEAssessments() {
   // there's no "year" concept — assigning a teacher to a subject is
   // naturally one row per class either way, so expanding a year (or
   // "all") into every individual class is exactly what's wanted there.
+  // One card per teacher: their subjects, and under each subject the classes
+  // they cover (instead of one repeated card per teacher/subject/class row).
+  const teacherCards = useMemo(() => {
+    const byTeacher = new Map();
+    for (const a of assignedTeachers) {
+      if (!byTeacher.has(a.teacher_id)) byTeacher.set(a.teacher_id, { teacher_id: a.teacher_id, teacher_name: a.teacher_name || `Teacher #${a.teacher_id}`, subjects: new Map() });
+      const t = byTeacher.get(a.teacher_id);
+      const key = a.subject_name || `Subject #${a.subject_id}`;
+      if (!t.subjects.has(key)) t.subjects.set(key, []);
+      t.subjects.get(key).push({ id: a.id, name: a.class_name || `Class #${a.class_id}` });
+    }
+    const byName = (x, y) => String(x).localeCompare(String(y), undefined, { numeric: true });
+    return [...byTeacher.values()]
+      .map((t) => ({ ...t, subjects: [...t.subjects.entries()].sort(([a], [b]) => byName(a, b)).map(([subject_name, cls]) => ({ subject_name, classes: cls.sort((x, y) => byName(x.name, y.name)) })) }))
+      .sort((x, y) => byName(x.teacher_name, y.teacher_name));
+  }, [assignedTeachers]);
+
   const resolveClassIds = (ids) => {
     if (ids.includes("all")) return classes.map((c) => Number(c.id || c.class_id));
     return ids.map(Number).filter(Boolean);
@@ -762,23 +779,27 @@ export default function AdminEAssessments() {
     } catch { showToast("Failed to load answers", "error"); }
   };
 
+  // Assign any number of teachers to any number of subjects across any number
+  // of classes in one request (each list has a "Select all"). Existing
+  // assignments are skipped by the server, so repeating it is harmless.
   const assignTeacher = async () => {
     const targetClassIds = resolveClassIds(assignForm.class_ids);
-    if (!assignForm.teacher_id || !assignForm.subject_id || !targetClassIds.length) {
-      showToast("Please complete all fields", "error"); return;
+    if (!assignForm.teacher_ids.length || !assignForm.subject_ids.length || !targetClassIds.length) {
+      showToast("Pick at least one teacher, one subject and one class", "error"); return;
     }
     try {
       setSaving(true);
-      await Promise.all(targetClassIds.map((class_id) =>
-        API.post("/e-assessments/admin/assign-teacher", {
-          teacher_id: Number(assignForm.teacher_id),
-          subject_id: Number(assignForm.subject_id),
-          class_id,
-        })
-      ));
-      setAssignForm({ teacher_id: "", subject_id: "", class_ids: [] });
+      const res = await API.post("/e-assessments/admin/assign-teachers-bulk", {
+        teacher_ids: assignForm.teacher_ids.map(Number),
+        subject_ids: assignForm.subject_ids.map(Number),
+        class_ids: targetClassIds,
+      });
+      setAssignForm({ teacher_ids: [], subject_ids: [], class_ids: [] });
       setAssignOpen(false);
-      showToast(targetClassIds.length > 1 ? `Teacher assigned to ${targetClassIds.length} classes` : "Teacher assigned successfully");
+      const { created = 0, skipped = 0 } = res.data || {};
+      showToast(created
+        ? `${created} assignment${created === 1 ? "" : "s"} created${skipped ? ` (${skipped} already existed)` : ""}`
+        : "Nothing new: those assignments already exist");
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Assignment failed", "error");
@@ -1273,29 +1294,48 @@ export default function AdminEAssessments() {
             <EmptyState icon={<IconUsers size={26} />} text="No teacher assignments yet. Use 'Assign Teacher' above." />
           ) : (
             <div style={sx.assignGrid}>
-              {assignedTeachers.map((item) => (
-                <div key={item.id} className="dash-card" style={sx.assignCard}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div>
-                      <p style={{ margin: 0, fontWeight: 700, color: C.textPri, fontSize: 15 }}>{item.teacher_name}</p>
-                      <p style={{ margin: "5px 0 0", fontSize: 12, color: C.textMuted }}>
-                        {item.subject_name} · {item.class_name}
-                      </p>
+              {teacherCards.map((t) => {
+                const ids = t.subjects.flatMap((sub) => sub.classes.map((c) => c.id));
+                const allSel = ids.length > 0 && ids.every((i) => selAssignments.includes(i));
+                return (
+                  <div key={t.teacher_id} className="dash-card" style={sx.assignCard}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ margin: 0, fontWeight: 700, color: C.textPri, fontSize: 15 }}>{t.teacher_name}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: 12, color: C.textMuted }}>
+                          {t.subjects.length} subject{t.subjects.length === 1 ? "" : "s"} · {ids.length} class assignment{ids.length === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={allSel}
+                        title="Select all of this teacher's assignments"
+                        onChange={() => setSelAssignments((p) => allSel ? p.filter((x) => !ids.includes(x)) : [...new Set([...p, ...ids])])}
+                        style={{ accentColor: C.accent, cursor: "pointer", width: 15, height: 15, flexShrink: 0 }}
+                      />
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={selAssignments.includes(item.id)}
-                      onChange={() => setSelAssignments((p) =>
-                        p.includes(item.id) ? p.filter((x) => x !== item.id) : [...p, item.id]
-                      )}
-                      style={{ accentColor: C.accent, cursor: "pointer", width: 15, height: 15 }}
-                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+                      {t.subjects.map((sub) => (
+                        <div key={sub.subject_name}>
+                          <p style={{ margin: "0 0 5px", fontSize: 12, fontWeight: 700, color: C.textSec }}>{sub.subject_name}</p>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                            {sub.classes.map((c) => (
+                              <span key={c.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "3px 4px 3px 9px", borderRadius: 12, background: C.bgAlt, color: C.textPri, border: `1px solid ${C.border}` }}>
+                                {c.name}
+                                <button type="button" title={`Remove ${t.teacher_name} from ${sub.subject_name} · ${c.name}`} onClick={() => deleteAssignments([c.id])}
+                                  style={{ border: "none", background: "transparent", color: C.textMuted, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 4px" }}>×</button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <MiniBtn tone="danger" icon={<IconTrash size={12} />} onClick={() => deleteAssignments(ids)} style={{ marginTop: 14 }}>
+                      Remove all
+                    </MiniBtn>
                   </div>
-                  <MiniBtn tone="danger" icon={<IconTrash size={12} />} onClick={() => deleteAssignments([item.id])} style={{ marginTop: 14 }}>
-                    Remove
-                  </MiniBtn>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -1938,20 +1978,24 @@ export default function AdminEAssessments() {
       )}
 
       {assignOpen && (
-        <Modal title="Assign Teacher to Subject & Class" onClose={() => setAssignOpen(false)}>
-          <FieldLabel>Teacher *</FieldLabel>
-          <ModalSelect value={assignForm.teacher_id} onChange={(v) => setAssignForm({ ...assignForm, teacher_id: v })}
-            options={teachers.map((t) => ({ value: t.id, label: t.name }))} placeholder="Select Teacher" />
+        <Modal title="Assign Teachers to Subjects & Classes" onClose={() => setAssignOpen(false)}>
+          <FieldLabel>Teacher(s) *</FieldLabel>
+          <CheckList items={teachers.map((t) => ({ value: t.id, label: t.name }))} value={assignForm.teacher_ids}
+            onChange={(v) => setAssignForm({ ...assignForm, teacher_ids: v })} allLabel="All teachers" />
 
-          <FieldLabel>Subject *</FieldLabel>
-          <ModalSelect value={assignForm.subject_id} onChange={(v) => setAssignForm({ ...assignForm, subject_id: v })}
-            options={subjects.map((s) => ({ value: s.id, label: s.name || s.subject_name }))} placeholder="Select Subject" />
+          <FieldLabel>Subject(s) *</FieldLabel>
+          <CheckList items={subjects.map((x) => ({ value: x.id, label: x.name || x.subject_name }))} value={assignForm.subject_ids}
+            onChange={(v) => setAssignForm({ ...assignForm, subject_ids: v })} allLabel="All subjects" />
 
           <FieldLabel>Class(es) *</FieldLabel>
           <ClassMultiSelect value={assignForm.class_ids} onChange={(ids) => setAssignForm({ ...assignForm, class_ids: ids })} classes={classes} />
           <p style={sx.formHint}>
-            Pick one class, several, or "All Classes" to assign this teacher to that subject across
-            every class you select in one go.
+            {(() => {
+              const t = assignForm.teacher_ids.length, sb = assignForm.subject_ids.length, c = resolveClassIds(assignForm.class_ids).length;
+              return t && sb && c
+                ? <>This creates up to <strong style={{ color: C.textPri }}>{t * sb * c}</strong> assignments ({t} teacher{t === 1 ? "" : "s"} × {sb} subject{sb === 1 ? "" : "s"} × {c} class{c === 1 ? "" : "es"}). Ones that already exist are skipped.</>
+                : "Pick teachers, subjects and classes (each list has Select all). Every combination you choose is assigned in one go.";
+            })()}
           </p>
 
           <SaveButton onClick={assignTeacher} loading={saving} label="Assign Teacher" />
@@ -3157,6 +3201,39 @@ function TeacherMultiSelect({ value, onChange, teachers }) {
    assessment can cover a whole year without needing a row per
    class in it.
 ═══════════════════════════════════════════════════════════ */
+/* Checkbox list with a "Select all" row — used by the Assign Teacher dialog so
+   every teacher / every subject can be picked in one click. */
+function CheckList({ items, value, onChange, allLabel = "Select all" }) {
+  const C = useC();
+  const [q, setQ] = useState("");
+  const all = items.length > 0 && items.every((i) => value.includes(i.value));
+  const shown = q.trim() ? items.filter((i) => String(i.label).toLowerCase().includes(q.trim().toLowerCase())) : items;
+  const toggle = (v) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  const rowStyle = { display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", fontSize: 13, color: C.textPri, cursor: "pointer" };
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, background: C.card, marginBottom: 14, overflow: "hidden" }}>
+      <label style={{ ...rowStyle, background: C.bgAlt, fontWeight: 700, borderBottom: `1px solid ${C.border}` }}>
+        <input type="checkbox" checked={all} onChange={() => onChange(all ? [] : items.map((i) => i.value))} style={{ accentColor: C.accent }} />
+        {allLabel} ({items.length})
+        <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 500, color: C.textMuted }}>{value.length} selected</span>
+      </label>
+      {items.length > 8 && (
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
+          style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1px solid ${C.border}`, background: "transparent", color: C.textPri, padding: "8px 12px", fontSize: 13, outline: "none" }} />
+      )}
+      <div style={{ maxHeight: 150, overflowY: "auto" }}>
+        {shown.length === 0 && <p style={{ margin: 0, padding: "10px 12px", fontSize: 12, color: C.textMuted }}>No matches</p>}
+        {shown.map((i) => (
+          <label key={i.value} style={rowStyle}>
+            <input type="checkbox" checked={value.includes(i.value)} onChange={() => toggle(i.value)} style={{ accentColor: C.accent }} />
+            {i.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ClassMultiSelect({ value, onChange, classes }) {
   const C = useC();
   const isAll = value.includes("all");
