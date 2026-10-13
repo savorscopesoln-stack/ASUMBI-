@@ -60,6 +60,19 @@ const isDeviceBlocked = (err) =>
         camera feed and uploading it to the server for an invigilator
         to review after the fact — continuously, for as long as the
         condition persists, not just once.
+
+   ACCESSIBILITY NOTE
+   ─────────────────────────────────────────────────────────
+   This page is built to be usable with a screen reader and the
+   keyboard alone: landmarks, live-region announcements (see
+   announce()), focus moved to each new screen/question, labelled
+   form fields, and an essay editor with a keyboard-escapable table.
+   Some security rules (gaze photos, camera position check, entire-
+   screen sharing) are inherently visual. For students who need an
+   accommodation, the server may return `accessibility_mode: true`
+   in /security-settings; the client then skips camera/gaze
+   monitoring. The server should also switch off require_camera /
+   require_screen_share / lock_on_violations for that student.
    ═════════════════════════════════════════════════════════ */
 
 /* ─── shared design-token stylesheet ───
@@ -187,6 +200,19 @@ const injectExamStyles = () => {
        width so there's room to read and work, rather than being
        boxed into a narrow column. */
     .exam-page-container { max-width: 95vw; }
+
+    /* ── accessibility ── */
+    .sr-only {
+      position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    .skip-link {
+      position: absolute; left: 8px; top: -60px; z-index: 10000; padding: 10px 14px;
+      background: var(--primary); color: #fff; border-radius: 8px; font-weight: 700; text-decoration: none;
+    }
+    .skip-link:focus { top: 8px; }
+    [data-phase-heading]:focus, #exam-question:focus { outline: none; }
+    [contenteditable]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
   `;
   document.head.appendChild(el);
 };
@@ -371,6 +397,31 @@ const isLookingAtScreen = (landmarks) => {
   return eyesOpen && facingForward;
 };
 
+/* ── pre-exam camera check ──
+   Works out whether the face in the frame is in a good, central position.
+   `faces` = face-api results ({ detection, landmarks }); the on-screen preview
+   is mirrored, so left/right hints are given the way the student sees it. */
+const CAM_TEST_INTERVAL_MS = 500;
+const CAM_TEST_HOLD_TICKS = 4; // 4 x 500 ms = about 2 s of staying in position before the photo is taken
+const analyseFacePosition = (faces, vw, vh) => {
+  if (!faces.length) return { ok: false, hint: "We can't see your face. Sit in front of the camera with light on your face." };
+  if (faces.length > 1) return { ok: false, hint: "More than one face is in view. Only you should be in front of the camera." };
+  const { detection, landmarks } = faces[0];
+  const b = detection.box;
+  const cx = (b.x + b.width / 2) / vw; // raw camera frame, 0..1
+  const cy = (b.y + b.height / 2) / vh;
+  const w = b.width / vw;
+  const shownCx = 1 - cx; // the preview is mirrored
+  if (w < 0.2) return { ok: false, hint: "Move a little closer to the camera." };
+  if (w > 0.5) return { ok: false, hint: "Move back a little from the camera." };
+  if (shownCx < 0.38) return { ok: false, hint: "Move a little to the right." };
+  if (shownCx > 0.62) return { ok: false, hint: "Move a little to the left." };
+  if (cy < 0.3) return { ok: false, hint: "Your face is too high in the frame. Move down a little, or tilt your screen up." };
+  if (cy > 0.62) return { ok: false, hint: "Your face is too low in the frame. Move up a little, or tilt your screen down." };
+  if (!isLookingAtScreen(landmarks)) return { ok: false, hint: "Look straight at the screen and keep your eyes open." };
+  return { ok: true, hint: "Perfect. Hold still…", box: { cx, cy, w } };
+};
+
 const getDeviceId = () => {
   let id = localStorage.getItem("exam_device_id");
   if (!id) {
@@ -378,6 +429,43 @@ const getDeviceId = () => {
     localStorage.setItem("exam_device_id", id);
   }
   return id;
+};
+
+/* ── accessibility helpers ── */
+// Two persistent live regions living on <body>, so announcements work in EVERY
+// phase without touching each screen's JSX.
+const getLiveRegion = (kind) => {
+  const regionId = `exam-live-${kind}`;
+  let el = document.getElementById(regionId);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = regionId;
+    el.className = "sr-only";
+    el.setAttribute("role", kind === "assertive" ? "alert" : "status");
+    el.setAttribute("aria-live", kind);
+    el.setAttribute("aria-atomic", "true");
+    document.body.appendChild(el);
+  }
+  return el;
+};
+const announce = (message, assertive = false) => {
+  if (typeof document === "undefined" || !message) return;
+  const el = getLiveRegion(assertive ? "assertive" : "polite");
+  el.textContent = ""; // clear first so a repeated message is read again
+  setTimeout(() => { el.textContent = message; }, 60);
+};
+const spokenTime = (total) => {
+  const m = Math.floor(total / 60), s = Math.floor(total % 60);
+  const parts = [];
+  if (m) parts.push(`${m} minute${m !== 1 ? "s" : ""}`);
+  if (s || !m) parts.push(`${s} second${s !== 1 ? "s" : ""}`);
+  return parts.join(" ");
+};
+const spellOut = (t) => String(t || "").split("").join(", "); // "A7K2QZ" -> "A, 7, K, 2, Q, Z"
+const PHASE_TITLES = {
+  examlogin: "Exam sign in", loading: "Preparing exam", reveal: "Your exam token",
+  verify: "Enter token to begin", active: "Exam in progress", locked: "Exam locked",
+  ended: "Exam finished", error: "Problem", devicedenied: "Device not allowed",
 };
 
 const lockKey = (assessmentId) => `exam_lock_${assessmentId}`;
@@ -484,9 +572,11 @@ const hasUsableSession = (assessmentId) => {
    student's own typing or a toolbar command — never by a JSX prop. */
 function EssayEditor({ id, initialValue, onChange }) {
   const contentRef = useRef(null);
+  const toolbarRef = useRef(null);
   const [activeCmds, setActiveCmds] = useState({});
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
+  const [focusCmd, setFocusCmd] = useState("undo"); // roving tabindex: the one toolbar button in the Tab order
 
   const countFrom = (el) => {
     const text = el?.textContent || "";
@@ -579,6 +669,7 @@ function EssayEditor({ id, initialValue, onChange }) {
     if (created) placeCaretIn(created.querySelector("td"));
     setTablePickerOpen(false);
     commit();
+    announce(`Table with ${rows} row${rows !== 1 ? "s" : ""} and ${cols} column${cols !== 1 ? "s" : ""} inserted. Tab moves between cells. Control and Enter leaves the table.`);
   };
 
   const addRowAfter = (row, caretCol) => {
@@ -598,9 +689,10 @@ function EssayEditor({ id, initialValue, onChange }) {
     const table = cell.closest("table");
     const col = Array.prototype.indexOf.call(row.children, cell);
     const rows = Array.from(table.rows);
+    let said = "";
 
     if (op === "rowAdd") {
-      addRowAfter(row, col);
+      if (addRowAfter(row, col)) said = "Row added below.";
     } else if (op === "rowDelete") {
       if (rows.length <= 1) table.remove();
       else {
@@ -608,6 +700,7 @@ function EssayEditor({ id, initialValue, onChange }) {
         row.remove();
         placeCaretIn(next.children[Math.min(col, next.children.length - 1)]);
       }
+      said = "Row deleted.";
     } else if (op === "colAdd") {
       if (row.children.length >= MAX_COLS) return;
       rows.forEach((r) => {
@@ -616,21 +709,45 @@ function EssayEditor({ id, initialValue, onChange }) {
         if (ref) ref.after(c); else r.appendChild(c);
       });
       placeCaretIn(row.children[col + 1]);
+      said = "Column added to the right.";
     } else if (op === "colDelete") {
       if (row.children.length <= 1) table.remove();
       else {
         rows.forEach((r) => r.children[col]?.remove());
         placeCaretIn(row.children[Math.min(col, row.children.length - 1)]);
       }
+      said = "Column deleted.";
     } else if (op === "tableDelete") {
       table.remove();
+      said = "Table deleted.";
     }
     commit();
+    if (said) announce(said);
   };
 
   // Tab / Shift+Tab walk between cells (Tab in the last cell adds a row).
   // Outside a table Tab keeps its normal focus-moving behaviour.
+  // Ctrl/Cmd+Enter leaves the table (so keyboard and screen-reader users are
+  // never trapped in it). Escape is deliberately NOT used: in fullscreen the
+  // browser takes Escape to exit fullscreen, which the exam counts as a violation.
   const onEditorKeyDown = (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      const cell = currentCell();
+      if (cell) {
+        e.preventDefault();
+        const table = cell.closest("table");
+        let after = table.nextElementSibling;
+        if (!after) {
+          after = document.createElement("p");
+          after.innerHTML = "<br>";
+          table.after(after);
+          commit();
+        }
+        placeCaretIn(after);
+        announce("Left the table.");
+      }
+      return;
+    }
     if (e.key !== "Tab") return;
     const cell = currentCell();
     if (!cell) return;
@@ -643,6 +760,7 @@ function EssayEditor({ id, initialValue, onChange }) {
       placeCaretIn(cells[i + 1]);
     } else if (addRowAfter(cell.parentElement, 0)) {
       commit();
+      announce("Row added.");
     }
   };
 
@@ -675,6 +793,20 @@ function EssayEditor({ id, initialValue, onChange }) {
     updateToolbarState();
   };
 
+  // One Tab stop for the whole toolbar; arrow keys / Home / End move within it.
+  const onToolbarKeyDown = (e) => {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) return;
+    const btns = Array.from(toolbarRef.current.querySelectorAll("button:not([disabled])"));
+    const i = btns.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    const next = e.key === "Home" ? 0
+      : e.key === "End" ? btns.length - 1
+        : (i + (e.key === "ArrowRight" ? 1 : -1) + btns.length) % btns.length;
+    setFocusCmd(btns[next].dataset.cmd);
+    btns[next].focus();
+  };
+
   const TOOLBAR = [
     { cmd: "undo", label: "↶", title: "Undo" },
     { cmd: "redo", label: "↷", title: "Redo" },
@@ -697,36 +829,53 @@ function EssayEditor({ id, initialValue, onChange }) {
 
   return (
     <div style={S.essayBox}>
-      <div style={S.essayToolbar}>
+      <div
+        ref={toolbarRef}
+        role="toolbar"
+        aria-label="Text formatting. Use left and right arrow keys to move between buttons."
+        aria-controls={`essay-${id}`}
+        style={S.essayToolbar}
+        onKeyDown={onToolbarKeyDown}
+      >
         {TOOLBAR.map((item, i) => item.sep ? (
-          <span key={`sep-${i}`} style={S.essaySep} />
+          <span key={`sep-${i}`} style={S.essaySep} aria-hidden="true" />
         ) : (
           <button
             key={item.cmd}
             type="button"
+            data-cmd={item.cmd}
             title={item.title}
+            aria-label={item.title}
+            aria-pressed={!!activeCmds[item.cmd]}
+            tabIndex={focusCmd === item.cmd ? 0 : -1}
             style={{ ...S.essayToolbarBtn, ...(activeCmds[item.cmd] ? S.essayToolbarBtnActive : {}) }}
             onMouseDown={(e) => e.preventDefault()} // keep selection focused in the content box, not the button
+            onFocus={() => setFocusCmd(item.cmd)}
             onClick={() => runCommand(item.cmd)}
           >
-            {item.label}
+            <span aria-hidden="true">{item.label}</span>
           </button>
         ))}
-        <span style={S.essaySep} />
+        <span style={S.essaySep} aria-hidden="true" />
         <button
           type="button"
+          data-cmd="table"
           title={inCell ? "Already inside a table" : "Insert table"}
+          aria-label="Insert table"
+          aria-expanded={tablePickerOpen}
           disabled={inCell}
+          tabIndex={focusCmd === "table" ? 0 : -1}
           style={{ ...S.essayToolbarBtn, ...S.essayTextBtn, ...(tablePickerOpen ? S.essayToolbarBtnActive : {}), opacity: inCell ? 0.45 : 1, cursor: inCell ? "not-allowed" : "pointer" }}
           onMouseDown={(e) => e.preventDefault()}
+          onFocus={() => setFocusCmd("table")}
           onClick={openTablePicker}
         >
-          ▦ Table
+          <span aria-hidden="true">▦</span> Table
         </button>
       </div>
 
       {tablePickerOpen && !inCell && (
-        <div style={S.essayTableBar}>
+        <div style={S.essayTableBar} role="group" aria-label="Insert table: choose rows and columns">
           <label style={S.essayTableLabel}>
             Rows
             <input type="number" min={1} max={MAX_ROWS} value={tableRows} onChange={(e) => setTableRows(e.target.value)} style={S.essayTableInput} />
@@ -741,7 +890,7 @@ function EssayEditor({ id, initialValue, onChange }) {
       )}
 
       {inCell && (
-        <div style={S.essayTableBar} aria-label="Table tools">
+        <div style={S.essayTableBar} role="toolbar" aria-label="Table tools">
           <span style={S.essayTableHint}>Table</span>
           {[
             ["rowAdd", "+ Row", "Add a row below"],
@@ -754,6 +903,7 @@ function EssayEditor({ id, initialValue, onChange }) {
               key={op}
               type="button"
               title={title}
+              aria-label={title}
               style={{ ...S.essayToolbarBtn, ...S.essayTextBtn, ...(op === "tableDelete" ? { color: "var(--destructive)" } : {}) }}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => tableOp(op)}
@@ -761,14 +911,20 @@ function EssayEditor({ id, initialValue, onChange }) {
               {label}
             </button>
           ))}
-          <span style={S.essayTableHint}>Tab moves between cells</span>
+          <span style={S.essayTableHint}>Tab moves between cells · Ctrl+Enter leaves the table</span>
         </div>
       )}
       <div
         ref={contentRef}
+        id={`essay-${id}`}
         className="essay-content"
         contentEditable
         suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Your answer"
+        aria-describedby={`essay-status-${id}`}
+        tabIndex={0}
         onKeyDown={onEditorKeyDown}
         style={S.essayContent}
         data-placeholder="Type your answer here…"
@@ -777,7 +933,7 @@ function EssayEditor({ id, initialValue, onChange }) {
         onMouseUp={updateToolbarState}
         onFocus={updateToolbarState}
       />
-      <div style={S.essayStatus}>
+      <div id={`essay-status-${id}`} style={S.essayStatus} aria-live="off">
         <span>Words: {wordCount}</span>
         <span>Characters: {charCount}</span>
       </div>
@@ -820,6 +976,23 @@ export default function TakeEAssessment() {
   const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | nomodel | off  (nomodel = camera on, eye-gaze script unavailable)
   const [cameraError, setCameraError] = useState("");
   const [cameraRetry, setCameraRetry] = useState(0); // bump to restart camera monitoring after a failure
+  // Pre-exam camera check (only when "Camera required" is on): the student
+  // positions their face, a baseline photo is taken and saved, and only then
+  // can the exam start. The stream is reused for monitoring once it starts.
+  const [camTestStage, setCamTestStage] = useState("idle"); // idle | starting | positioning | captured
+  const [camTestStream, setCamTestStream] = useState(null);
+  const [camTestHint, setCamTestHint] = useState("");
+  const [camTestGood, setCamTestGood] = useState(false);
+  const [camTestHold, setCamTestHold] = useState(0);
+  const [camTestPhoto, setCamTestPhoto] = useState("");
+  const [camTestDone, setCamTestDone] = useState(false);
+  const [camTestSaving, setCamTestSaving] = useState(false);
+  const [camTestError, setCamTestError] = useState("");
+  const [camTestManual, setCamTestManual] = useState(false); // detector couldn't load: student takes the photo by hand
+  const [positionDrift, setPositionDrift] = useState(false); // drifted away from the camera-test position during the exam
+  const camTestVideoRef = useRef(null);
+  const camTestStreamRef = useRef(null);
+  const baselineBoxRef = useRef(null); // where the face was in the camera-test photo
   // The live MediaStream, kept in STATE (not just a ref) so an effect can attach
   // it to the <video> once that element has actually mounted — see the
   // "attach stream to preview" effect below. This is the fix for the black camera.
@@ -903,9 +1076,87 @@ export default function TakeEAssessment() {
   // dependency array (which would tear down and re-request the live
   // camera stream every time it changed).
   const assessmentRef = useRef(null);
+  const qHeadingRef = useRef(null);        // the current question's heading (focus target for screen readers)
+  const prevOnlineRef = useRef(true);
+  const prevFaceRef = useRef(true);
   useEffect(() => { assessmentRef.current = assessment; }, [assessment]);
   useEffect(() => { questionsRef.current = questions; }, [questions]);
   useEffect(() => { currentQIdxRef.current = currentQuestionIndex; }, [currentQuestionIndex]);
+
+  /* ── accessibility: page title + move screen-reader focus to the new
+       screen's heading on every phase change ── */
+  useEffect(() => {
+    document.title = `${PHASE_TITLES[phase] || "Exam"} – E-Assessment`;
+    if (phase === "active") return; // the active phase focuses the question instead
+    const t = setTimeout(() => document.querySelector("[data-phase-heading]")?.focus(), 80);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  /* ── accessibility: tell the student the exam has started ── */
+  useEffect(() => {
+    if (phase === "active" && questions.length) {
+      announce(`Exam started. ${questions.length} question${questions.length !== 1 ? "s" : ""}. Press Alt and T at any time to hear the time remaining.`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, questions.length > 0]);
+
+  /* ── accessibility: move focus to the question whenever it changes ── */
+  useEffect(() => {
+    if (phase !== "active" || !questions.length) return;
+    const t = setTimeout(() => qHeadingRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, [currentQuestionIndex, phase, questions.length]);
+
+  /* ── accessibility: time-remaining milestones (never every second) ── */
+  useEffect(() => {
+    if (phase !== "active") return;
+    if ([1800, 900, 600, 300, 120, 60, 30, 10].includes(secondsLeft)) {
+      announce(`${spokenTime(secondsLeft)} remaining`, secondsLeft <= 60);
+    }
+  }, [secondsLeft, phase]);
+
+  /* ── accessibility: Alt+T reads the time remaining on demand ── */
+  useEffect(() => {
+    if (phase !== "active") return;
+    const onKey = (e) => {
+      if (e.altKey && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        const left = endsAtRef.current != null
+          ? Math.max(0, Math.ceil((endsAtRef.current - Date.now()) / 1000))
+          : 0;
+        announce(`${spokenTime(left)} remaining`);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [phase]);
+
+  /* ── accessibility: announce connectivity changes and camera "looking at screen" changes ── */
+  useEffect(() => {
+    if (phase !== "active") return;
+    if (online !== prevOnlineRef.current) {
+      announce(
+        online
+          ? "Back online. Your answers will sync."
+          : "You are offline. Your answers are saved on this device and will sync when you reconnect.",
+        !online
+      );
+      prevOnlineRef.current = online;
+    }
+  }, [online, phase]);
+
+  useEffect(() => {
+    if (phase !== "active" || cameraStatus !== "active") return;
+    if (faceVisible !== prevFaceRef.current) {
+      announce(
+        faceVisible
+          ? "The camera can see you again."
+          : "The camera cannot see you looking at the screen. Photos are being sent for review.",
+        !faceVisible
+      );
+      prevFaceRef.current = faceVisible;
+    }
+  }, [faceVisible, cameraStatus, phase]);
 
   /* ── restore a persisted local lock (survives refresh) ── */
   useEffect(() => {
@@ -1087,7 +1338,8 @@ export default function TakeEAssessment() {
 
   /* ── reveal screen countdown ── */
   useEffect(() => {
-    if (phase !== "reveal" || revealCountdown <= 0) return;
+    if (phase !== "reveal") return;
+    if (revealCountdown <= 0) { announce("You can continue now."); return; }
     const t = setTimeout(() => setRevealCountdown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [phase, revealCountdown]);
@@ -1214,35 +1466,23 @@ export default function TakeEAssessment() {
     setActivating(true);
     setStartStep("Preparing…");
 
-    // Camera: when "Camera required" is ON for this assessment the exam
-    // CANNOT start without a working camera — we check here, before the
-    // token is activated (activation starts the exam clock on the server).
-    // When it is OFF, we never prompt and never monitor.
+    // Camera: when "Camera required" is ON the exam cannot start until the
+    // camera check is complete (face positioned, baseline photo saved) and the
+    // camera is still live. Checked here, before the token is activated
+    // (activation starts the exam clock on the server).
     if (!securityRef.current.require_camera) {
       setCameraStatus("off");
     } else {
-      let camStream = null;
-      let camFail = "";
-      if (!navigator.mediaDevices?.getUserMedia) {
-        camFail = "This browser cannot access a camera. Use the latest Chrome or Edge on a laptop or desktop computer.";
-      } else {
-        try {
-          camStream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
-        } catch (err) {
-          camFail = describeCameraError(err);
-        }
-      }
-      const camLive = !!camStream && camStream.getVideoTracks().some((t) => t.readyState === "live");
-      if (!camLive) {
-        if (camStream) camStream.getTracks().forEach((t) => t.stop());
-        preGrantedStreamRef.current = null;
-        setCameraStatus("off");
-        setVerifyError("This exam requires your camera, so it cannot start yet. " + (camFail || describeCameraError(null)));
+      const testStream = camTestStreamRef.current;
+      const camLive = !!testStream && testStream.getVideoTracks().some((t) => t.readyState === "live");
+      if (!camTestDone || !camLive) {
+        if (!camLive) resetCamTest("Your camera is not running. Start the camera check again.");
+        setVerifyError("Complete the camera check first: position your face in the frame and wait for your photo to be taken and saved.");
         setActivating(false);
         setStartStep("");
         return;
       }
-      preGrantedStreamRef.current = camStream;
+      preGrantedStreamRef.current = testStream; // the exam's monitoring reuses this stream
       setCameraError("");
       setCameraStatus("idle"); // clear any earlier failure so monitoring starts
     }
@@ -1270,6 +1510,7 @@ export default function TakeEAssessment() {
       if (preGrantedStreamRef.current) {
         preGrantedStreamRef.current.getTracks().forEach((t) => t.stop());
         preGrantedStreamRef.current = null;
+        resetCamTest(); // that stream is gone, so the camera check has to be redone
       }
       if (err?.response?.data?.code === "ACTIVE_EXAM_SESSION") {
         setErrorMsg(err.response.data.message);
@@ -1571,6 +1812,185 @@ export default function TakeEAssessment() {
   const captureViolationPhotoRef = useRef(captureViolationPhoto);
   useEffect(() => { captureViolationPhotoRef.current = captureViolationPhoto; }, [captureViolationPhoto]);
 
+  /* ── pre-exam camera check ── */
+  const resetCamTest = useCallback((message = "") => {
+    if (camTestStreamRef.current) {
+      camTestStreamRef.current.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+      camTestStreamRef.current = null;
+    }
+    baselineBoxRef.current = null;
+    setCamTestStream(null);
+    setCamTestStage("idle");
+    setCamTestPhoto("");
+    setCamTestDone(false);
+    setCamTestSaving(false);
+    setCamTestHold(0);
+    setCamTestGood(false);
+    setCamTestHint("");
+    setCamTestManual(false);
+    setCamTestError(message);
+  }, []);
+
+  const startCamTest = async () => {
+    setCamTestError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCamTestError("This browser cannot access a camera. Use the latest Chrome or Edge on a laptop or desktop computer.");
+      return;
+    }
+    setCamTestStage("starting");
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
+    } catch (err) {
+      setCamTestStage("idle");
+      setCamTestError(describeCameraError(err));
+      return;
+    }
+    camTestStreamRef.current = stream;
+    stream.getVideoTracks().forEach((t) => {
+      t.onended = () => resetCamTest("Your camera was disconnected or turned off. Start the camera check again.");
+    });
+    setCamTestStream(stream);
+    setCamTestHint("Looking for your face…");
+    setCamTestHold(0);
+    setCamTestGood(false);
+    setCamTestManual(false);
+    setCamTestStage("positioning");
+  };
+
+  // Save the baseline photo with the exam's other camera photos so the teacher
+  // can compare it with later ones. Required to finish the check.
+  const saveCamTestPhoto = useCallback(async (dataUrl) => {
+    setCamTestSaving(true);
+    setCamTestError("");
+    try {
+      await API.post("/e-assessments/violation-photo", {
+        assessment_id: Number(id),
+        token: tokenRef.current,
+        device_id: deviceId,
+        image: dataUrl,
+        reason: "exam start (camera check)",
+        screenshot: grabScreenshot(screenVideoRef.current), // null unless the student shared their screen
+        question_id: null,
+        question_number: null,
+        answer_text: null,
+      });
+      startPhotoSentRef.current = true; // the in-exam monitor needn't take another start photo
+      setCamTestDone(true);
+      announce("Photo saved. Enter your token and start the exam.");
+    } catch {
+      setCamTestError("Your photo could not be saved. Check your connection and press \"Try saving again\".");
+      announce("Your photo could not be saved. Check your connection and press Try saving again.", true);
+    } finally {
+      setCamTestSaving(false);
+    }
+  }, [id, deviceId]);
+
+  const takeCamTestPhoto = useCallback((box) => {
+    const video = camTestVideoRef.current;
+    if (!video || video.readyState < 2 || !video.videoWidth) return false;
+    if (isFrameBlank(video)) {
+      setCamTestHint("Your camera picture is black. Remove any cover, check the lighting, then try again.");
+      return false;
+    }
+    try {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const barHeight = Math.max(40, Math.round(vh * 0.12));
+      const canvas = document.createElement("canvas");
+      canvas.width = vw;
+      canvas.height = vh + barHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, vw, vh); // raw frame, not the mirrored preview
+      ctx.fillStyle = "rgba(0,0,0,0.85)";
+      ctx.fillRect(0, vh, vw, barHeight);
+      ctx.fillStyle = "#FF1414";
+      ctx.textBaseline = "middle";
+      let currentUser = {};
+      try { currentUser = JSON.parse(localStorage.getItem("user") || "{}"); } catch { /* ignore */ }
+      const name = currentUser.name || examUsername || "Unknown student";
+      const uname = currentUser.username || examUsername;
+      const title = assessmentRef.current?.title || `Assessment ${id}`;
+      ctx.font = `800 ${Math.round(barHeight * 0.36)}px system-ui, sans-serif`;
+      ctx.fillText(fitCaptionText(ctx, `${name}${uname ? ` (${uname})` : ""}`, vw - 16), 8, vh + barHeight * 0.3);
+      ctx.font = `800 ${Math.round(barHeight * 0.28)}px system-ui, sans-serif`;
+      ctx.fillText(fitCaptionText(ctx, `Camera check  ·  ${title}  ·  ${new Date().toLocaleString()}`, vw - 16), 8, vh + barHeight * 0.72);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      baselineBoxRef.current = box || null;
+      setCamTestPhoto(dataUrl);
+      setCamTestStage("captured");
+      saveCamTestPhoto(dataUrl);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [id, examUsername, saveCamTestPhoto]);
+  const takeCamTestPhotoRef = useRef(takeCamTestPhoto);
+  useEffect(() => { takeCamTestPhotoRef.current = takeCamTestPhoto; }, [takeCamTestPhoto]);
+
+  const retakeCamTest = () => {
+    setCamTestPhoto("");
+    setCamTestDone(false);
+    setCamTestSaving(false);
+    setCamTestError("");
+    setCamTestHold(0);
+    setCamTestGood(false);
+    setCamTestHint("Looking for your face…");
+    baselineBoxRef.current = null;
+    setCamTestStage("positioning");
+  };
+
+  // Show the live camera in the check.
+  useEffect(() => {
+    const v = camTestVideoRef.current;
+    if (!v || !camTestStream) return;
+    if (v.srcObject !== camTestStream) v.srcObject = camTestStream;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => {});
+  }, [camTestStream, camTestStage]);
+
+  // Watch the face while the student positions themselves; once they hold a
+  // good central position for ~2 s the photo is taken automatically.
+  useEffect(() => {
+    if (camTestStage !== "positioning" || !camTestStream) return;
+    let cancelled = false, busy = false, faceapi = null, hold = 0;
+    loadFaceApi()
+      .then((f) => { if (!cancelled) faceapi = f; })
+      .catch(() => {
+        if (cancelled) return;
+        setCamTestManual(true);
+        setCamTestHint("The automatic position check is unavailable. Sit in the middle of the frame, look at the screen, then press \"Take photo\".");
+      });
+    const tick = async () => {
+      if (busy || !faceapi) return;
+      const video = camTestVideoRef.current;
+      if (!video || video.readyState < 2 || !video.videoWidth) return;
+      busy = true;
+      try {
+        const faces = await faceapi
+          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+          .withFaceLandmarks(true);
+        if (cancelled) return;
+        const r = analyseFacePosition(faces, video.videoWidth, video.videoHeight);
+        setCamTestHint(r.hint);
+        setCamTestGood(r.ok);
+        hold = r.ok ? hold + 1 : 0;
+        setCamTestHold(hold);
+        if (hold >= CAM_TEST_HOLD_TICKS) {
+          if (takeCamTestPhotoRef.current(r.box)) { cancelled = true; clearInterval(iv); }
+          else hold = 0;
+        }
+      } catch { /* transient decode error: try again next tick */ }
+      finally { busy = false; }
+    };
+    const iv = setInterval(tick, CAM_TEST_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [camTestStage, camTestStream]);
+
+  // Leaving the page: release the camera.
+  useEffect(() => () => {
+    if (camTestStreamRef.current) camTestStreamRef.current.getTracks().forEach((t) => t.stop());
+  }, []);
+
   /* ── attach the camera stream to the preview <video> ──
      The <video> only exists in the DOM once cameraStatus is "requesting" or
      "active". Previously the stream was assigned to videoRef.current inside
@@ -1667,7 +2087,9 @@ export default function TakeEAssessment() {
      second to check both eyes are open and the head is facing the
      screen (see isLookingAtScreen and the HONEST SCOPE NOTE above);
      sustained failure feeds into the same registerViolation()
-     escalation as everything else — a MISSING camera never does. */
+     escalation as everything else — a MISSING camera never does.
+     Students with an accessibility accommodation (accessibility_mode
+     from the server) skip this monitoring entirely. */
   useEffect(() => {
     if (phase !== "active") return;
     // The optional pre-start check in handleVerifySubmit already
@@ -1688,6 +2110,15 @@ export default function TakeEAssessment() {
     };
 
     const startMonitoring = async () => {
+      // Accessibility accommodation: no camera or gaze monitoring at all.
+      if (securityRef.current.accessibility_mode) {
+        if (preGrantedStreamRef.current) {
+          preGrantedStreamRef.current.getTracks().forEach((t) => t.stop());
+          preGrantedStreamRef.current = null;
+        }
+        setCameraStatus("off");
+        return;
+      }
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError(describeCameraError(null));
         setCameraStatus("off");
@@ -1760,6 +2191,21 @@ export default function TakeEAssessment() {
 
         const now = Date.now();
         const looking = !!result && isLookingAtScreen(result.landmarks);
+
+        // Gentle nudge (never a violation): has the student drifted away from
+        // the position they were photographed in at the camera check?
+        const base = baselineBoxRef.current;
+        if (base && result && videoRef.current.videoWidth) {
+          const bx = result.detection.box;
+          const fw = videoRef.current.videoWidth, fh = videoRef.current.videoHeight;
+          setPositionDrift(
+            Math.abs((bx.x + bx.width / 2) / fw - base.cx) > 0.18 ||
+            Math.abs((bx.y + bx.height / 2) / fh - base.cy) > 0.18 ||
+            Math.abs(bx.width / fw - base.w) / base.w > 0.35
+          );
+        } else {
+          setPositionDrift(false);
+        }
 
         // One clear identity photo per sitting, taken the first time the
         // camera is showing a real picture with a face in it, so a teacher
@@ -1859,6 +2305,11 @@ export default function TakeEAssessment() {
     const poll = setInterval(checkLockStatus, 8000);
     return () => clearInterval(poll);
   }, [phase, checkLockStatus]);
+
+  // Tell a screen-reader student when the admin has unlocked the exam.
+  useEffect(() => {
+    if (phase === "locked" && canResume) announce("An administrator has unlocked your exam. Press the Resume exam button to continue.", true);
+  }, [phase, canResume]);
 
   // "Check again" — read-only. It never activates the session itself, so a
   // locked student can't skip an admin unlock by pressing it.
@@ -2012,8 +2463,10 @@ export default function TakeEAssessment() {
   const startScreenShare = async () => {
     setScreenError("");
     if (!navigator.mediaDevices?.getDisplayMedia) {
+      const msg = "This browser can't share the screen. Use Chrome or Edge on a laptop or desktop computer.";
       setScreenStatus("off");
-      setScreenError("This browser can't share the screen. Use Chrome or Edge on a laptop or desktop computer.");
+      setScreenError(msg);
+      announce(msg, true);
       return;
     }
     try {
@@ -2033,9 +2486,11 @@ export default function TakeEAssessment() {
       // at all (older Firefox/Safari) it can't be verified, so it is allowed.
       if (surface && surface !== "monitor") {
         stream.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+        const msg = `You shared a ${surface === "browser" ? "browser tab" : "window"}. Please choose "Entire Screen" and try again.`;
         setScreenSurface(surface);
         setScreenStatus("off");
-        setScreenError(`You shared a ${surface === "browser" ? "browser tab" : "window"}. Please choose "Entire Screen" and try again.`);
+        setScreenError(msg);
+        announce(msg, true);
         return;
       }
       const vid = document.createElement("video");
@@ -2045,6 +2500,7 @@ export default function TakeEAssessment() {
       screenVideoRef.current = vid;
       setScreenSurface(surface);
       setScreenStatus("sharing");
+      announce("Your entire screen is now shared.");
       // If the student stops sharing from the browser bar, the exam is blocked
       // (see the overlay in the active phase) until they share again.
       if (track) track.onended = () => {
@@ -2053,8 +2509,10 @@ export default function TakeEAssessment() {
         setScreenError("Screen sharing stopped. Share your entire screen to continue.");
       };
     } catch {
+      const msg = "Screen sharing is required. Click the button and choose \"Entire Screen\".";
       setScreenStatus("off");
-      setScreenError("Screen sharing is required. Click the button and choose \"Entire Screen\".");
+      setScreenError(msg);
+      announce(msg, true);
     }
   };
 
@@ -2125,14 +2583,15 @@ export default function TakeEAssessment() {
       if (auto && status !== 423 && status !== 403 && (!err?.response || submitRetryRef.current < 30)) {
         submitRetryRef.current += 1;
         setErrorMsg("Time's up — saving your answers, reconnecting…");
+        announce("Time's up. Saving your answers, reconnecting.", true);
         setTimeout(() => handleSubmitRef.current?.(true), 8000);
         return;
       }
-      setErrorMsg(
-        err?.response
-          ? (err.response.data?.message || "Submission failed. Please try again.")
-          : "No connection — your answers are safe on this device. Reconnect and press Submit again."
-      );
+      const failMsg = err?.response
+        ? (err.response.data?.message || "Submission failed. Please try again.")
+        : "No connection — your answers are safe on this device. Reconnect and press Submit again.";
+      setErrorMsg(failMsg);
+      announce(failMsg, true);
     } finally {
       setSubmitting(false);
     }
@@ -2155,16 +2614,21 @@ export default function TakeEAssessment() {
     return `${m}:${s}`;
   };
 
+  // NOTE: ThemeToggle and HomeButton are CALLED as functions ({ThemeToggle()})
+  // rather than rendered as <ThemeToggle />. Defined inside the render, a
+  // component gets a new identity on every render — and this page re-renders
+  // every second (timer) — so React would unmount/remount them and keyboard /
+  // screen-reader focus would be lost.
   const ThemeToggle = () => (
     <button
       onClick={toggleTheme}
       className="dash-icon-btn"
       style={S.themeToggle}
-      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label="Dark mode"
       aria-pressed={theme === "dark"}
-      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      title="Toggle dark mode"
     >
-      {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+      {theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
     </button>
   );
 
@@ -2194,7 +2658,7 @@ export default function TakeEAssessment() {
         color: "var(--text-secondary)", fontWeight: 700, fontSize: 13, ...style,
       }}
     >
-      <Home size={15} /> Go to Home
+      <Home size={15} aria-hidden="true" /> Go to Home
     </button>
   );
 
@@ -2214,46 +2678,53 @@ export default function TakeEAssessment() {
        open an exam (see hasUsableSession above). ── */
   if (phase === "examlogin") {
     return (
-      <div className="dash-main" style={S.stateWrap}>
-        <form className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--info)" }} onSubmit={handleExamLogin}>
+      <div className="dash-main" role="main" style={S.stateWrap}>
+        <form className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--info)" }} onSubmit={handleExamLogin} aria-labelledby="examlogin-title">
           <span style={S.examAccessBadge}>Exam Access</span>
           <div style={{ ...S.iconCircle, background: "var(--info-tint)" }}>
-            <LogIn size={26} color="var(--info)" />
+            <LogIn size={26} color="var(--info)" aria-hidden="true" />
           </div>
-          <h2 style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Sign In to Take This Assessment</h2>
+          <h1 id="examlogin-title" data-phase-heading tabIndex={-1} style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Sign In to Take This Assessment</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
             Enter your username and the exam password your teacher or admin gave you for this
             assessment. You don't need a student-portal password for this.
           </p>
 
-          <label style={S.fieldLabel}>Username</label>
+          <label htmlFor="exam-username" style={S.fieldLabel}>Username</label>
           <div style={S.inputWithIcon}>
-            <User size={15} color="var(--text-muted)" />
+            <User size={15} color="var(--text-muted)" aria-hidden="true" />
             <input
+              id="exam-username"
               style={S.iconInput}
               value={examUsername}
               onChange={(e) => { setExamUsername(e.target.value); setExamLoginError(""); }}
               placeholder="Your student username"
-              autoFocus
               autoComplete="username"
+              aria-required="true"
+              aria-invalid={!!examLoginError}
+              aria-describedby={examLoginError ? "exam-login-error" : undefined}
             />
           </div>
 
-          <label style={{ ...S.fieldLabel, marginTop: 12 }}>Exam Password</label>
+          <label htmlFor="exam-password" style={{ ...S.fieldLabel, marginTop: 12 }}>Exam Password</label>
           <div style={S.inputWithIcon}>
-            <KeyRound size={15} color="var(--text-muted)" />
+            <KeyRound size={15} color="var(--text-muted)" aria-hidden="true" />
             <input
+              id="exam-password"
               style={S.iconInput}
               type="password"
               value={examPasswordInput}
               onChange={(e) => { setExamPasswordInput(e.target.value); setExamLoginError(""); }}
               placeholder="Exam password"
               autoComplete="off"
+              aria-required="true"
+              aria-invalid={!!examLoginError}
+              aria-describedby={examLoginError ? "exam-login-error" : undefined}
             />
           </div>
 
           {examLoginError && (
-            <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "12px 0 0", textAlign: "center" }}>
+            <p id="exam-login-error" role="alert" style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "12px 0 0", textAlign: "center" }}>
               {examLoginError}
             </p>
           )}
@@ -2265,33 +2736,33 @@ export default function TakeEAssessment() {
           >
             {examLoggingIn ? "Signing in…" : "Continue to Exam"}
           </button>
-          <HomeButton />
+          {HomeButton({})}
         </form>
-        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
     );
   }
 
   if (phase === "loading") {
     return (
-      <div className="dash-main" style={S.stateWrap}>
-        <div className="dash-spin" style={S.spinner} />
-        <p style={{ color: "var(--text-secondary)", fontWeight: 600, fontSize: 13.5 }}>Preparing your exam session…</p>
-        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+      <div className="dash-main" role="main" style={S.stateWrap}>
+        <div className="dash-spin" style={S.spinner} aria-hidden="true" />
+        <p role="status" data-phase-heading tabIndex={-1} style={{ color: "var(--text-secondary)", fontWeight: 600, fontSize: 13.5 }}>Preparing your exam session…</p>
+        <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
     );
   }
 
   if (phase === "devicedenied") {
     return (
-      <div className="dash-main" style={S.stateWrap}>
+      <div className="dash-main" role="main" style={S.stateWrap}>
         <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 460 }}>
           <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
-            <AlertTriangle size={26} color="var(--destructive)" />
+            <AlertTriangle size={26} color="var(--destructive)" aria-hidden="true" />
           </div>
-          <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>
+          <h1 data-phase-heading tabIndex={-1} style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>
             This device isn't allowed
-          </h2>
+          </h1>
           <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 8px" }}>
             {errorMsg || "This exam can only be taken on a Windows or Mac laptop/desktop computer. Phones and tablets are not allowed."}
           </p>
@@ -2302,26 +2773,26 @@ export default function TakeEAssessment() {
           <button style={S.primaryBtn} onClick={() => window.location.reload()}>
             Try again
           </button>
-          <HomeButton />
+          {HomeButton({})}
         </div>
-        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
     );
   }
 
   if (phase === "error") {
     return (
-      <div className="dash-main" style={S.stateWrap}>
+      <div className="dash-main" role="main" style={S.stateWrap}>
         <div className="dash-card" style={S.panelCard}>
           <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
-            <AlertTriangle size={26} color="var(--destructive)" />
+            <AlertTriangle size={26} color="var(--destructive)" aria-hidden="true" />
           </div>
-          <p style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", lineHeight: 1.6, margin: "16px 0 0" }}>{errorMsg}</p>
+          <p role="alert" data-phase-heading tabIndex={-1} style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", lineHeight: 1.6, margin: "16px 0 0" }}>{errorMsg}</p>
           <button style={S.secondaryBtn} onClick={() => navigate(-1)}>
-            <ArrowLeft size={15} /> Go Back
+            <ArrowLeft size={15} aria-hidden="true" /> Go Back
           </button>
         </div>
-        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
     );
   }
@@ -2333,12 +2804,12 @@ export default function TakeEAssessment() {
     const wasExamOnly = !!currentUser.examOnly;
 
     return (
-      <div className="dash-main" style={S.stateWrap}>
+      <div className="dash-main" role="main" style={S.stateWrap}>
         <div className="dash-card" style={S.panelCard}>
           <div style={{ ...S.iconCircle, background: "var(--success-tint)" }}>
-            <CheckCircle2 size={26} color="var(--success)" />
+            <CheckCircle2 size={26} color="var(--success)" aria-hidden="true" />
           </div>
-          <p style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", margin: "16px 0 0" }}>
+          <p role="alert" data-phase-heading tabIndex={-1} style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", margin: "16px 0 0" }}>
             {errorMsg || "This assessment is complete."}
           </p>
           {loggedOut ? (
@@ -2359,22 +2830,29 @@ export default function TakeEAssessment() {
               Back to Assessments
             </button>
           )}
-          <HomeButton />
+          {HomeButton({})}
         </div>
-        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
     );
   }
 
   if (phase === "locked") {
     return (
-      <div style={S.lockOverlay}>
-        <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}>
+      <div style={S.lockOverlay} role="main">
+        <div
+          className="dash-card"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="lock-title"
+          aria-describedby="lock-desc"
+          style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}
+        >
           <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
-            <Lock size={26} color="var(--destructive)" />
+            <Lock size={26} color="var(--destructive)" aria-hidden="true" />
           </div>
-          <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Device Locked</h2>
-          <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>{lockReason}</p>
+          <h1 id="lock-title" data-phase-heading tabIndex={-1} style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Device Locked</h1>
+          <p id="lock-desc" style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>{lockReason}</p>
           {canResume ? (
             <>
               <p style={{ color: "var(--success)", fontSize: 13, fontWeight: 700, lineHeight: 1.6, textAlign: "center", margin: "0 0 12px" }}>
@@ -2404,10 +2882,10 @@ export default function TakeEAssessment() {
             </>
           )}
           {resumeMsg && (
-            <p style={{ color: "var(--destructive)", fontSize: 12, lineHeight: 1.5, textAlign: "center", margin: "10px 0 0" }}>{resumeMsg}</p>
+            <p role="alert" style={{ color: "var(--destructive)", fontSize: 12, lineHeight: 1.5, textAlign: "center", margin: "10px 0 0" }}>{resumeMsg}</p>
           )}
           {pollNotice && (
-            <p style={{ color: "var(--destructive)", fontSize: 12, lineHeight: 1.5, textAlign: "center", margin: "10px 0 0" }}>{pollNotice}</p>
+            <p role="alert" style={{ color: "var(--destructive)", fontSize: 12, lineHeight: 1.5, textAlign: "center", margin: "10px 0 0" }}>{pollNotice}</p>
           )}
           {needsRelogin && (
             <button
@@ -2417,7 +2895,7 @@ export default function TakeEAssessment() {
               Sign in again
             </button>
           )}
-          <HomeButton />
+          {HomeButton({})}
         </div>
       </div>
     );
@@ -2426,18 +2904,19 @@ export default function TakeEAssessment() {
   /* ── step 1: reveal the token, force a minimum reading time ── */
   if (phase === "reveal") {
     return (
-      <div className="dash-main" style={S.stateWrap}>
+      <div className="dash-main" role="main" style={S.stateWrap}>
         <div className="dash-card" style={S.panelCard}>
           <div style={{ ...S.iconCircle, background: "var(--primary-tint)" }}>
-            <KeyRound size={26} color="var(--primary)" />
+            <KeyRound size={26} color="var(--primary)" aria-hidden="true" />
           </div>
-          <h2 style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Your Exam Token</h2>
+          <h1 data-phase-heading tabIndex={-1} style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Your Exam Token</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
             This token belongs only to you for this assessment. Write it down or save it somewhere
             safe — you'll need to type it again on the next screen to open your paper, and it will
             lock to whichever device you use first.
           </p>
-          <div style={S.tokenDisplay}>{token}</div>
+          <div style={S.tokenDisplay} aria-hidden="true">{token}</div>
+          <p className="sr-only">Your exam token is: {spellOut(token)}. Write it down; you will type it on the next screen.</p>
           <button
             style={{ ...S.primaryBtn, opacity: revealCountdown > 0 ? 0.55 : 1, cursor: revealCountdown > 0 ? "not-allowed" : "pointer" }}
             onClick={confirmSaved}
@@ -2446,7 +2925,7 @@ export default function TakeEAssessment() {
             {revealCountdown > 0 ? `I've saved my token (${revealCountdown}s)` : "I've saved my token — Continue"}
           </button>
         </div>
-        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
     );
   }
@@ -2454,33 +2933,111 @@ export default function TakeEAssessment() {
   /* ── step 2: re-enter the token to prove it was saved, then activate ── */
   if (phase === "verify") {
     return (
-      <div className="dash-main" style={S.stateWrap}>
-        <form className="dash-card" style={S.panelCard} onSubmit={handleVerifySubmit}>
+      <div className="dash-main" role="main" style={S.stateWrap}>
+        <form className="dash-card" style={S.panelCard} onSubmit={handleVerifySubmit} aria-labelledby="verify-title">
           <div style={{ ...S.iconCircle, background: "var(--primary-tint)" }}>
-            <PenLine size={26} color="var(--primary)" />
+            <PenLine size={26} color="var(--primary)" aria-hidden="true" />
           </div>
-          <h2 style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Enter Your Token to Begin</h2>
-          <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
+          <h1 id="verify-title" data-phase-heading tabIndex={-1} style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Enter Your Token to Begin</h1>
+          <p id="verify-help" style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
             Type the token you just saved. Once it's accepted, your paper opens and this device
             locks to the exam until you submit.
           </p>
-          <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 16px", textAlign: "center" }}>
-            <Camera size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
-            {security.require_camera
-              ? "This exam REQUIRES your camera for eye-gaze monitoring. Allow camera access when your browser asks, because the exam cannot start without it."
-              : "Camera monitoring is not used for this exam."}
-          </p>
+          {security.require_camera ? (
+            <div style={{ margin: "0 0 16px", padding: 12, border: `1px dashed ${camTestDone ? "var(--success)" : "var(--destructive)"}`, borderRadius: "var(--radius-sm)", textAlign: "center" }}>
+              <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 10px" }}>
+                <Camera size={12} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                <strong>Required: camera check.</strong> Sit in the middle of the frame, facing the screen. Your photo is taken
+                automatically once you are in position, and the exam cannot start until it is done.
+              </p>
+
+              {camTestStage === "idle" && (
+                <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={startCamTest} disabled={activating}>
+                  <Camera size={14} aria-hidden="true" /> Start camera check
+                </button>
+              )}
+              {camTestStage === "starting" && (
+                <p role="status" style={{ color: "var(--text-secondary)", fontSize: 12.5, margin: 0 }}>Starting camera…</p>
+              )}
+              {camTestStage === "positioning" && (
+                <>
+                  <p className="sr-only">
+                    The camera preview is visual. Spoken guidance will tell you how to position yourself.
+                    Your photo is taken automatically when you hold a good position.
+                  </p>
+                  <div style={{ position: "relative", width: "100%", maxWidth: 320, aspectRatio: "4 / 3", margin: "0 auto", background: "#000", borderRadius: 10, overflow: "hidden" }}>
+                    <video
+                      ref={camTestVideoRef}
+                      muted
+                      autoPlay
+                      playsInline
+                      aria-hidden="true"
+                      style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }}
+                    />
+                    <div aria-hidden="true" style={{ position: "absolute", left: "50%", top: "46%", width: "44%", height: "72%", transform: "translate(-50%, -50%)", border: `3px dashed ${camTestGood ? "#22c55e" : "rgba(255,255,255,0.85)"}`, borderRadius: "50%", boxShadow: "0 0 0 999px rgba(0,0,0,0.38)", pointerEvents: "none" }} />
+                  </div>
+                  <p role="status" aria-live="polite" aria-atomic="true" style={{ color: camTestGood ? "var(--success)" : "var(--text)", fontSize: 13, fontWeight: 700, lineHeight: 1.5, margin: "10px 0 6px" }}>
+                    {camTestHint || "Looking for your face…"}
+                  </p>
+                  {!camTestManual && (
+                    <div
+                      role="progressbar"
+                      aria-label="Holding position"
+                      aria-valuemin={0}
+                      aria-valuemax={CAM_TEST_HOLD_TICKS}
+                      aria-valuenow={camTestHold}
+                      style={{ height: 6, maxWidth: 320, margin: "0 auto", borderRadius: 3, background: "var(--border)", overflow: "hidden" }}
+                    >
+                      <div style={{ height: "100%", width: `${Math.min(100, (camTestHold / CAM_TEST_HOLD_TICKS) * 100)}%`, background: "var(--success)", transition: "width .3s" }} />
+                    </div>
+                  )}
+                  {camTestManual && (
+                    <button type="button" style={{ ...S.secondaryBtn, margin: "8px auto 0", justifyContent: "center" }} onClick={() => takeCamTestPhoto(null)}>
+                      <Camera size={14} aria-hidden="true" /> Take photo
+                    </button>
+                  )}
+                </>
+              )}
+              {camTestStage === "captured" && (
+                <>
+                  <img src={camTestPhoto} alt="Your camera check photo" style={{ width: "100%", maxWidth: 260, borderRadius: 10, display: "block", margin: "0 auto 8px" }} />
+                  {camTestSaving && <p role="status" style={{ color: "var(--text-secondary)", fontSize: 12.5, margin: "0 0 6px" }}>Saving your photo…</p>}
+                  {camTestDone && (
+                    <p role="status" style={{ color: "var(--success)", fontSize: 12.5, fontWeight: 700, lineHeight: 1.6, margin: "0 0 6px" }}>
+                      Photo saved. Keep your face in this same position, centred and facing the screen, for the whole exam.
+                    </p>
+                  )}
+                  {!camTestSaving && !camTestDone && (
+                    <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto 6px", justifyContent: "center" }} onClick={() => saveCamTestPhoto(camTestPhoto)}>
+                      Try saving again
+                    </button>
+                  )}
+                  <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={retakeCamTest} disabled={camTestSaving || activating}>
+                    Retake photo
+                  </button>
+                </>
+              )}
+              {camTestError && (
+                <p role="alert" style={{ color: "var(--destructive)", fontSize: 12, fontWeight: 600, lineHeight: 1.5, margin: "8px 0 0" }}>{camTestError}</p>
+              )}
+            </div>
+          ) : (
+            <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 16px", textAlign: "center" }}>
+              <Camera size={12} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              Camera monitoring is not used for this exam.
+            </p>
+          )}
           {security.require_screen_share && (
           <div style={{ margin: "0 0 16px", padding: 12, border: `1px dashed ${screenStatus === "sharing" ? "var(--success)" : "var(--destructive)"}`, borderRadius: "var(--radius-sm)", textAlign: "center" }}>
             <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 8px" }}>
-              <MonitorUp size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              <MonitorUp size={12} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
               <strong>Required:</strong> you must share your <strong>entire screen</strong> (not a single
               window or tab) before the exam can start. When your browser asks, pick the
               "Entire Screen" option and press Share.
             </p>
             {screenStatus === "sharing" ? (
               <>
-                <p style={{ color: "var(--success)", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>
+                <p role="status" style={{ color: "var(--success)", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>
                   Entire screen is being shared.
                 </p>
                 <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={startScreenShare} disabled={activating}>
@@ -2489,15 +3046,17 @@ export default function TakeEAssessment() {
               </>
             ) : (
               <button type="button" style={{ ...S.secondaryBtn, margin: "0 auto", justifyContent: "center" }} onClick={startScreenShare} disabled={activating}>
-                <MonitorUp size={14} /> {screenError ? "Try sharing screen again" : "Share my entire screen"}
+                <MonitorUp size={14} aria-hidden="true" /> {screenError ? "Try sharing screen again" : "Share my entire screen"}
               </button>
             )}
             {screenError && screenStatus !== "sharing" && (
-              <p style={{ color: "var(--destructive)", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>{screenError}</p>
+              <p role="alert" style={{ color: "var(--destructive)", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>{screenError}</p>
             )}
           </div>
           )}
+          <label htmlFor="verify-token" className="sr-only">Exam token</label>
           <input
+            id="verify-token"
             style={S.verifyInput}
             value={verifyInput}
             onChange={(e) => { setVerifyInput(e.target.value); setVerifyError(""); }}
@@ -2505,10 +3064,12 @@ export default function TakeEAssessment() {
             autoFocus
             autoComplete="off"
             autoCapitalize="characters"
+            aria-invalid={!!verifyError}
+            aria-describedby={verifyError ? "verify-help verify-error" : "verify-help"}
           />
-          {verifyError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{verifyError}</p>}
-          <button style={{ ...S.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim() || (security.require_screen_share && screenStatus !== "sharing")}>
-            {activating ? (startStep || "Starting…") : (security.require_screen_share && screenStatus !== "sharing") ? "Share your screen to start" : "Start Exam"}
+          {verifyError && <p id="verify-error" role="alert" style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{verifyError}</p>}
+          <button style={{ ...S.primaryBtn, marginTop: 18 }} type="submit" disabled={activating || !verifyInput.trim() || (security.require_camera && !camTestDone) || (security.require_screen_share && screenStatus !== "sharing")}>
+            {activating ? (startStep || "Starting…") : (security.require_camera && !camTestDone) ? "Complete the camera check to start" : (security.require_screen_share && screenStatus !== "sharing") ? "Share your screen to start" : "Start Exam"}
           </button>
           <button
             type="button"
@@ -2519,7 +3080,7 @@ export default function TakeEAssessment() {
             Show token again
           </button>
         </form>
-        <div style={{ position: "absolute", top: 20, right: 24 }}><ThemeToggle /></div>
+        <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
     );
   }
@@ -2527,11 +3088,12 @@ export default function TakeEAssessment() {
   /* ── active exam ── */
   return (
     <main className="dash-main exam-page-container" style={S.page}>
+      <a className="skip-link" href="#exam-question" onClick={(e) => { e.preventDefault(); qHeadingRef.current?.focus(); }}>Skip to question</a>
       <div className="exam-top-bar" style={S.topBar}>
         <div>
           <h1 style={S.examTitle}>{assessment?.title}</h1>
-          <p style={S.examMeta}>{assessment?.subject} · Token <strong style={{ color: "var(--primary)" }}>{token}</strong></p>
-          <p style={{ ...S.examMeta, fontSize: 11, marginTop: 2, color: (autosaveFailed || !online) ? "var(--destructive)" : "var(--text-muted)" }}>
+          <p style={S.examMeta}>{assessment?.subject} · Token <strong style={{ color: "var(--primary)" }} aria-label={`Token ${spellOut(token)}`}>{token}</strong></p>
+          <p aria-live="off" style={{ ...S.examMeta, fontSize: 11, marginTop: 2, color: (autosaveFailed || !online) ? "var(--destructive)" : "var(--text-muted)" }}>
             {!online
               ? "Offline — your answers are saved on this device and will sync when you're back online"
               : autosaveFailed
@@ -2542,23 +3104,36 @@ export default function TakeEAssessment() {
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ ...S.timer, color: secondsLeft < 60 ? "var(--destructive)" : "var(--text)" }}>
-            <Timer size={16} /> {mmss(secondsLeft)}
+          <div
+            role="timer"
+            tabIndex={0}
+            aria-live="off"
+            aria-label={`Time remaining: ${spokenTime(secondsLeft)}. Press Alt and T from anywhere to hear this.`}
+            style={{ ...S.timer, color: secondsLeft < 60 ? "var(--destructive)" : "var(--text)" }}
+          >
+            <Timer size={16} aria-hidden="true" /> <span aria-hidden="true">{mmss(secondsLeft)}</span>
           </div>
-          <ThemeToggle />
+          {ThemeToggle()}
         </div>
       </div>
 
       {cameraStatus === "active" && !faceVisible && (
-        <div className="eyes-off-flash" style={S.eyesOffBanner}>
-          <EyeOff size={18} color="#fff" style={{ flexShrink: 0 }} />
+        <div className="eyes-off-flash" role="alert" style={S.eyesOffBanner}>
+          <EyeOff size={18} color="#fff" aria-hidden="true" style={{ flexShrink: 0 }} />
           <span style={S.eyesOffBannerText}>Keep your eyes on the computer — this is being photographed for review</span>
         </div>
       )}
 
+      {cameraStatus === "active" && faceVisible && positionDrift && (
+        <div role="status" style={S.warningStrip}>
+          <Camera size={16} color="var(--warning)" aria-hidden="true" style={{ flexShrink: 0 }} />
+          <span>Move back to the position from your camera check: face centred in the frame, looking at the screen.</span>
+        </div>
+      )}
+
       {violations > 0 && (
-        <div style={S.warningStrip}>
-          <ShieldAlert size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
+        <div role="alert" style={S.warningStrip}>
+          <ShieldAlert size={16} color="var(--warning)" aria-hidden="true" style={{ flexShrink: 0 }} />
           <span>Warning {violations}/{MAX_VIOLATIONS}: suspicious activity detected on this device. {security.lock_on_violations ? <>Reaching {MAX_VIOLATIONS} will lock your exam.</> : "This is being recorded."}</span>
         </div>
       )}
@@ -2566,25 +3141,32 @@ export default function TakeEAssessment() {
       {/* Camera monitoring is optional, so a missing/declined camera is
           just informational, not a warning — the exam is unaffected. */}
       {cameraStatus === "off" && !security.require_camera && (
-        <div style={S.infoStrip}>
-          <CameraOff size={16} color="var(--info)" style={{ flexShrink: 0 }} />
+        <div role="status" style={S.infoStrip}>
+          <CameraOff size={16} color="var(--info)" aria-hidden="true" style={{ flexShrink: 0 }} />
           <span>Camera monitoring is off for this session. Your exam will continue as normal.</span>
         </div>
       )}
 
-      {security.require_camera && cameraStatus === "off" && !submitting && (
+      {security.require_camera && cameraStatus === "off" && !submitting && !security.accessibility_mode && (
         <div style={S.lockOverlay}>
-          <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}>
+          <div
+            className="dash-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="cam-overlay-title"
+            aria-describedby="cam-overlay-desc"
+            style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}
+          >
             <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
-              <CameraOff size={26} color="var(--destructive)" />
+              <CameraOff size={26} color="var(--destructive)" aria-hidden="true" />
             </div>
-            <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Camera required</h2>
-            <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>
+            <h2 id="cam-overlay-title" style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Camera required</h2>
+            <p id="cam-overlay-desc" style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>
               This exam requires your camera to stay on the whole time. Turn it back on to continue. Your timer keeps running.
             </p>
-            {cameraError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "0 0 12px", textAlign: "center" }}>{cameraError}</p>}
-            <button type="button" style={{ ...S.primaryBtn, justifyContent: "center" }} onClick={retryCamera}>
-              <Camera size={14} /> Try my camera again
+            {cameraError && <p role="alert" style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "0 0 12px", textAlign: "center" }}>{cameraError}</p>}
+            <button type="button" autoFocus style={{ ...S.primaryBtn, justifyContent: "center" }} onClick={retryCamera}>
+              <Camera size={14} aria-hidden="true" /> Try my camera again
             </button>
           </div>
         </div>
@@ -2592,17 +3174,24 @@ export default function TakeEAssessment() {
 
       {security.require_screen_share && screenStatus !== "sharing" && !submitting && (
         <div style={S.lockOverlay}>
-          <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}>
+          <div
+            className="dash-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="screen-overlay-title"
+            aria-describedby="screen-overlay-desc"
+            style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}
+          >
             <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
-              <MonitorUp size={26} color="var(--destructive)" />
+              <MonitorUp size={26} color="var(--destructive)" aria-hidden="true" />
             </div>
-            <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Screen sharing required</h2>
-            <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>
+            <h2 id="screen-overlay-title" style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Screen sharing required</h2>
+            <p id="screen-overlay-desc" style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>
               Your entire screen must stay shared for the whole exam. Share it again to continue. Your timer keeps running.
             </p>
-            {screenError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "0 0 12px", textAlign: "center" }}>{screenError}</p>}
-            <button type="button" style={{ ...S.primaryBtn, justifyContent: "center" }} onClick={startScreenShare}>
-              <MonitorUp size={14} /> Share my entire screen
+            {screenError && <p role="alert" style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "0 0 12px", textAlign: "center" }}>{screenError}</p>}
+            <button type="button" autoFocus style={{ ...S.primaryBtn, justifyContent: "center" }} onClick={startScreenShare}>
+              <MonitorUp size={14} aria-hidden="true" /> Share my entire screen
             </button>
           </div>
         </div>
@@ -2610,7 +3199,7 @@ export default function TakeEAssessment() {
 
       {screenStatus === "sharing" && (
         <div style={{ position: "fixed", bottom: 18, left: 18, zIndex: 500, display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", boxShadow: "0 8px 24px rgba(0,0,0,0.18)" }}>
-          <MonitorUp size={12} /> Screen shared for review
+          <MonitorUp size={12} aria-hidden="true" /> Screen shared for review
         </div>
       )}
 
@@ -2620,24 +3209,28 @@ export default function TakeEAssessment() {
           actually in use, since monitoring is optional. */}
       {(cameraStatus === "requesting" || cameraStatus === "active" || cameraStatus === "nomodel") && (
         <div style={S.camWidget}>
-          <div style={{ ...S.camDot, background: faceVisible ? "var(--success)" : "var(--destructive)" }} />
+          <div aria-hidden="true" style={{ ...S.camDot, background: faceVisible ? "var(--success)" : "var(--destructive)" }} />
           <video
             ref={videoRef}
             muted
             autoPlay
             playsInline
+            aria-hidden="true"
             onLoadedMetadata={(e) => { const p = e.currentTarget.play(); if (p && p.catch) p.catch(() => {}); }}
             style={S.camVideo}
           />
-          <div style={S.camStatusText}>
+          <div aria-hidden="true" style={{ fontSize: 10, color: "var(--text-muted)", maxWidth: 130, textAlign: "center", lineHeight: 1.3 }}>
+            Stay in your camera-check position
+          </div>
+          <div style={S.camStatusText} aria-live="off">
             {cameraStatus === "requesting" ? (
-              <><Camera size={12} /> Starting camera…</>
+              <><Camera size={12} aria-hidden="true" /> Starting camera…</>
             ) : cameraStatus === "nomodel" ? (
-              <><Camera size={12} /> Camera on</>
+              <><Camera size={12} aria-hidden="true" /> Camera on</>
             ) : faceVisible ? (
-              <><Eye size={12} /> Looking at screen</>
+              <><Eye size={12} aria-hidden="true" /> Looking at screen</>
             ) : (
-              <><EyeOff size={12} color="var(--destructive)" />
+              <><EyeOff size={12} color="var(--destructive)" aria-hidden="true" />
                 <span style={{ color: "var(--destructive)" }}>
                   Eyes off screen — {faceAbsentSeconds}s{photosCaptured > 0 ? ` · ${photosCaptured} photo${photosCaptured !== 1 ? "s" : ""} sent` : ""}
                 </span>
@@ -2648,8 +3241,8 @@ export default function TakeEAssessment() {
       )}
 
       {assessment?.instructions && (
-        <div className="dash-card" style={S.instructionsBox}>
-          <ClipboardList size={16} color="var(--text-secondary)" style={{ flexShrink: 0, marginTop: 1 }} />
+        <div className="dash-card" role="note" aria-label="Exam instructions" style={S.instructionsBox}>
+          <ClipboardList size={16} color="var(--text-secondary)" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
           <span><strong>Instructions:</strong> {assessment.instructions}</span>
         </div>
       )}
@@ -2666,11 +3259,14 @@ export default function TakeEAssessment() {
                 Question {qi + 1} of {total} &nbsp;·&nbsp; {answeredCount} of {total} answered
               </p>
 
-              <div key={q.id} className="dash-card" style={S.qCard}>
-                <p style={S.qText}>
-                  <span style={{ color: "var(--primary)", marginRight: 8 }}>Q{qi + 1}.</span>{q.question_text}
+              <div key={q.id} className="dash-card" role="group" aria-labelledby="exam-question" style={S.qCard}>
+                <h2 id="exam-question" ref={qHeadingRef} tabIndex={-1} style={S.qText}>
+                  <span className="sr-only">
+                    Question {qi + 1} of {total}, {isAnswered(q) ? "answered" : "not answered"}.{" "}
+                  </span>
+                  <span aria-hidden="true" style={{ color: "var(--primary)", marginRight: 8 }}>Q{qi + 1}.</span>{q.question_text}
                   <span style={S.qMarks}>{q.marks} mark{q.marks !== 1 ? "s" : ""}</span>
-                </p>
+                </h2>
 
                 {Array.isArray(q.images) && q.images.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
@@ -2678,7 +3274,7 @@ export default function TakeEAssessment() {
                       <img
                         key={img.id}
                         src={resolveFileUrl(img.image_url)}
-                        alt="Diagram for this question"
+                        alt={img.alt_text || img.description || "Diagram for this question. No text description was provided; ask your invigilator."}
                         style={{ maxWidth: 260, maxHeight: 220, objectFit: "contain", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)" }}
                       />
                     ))}
@@ -2693,7 +3289,7 @@ export default function TakeEAssessment() {
                     onChange={(html) => saveAnswer(q.id, html)}
                   />
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div role="radiogroup" aria-labelledby="exam-question" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {q.options.map((o) => (
                       <label key={o.option_label} className="exam-option-row" style={{
                         ...S.optionRow,
@@ -2707,7 +3303,8 @@ export default function TakeEAssessment() {
                           onChange={() => saveAnswer(q.id, o.option_label)}
                           style={{ accentColor: "var(--primary)" }}
                         />
-                        <span style={{ fontWeight: 700, color: "var(--primary)" }}>{o.option_label}.</span>
+                        <span aria-hidden="true" style={{ fontWeight: 700, color: "var(--primary)" }}>{o.option_label}.</span>
+                        <span className="sr-only">Option {o.option_label}: </span>
                         <span style={{ color: "var(--text)" }}>{o.option_text}</span>
                       </label>
                     ))}
@@ -2718,57 +3315,65 @@ export default function TakeEAssessment() {
               <div style={S.navButtonsRow}>
                 <button
                   type="button"
+                  aria-label={qi === 0 ? "Previous question (you are on the first question)" : `Previous question, question ${qi}`}
                   style={{ ...S.navBtn, opacity: qi === 0 ? 0.45 : 1, cursor: qi === 0 ? "not-allowed" : "pointer" }}
                   onClick={() => goToQuestion(qi - 1)}
                   disabled={qi === 0}
                 >
-                  <ChevronLeft size={15} /> Previous
+                  <ChevronLeft size={15} aria-hidden="true" /> Previous
                 </button>
                 <button
                   type="button"
+                  aria-label={qi >= total - 1 ? "Next question (you are on the last question)" : `Next question, question ${qi + 2}`}
                   style={{ ...S.navBtn, opacity: qi >= total - 1 ? 0.45 : 1, cursor: qi >= total - 1 ? "not-allowed" : "pointer" }}
                   onClick={() => goToQuestion(qi + 1)}
                   disabled={qi >= total - 1}
                 >
-                  Next <ChevronRight size={15} />
+                  Next <ChevronRight size={15} aria-hidden="true" />
                 </button>
               </div>
 
-              <div style={S.qnavWrap}>
-                <p style={S.qnavLabel}>Jump to question</p>
-                <div style={S.qnavStrip}>
+              <nav style={S.qnavWrap} aria-label="Question navigator">
+                <p style={S.qnavLabel} id="qnav-label">Jump to question</p>
+                <ul style={{ ...S.qnavStrip, listStyle: "none", margin: 0, padding: 0 }} aria-labelledby="qnav-label">
                   {questions.map((qq, i) => {
                     const answered = isAnswered(qq);
                     const isCurrent = i === qi;
                     return (
-                      <button
-                        key={qq.id}
-                        type="button"
-                        title={answered ? `Question ${i + 1} — answered` : `Question ${i + 1} — not answered yet`}
-                        onClick={() => goToQuestion(i)}
-                        style={{
-                          ...S.qnavBtn,
-                          background: answered ? "var(--success)" : "var(--bg)",
-                          borderColor: isCurrent ? "var(--primary)" : answered ? "var(--success)" : "var(--border)",
-                          boxShadow: isCurrent ? "0 0 0 2px var(--primary-tint)" : "none",
-                          color: answered ? "#fff" : "var(--text-secondary)",
-                        }}
-                      >
-                        {i + 1}
-                      </button>
+                      <li key={qq.id} style={{ margin: 0, padding: 0 }}>
+                        <button
+                          type="button"
+                          title={answered ? `Question ${i + 1} — answered` : `Question ${i + 1} — not answered yet`}
+                          aria-label={`Question ${i + 1}, ${answered ? "answered" : "not answered"}${isCurrent ? ", current" : ""}`}
+                          aria-current={isCurrent ? "step" : undefined}
+                          onClick={() => goToQuestion(i)}
+                          style={{
+                            ...S.qnavBtn,
+                            background: answered ? "var(--success)" : "var(--bg)",
+                            borderColor: isCurrent ? "var(--primary)" : answered ? "var(--success)" : "var(--border)",
+                            boxShadow: isCurrent ? "0 0 0 2px var(--primary-tint)" : "none",
+                            color: answered ? "#fff" : "var(--text-secondary)",
+                          }}
+                        >
+                          {i + 1}
+                        </button>
+                      </li>
                     );
                   })}
-                </div>
-              </div>
+                </ul>
+              </nav>
 
               <button
                 style={{ ...S.submitBtn, opacity: (submitting || qi < total - 1) ? 0.6 : 1, cursor: (submitting || qi < total - 1) ? "not-allowed" : "pointer" }}
-                onClick={() => handleSubmit(false)}
-                disabled={submitting || qi < total - 1}
-                title={qi < total - 1 ? "Reach the last question to submit" : ""}
+                onClick={() => { if (submitting || qi < total - 1) return; handleSubmit(false); }}
+                aria-disabled={submitting || qi < total - 1}
+                aria-describedby={qi < total - 1 ? "submit-hint" : undefined}
               >
                 {submitting ? "Submitting…" : "Submit Assessment"}
               </button>
+              {qi < total - 1 && (
+                <span id="submit-hint" className="sr-only">Go to the last question to submit.</span>
+              )}
             </>
           );
         })()}
