@@ -194,6 +194,20 @@ const injectExamStyles = () => {
 const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
 const START_PAPER_TIMEOUT_MS = 25000; // max wait for the paper to load after activation
+// Turns a getUserMedia failure into something a student can act on.
+const describeCameraError = (err) => {
+  const n = err?.name || "";
+  if (n === "NotAllowedError" || n === "SecurityError" || n === "PermissionDeniedError") {
+    return "Camera access is blocked. Allow the camera for this site (click the camera or lock icon beside the address bar and choose Allow). In Safe Exam Browser, camera access must be enabled in the exam configuration. Then try again.";
+  }
+  if (n === "NotFoundError" || n === "DevicesNotFoundError" || n === "OverconstrainedError") {
+    return "No camera was found on this computer. Connect or enable a camera, then try again.";
+  }
+  if (n === "NotReadableError" || n === "TrackStartError" || n === "AbortError") {
+    return "Your camera is being used by another app (Zoom, Teams, WhatsApp, etc.). Close it, then try again.";
+  }
+  return "Your camera could not be started. Check that it is connected and allowed, then try again.";
+};
 const DEFAULT_SECURITY = {
   require_camera: true,
   require_screen_share: true,
@@ -803,7 +817,9 @@ export default function TakeEAssessment() {
   const [lockReason, setLockReason] = useState("");
 
   // camera/eye-gaze monitoring — see EYES_OFF_LIMIT_MS note above
-  const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | denied | unsupported | error | off
+  const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | active | nomodel | off  (nomodel = camera on, eye-gaze script unavailable)
+  const [cameraError, setCameraError] = useState("");
+  const [cameraRetry, setCameraRetry] = useState(0); // bump to restart camera monitoring after a failure
   // The live MediaStream, kept in STATE (not just a ref) so an effect can attach
   // it to the <video> once that element has actually mounted — see the
   // "attach stream to preview" effect below. This is the fix for the black camera.
@@ -1155,6 +1171,13 @@ export default function TakeEAssessment() {
 
   /* ── step 2: the student re-types the token to prove they saved it,
        this also performs the device-binding activation ── */
+  // "Try my camera again" on the camera-required overlay.
+  const retryCamera = () => {
+    setCameraError("");
+    setCameraStatus("idle");
+    setCameraRetry((n) => n + 1);
+  };
+
   const handleVerifySubmit = async (e) => {
     e.preventDefault();
     if (activating) return;
@@ -1185,27 +1208,37 @@ export default function TakeEAssessment() {
     setActivating(true);
     setStartStep("Preparing…");
 
-    // Camera access is OPTIONAL for this exam. We still try to grab it
-    // here, before the token is spent, purely so the monitoring effect
-    // can reuse an already-granted stream once the exam goes active
-    // instead of prompting a second time — but nothing here blocks or
-    // delays starting the exam. A missing browser API, a declined
-    // permission, or no camera at all just means the exam runs without
-    // eye-gaze monitoring; cameraStatus is set to "off" up front and the
-    // camera-monitoring effect below leaves it that way instead of
-    // trying again mid-exam.
+    // Camera: when "Camera required" is ON for this assessment the exam
+    // CANNOT start without a working camera — we check here, before the
+    // token is activated (activation starts the exam clock on the server).
+    // When it is OFF, we never prompt and never monitor.
     if (!securityRef.current.require_camera) {
-      // Camera switched OFF for this assessment: never prompt, never monitor.
       setCameraStatus("off");
-    } else if (navigator.mediaDevices?.getUserMedia) {
-      try {
-        preGrantedStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
-      } catch {
+    } else {
+      let camStream = null;
+      let camFail = "";
+      if (!navigator.mediaDevices?.getUserMedia) {
+        camFail = "This browser cannot access a camera. Use the latest Chrome or Edge on a laptop or desktop computer.";
+      } else {
+        try {
+          camStream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
+        } catch (err) {
+          camFail = describeCameraError(err);
+        }
+      }
+      const camLive = !!camStream && camStream.getVideoTracks().some((t) => t.readyState === "live");
+      if (!camLive) {
+        if (camStream) camStream.getTracks().forEach((t) => t.stop());
         preGrantedStreamRef.current = null;
         setCameraStatus("off");
+        setVerifyError("This exam requires your camera, so it cannot start yet. " + (camFail || describeCameraError(null)));
+        setActivating(false);
+        setStartStep("");
+        return;
       }
-    } else {
-      setCameraStatus("off");
+      preGrantedStreamRef.current = camStream;
+      setCameraError("");
+      setCameraStatus("idle"); // clear any earlier failure so monitoring starts
     }
 
     try {
@@ -1642,6 +1675,7 @@ export default function TakeEAssessment() {
 
     const startMonitoring = async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError(describeCameraError(null));
         setCameraStatus("off");
         return;
       }
@@ -1655,16 +1689,28 @@ export default function TakeEAssessment() {
       } else {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_VIDEO_CONSTRAINTS, audio: false });
-        } catch {
-          // No camera, or the student declined — the exam simply
-          // continues without eye-gaze monitoring.
-          if (!cancelled) setCameraStatus("off");
+        } catch (err) {
+          // No camera, or the student declined. If this assessment REQUIRES
+          // the camera the exam is blocked until it works (see the overlay);
+          // otherwise the exam simply continues without monitoring.
+          if (!cancelled) { setCameraError(describeCameraError(err)); setCameraStatus("off"); }
           return;
         }
       }
       if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
 
       cameraStreamRef.current = stream;
+      // If the camera is unplugged, switched off, or taken by another app
+      // mid-exam, the track ends: stop everything and flag it so the
+      // "camera required" overlay blocks the exam until it is restored.
+      stream.getVideoTracks().forEach((t) => {
+        t.onended = () => {
+          if (cancelled) return;
+          stopCamera();
+          setCameraError("Your camera was disconnected or turned off.");
+          setCameraStatus("off");
+        };
+      });
       // Hand the stream to React state; the attach effect above wires it to
       // the <video> after the element has rendered.
       setCameraStream(stream);
@@ -1673,9 +1719,13 @@ export default function TakeEAssessment() {
       try {
         faceapi = await loadFaceApi();
       } catch {
-        // Monitoring script failed to load — again, not fatal to the
-        // exam, just turn this one check off.
-        if (!cancelled) setCameraStatus("off");
+        // The eye-gaze script/models failed to load (e.g. blocked CDN).
+        // The camera itself IS on. If it is required, keep it running and
+        // do not treat this as "camera off"; otherwise just turn it off.
+        if (!cancelled) {
+          if (securityRef.current.require_camera) setCameraStatus("nomodel");
+          else setCameraStatus("off");
+        }
         return;
       }
       if (cancelled) return;
@@ -1737,7 +1787,7 @@ export default function TakeEAssessment() {
     startMonitoring();
     return () => { cancelled = true; stopCamera(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, [phase, cameraRetry]);
 
   /* ── while locked, check (read-only) whether an admin has unlocked this
        session. This used to call /activate every 15s, which both (a) never
@@ -2347,7 +2397,7 @@ export default function TakeEAssessment() {
           <p style={{ color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.6, margin: "0 0 16px", textAlign: "center" }}>
             <Camera size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
             {security.require_camera
-              ? "This exam can optionally use your camera for eye-gaze monitoring. If your browser asks for camera permission, you can allow or decline it — either way, your exam will start."
+              ? "This exam REQUIRES your camera for eye-gaze monitoring. Allow camera access when your browser asks, because the exam cannot start without it."
               : "Camera monitoring is not used for this exam."}
           </p>
           {security.require_screen_share && (
@@ -2445,10 +2495,28 @@ export default function TakeEAssessment() {
 
       {/* Camera monitoring is optional, so a missing/declined camera is
           just informational, not a warning — the exam is unaffected. */}
-      {cameraStatus === "off" && (
+      {cameraStatus === "off" && !security.require_camera && (
         <div style={S.infoStrip}>
           <CameraOff size={16} color="var(--info)" style={{ flexShrink: 0 }} />
           <span>Camera monitoring is off for this session. Your exam will continue as normal.</span>
+        </div>
+      )}
+
+      {security.require_camera && cameraStatus === "off" && !submitting && (
+        <div style={S.lockOverlay}>
+          <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--destructive)", maxWidth: 440 }}>
+            <div style={{ ...S.iconCircle, background: "var(--destructive-tint)" }}>
+              <CameraOff size={26} color="var(--destructive)" />
+            </div>
+            <h2 style={{ margin: "16px 0 10px", color: "var(--destructive)", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Camera required</h2>
+            <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>
+              This exam requires your camera to stay on the whole time. Turn it back on to continue. Your timer keeps running.
+            </p>
+            {cameraError && <p style={{ color: "var(--destructive)", fontSize: 12.5, fontWeight: 600, margin: "0 0 12px", textAlign: "center" }}>{cameraError}</p>}
+            <button type="button" style={{ ...S.primaryBtn, justifyContent: "center" }} onClick={retryCamera}>
+              <Camera size={14} /> Try my camera again
+            </button>
+          </div>
         </div>
       )}
 
@@ -2480,7 +2548,7 @@ export default function TakeEAssessment() {
           time their camera is on, on purpose: the point is honest, visible
           monitoring, not a hidden check. Only rendered when a camera is
           actually in use, since monitoring is optional. */}
-      {(cameraStatus === "requesting" || cameraStatus === "active") && (
+      {(cameraStatus === "requesting" || cameraStatus === "active" || cameraStatus === "nomodel") && (
         <div style={S.camWidget}>
           <div style={{ ...S.camDot, background: faceVisible ? "var(--success)" : "var(--destructive)" }} />
           <video
@@ -2494,6 +2562,8 @@ export default function TakeEAssessment() {
           <div style={S.camStatusText}>
             {cameraStatus === "requesting" ? (
               <><Camera size={12} /> Starting camera…</>
+            ) : cameraStatus === "nomodel" ? (
+              <><Camera size={12} /> Camera on</>
             ) : faceVisible ? (
               <><Eye size={12} /> Looking at screen</>
             ) : (
