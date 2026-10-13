@@ -217,6 +217,8 @@ const injectExamStyles = () => {
   document.head.appendChild(el);
 };
 
+// True when the page is running inside Safe Exam Browser (it adds "SEB/<version>" to the User-Agent).
+const IN_SEB = typeof navigator !== "undefined" && /\bSEB\/\d/i.test(navigator.userAgent || "");
 const HEARTBEAT_MS = 10000;
 const MAX_VIOLATIONS = 3;
 const START_PAPER_TIMEOUT_MS = 25000; // max wait for the paper to load after activation
@@ -584,6 +586,57 @@ function EssayEditor({ id, initialValue, onChange }) {
     setCharCount(text.length);
   };
 
+  /* ── typing performance (matters most for braille / screen-reader input) ──
+     Every keystroke used to push the whole answer up to the page, which
+     re-rendered the exam, rewrote localStorage and rewrote the entire cached
+     paper in IndexedDB. Contracted (Grade 2) braille input fires many more
+     input events than ordinary typing — it deletes and re-types the word
+     being translated — so the editor lagged and dropped or garbled
+     characters. Now the answer is saved ~300 ms after typing pauses, and
+     immediately on blur, when the page is hidden, and on leaving the question.
+     Saving is also held back while an IME / braille composition is in
+     progress, so the text being translated is never rewritten under the user. */
+  const saveTimerRef = useRef(null);
+  const pendingSaveRef = useRef(false);
+  const composingRef = useRef(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const flushSave = () => {
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    if (!pendingSaveRef.current || !contentRef.current) return;
+    pendingSaveRef.current = false;
+    onChangeRef.current(contentRef.current.innerHTML);
+    countFrom(contentRef.current);
+  };
+  const flushSaveRef = useRef(flushSave);
+  flushSaveRef.current = flushSave;
+
+  const scheduleSave = () => {
+    pendingSaveRef.current = true;
+    if (composingRef.current) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => flushSaveRef.current(), 300);
+  };
+
+  useEffect(() => {
+    const node = contentRef.current; // kept: still readable after React detaches it
+    const flushNow = () => flushSaveRef.current();
+    const onHidden = () => { if (document.visibilityState === "hidden") flushNow(); };
+    window.addEventListener("pagehide", flushNow);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushNow);
+      document.removeEventListener("visibilitychange", onHidden);
+      clearTimeout(saveTimerRef.current);
+      if (pendingSaveRef.current && node) {
+        pendingSaveRef.current = false;
+        onChangeRef.current(node.innerHTML);
+      }
+    };
+  }, []);
+
   /* ── tables ──
      Students can insert a table and grow/shrink it from the toolbar.
      Everything here is plain DOM work on the contentEditable box and ends in
@@ -928,8 +981,15 @@ function EssayEditor({ id, initialValue, onChange }) {
         onKeyDown={onEditorKeyDown}
         style={S.essayContent}
         data-placeholder="Type your answer here…"
-        onInput={(e) => { onChange(e.currentTarget.innerHTML); countFrom(e.currentTarget); }}
-        onKeyUp={updateToolbarState}
+        onInput={scheduleSave}
+        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionEnd={() => { composingRef.current = false; scheduleSave(); }}
+        onBlur={flushSave}
+        onKeyUp={(e) => {
+          // Only caret-movement keys can change which formats are active;
+          // doing this on every typed character was needless per-keystroke work.
+          if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(e.key)) updateToolbarState();
+        }}
         onMouseUp={updateToolbarState}
         onFocus={updateToolbarState}
       />
@@ -1179,6 +1239,10 @@ export default function TakeEAssessment() {
       const secRes = await API.get(`/e-assessments/${id}/security-settings`);
       if (secRes.data?.security) {
         const next = { ...DEFAULT_SECURITY, ...secRes.data.security };
+        // Safe Exam Browser deliberately blocks screen sharing (getDisplayMedia),
+        // and SEB already locks the whole computer, so requiring a screen share
+        // there only leaves the Start Exam button disabled forever.
+        if (IN_SEB) next.require_screen_share = false;
         securityRef.current = next;
         setSecurity(next);
       }
