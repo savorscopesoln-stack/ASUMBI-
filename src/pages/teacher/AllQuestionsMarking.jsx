@@ -3,7 +3,6 @@ import { useParams } from "react-router-dom";
 import API, { BASE_URL } from "../../api";
 import { sanitizeHtml } from "../../utils/safeHtml";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
-import EvidenceGallery from "../../components/eassessment/EvidenceGallery";
 import {
   ClipboardCheck,
   AlertTriangle,
@@ -830,7 +829,6 @@ export default function Marking() {
   const [flags, setFlags]           = useState({});
 
   const [submissions, setSubmissions] = useState([]);
-  const [evidenceByStudent, setEvidenceByStudent] = useState({}); // student_id -> { profile_photo_url, photos[] }
   // Auto-graded MCQ marks — kept out of the essay `queue` (nothing for a
   // teacher to do with them) but still need to count toward the total
   // score/max shown here, same as Marking.jsx's autoScores does for a
@@ -901,13 +899,6 @@ export default function Marking() {
           setQueue([]);
           return;
         }
-
-        const evMap = {};
-        data.forEach((s) => {
-          const sid = (s.submission || s).student_id;
-          if (sid != null && s.evidence) evMap[sid] = s.evidence;
-        });
-        setEvidenceByStudent(evMap);
 
         setSubmissions(
           data.map((s) => {
@@ -1610,13 +1601,6 @@ export default function Marking() {
             </button>
           </div>
 
-          <EvidenceGallery
-            key={`${current._student_id}-${current.question_id}`}
-            evidence={evidenceByStudent[current._student_id]}
-            questionId={current.question_id}
-            title="Camera photos for this question — compare before flagging"
-          />
-
           <FieldLabel>Question</FieldLabel>
           <div style={s.questionBox}>{current.question_text}</div>
 
@@ -1677,9 +1661,18 @@ export default function Marking() {
               </button>
               <button
                 type="button"
-                className={`mkp-btn mkp-quickmark review${flags[current.id] ? " active" : ""}`}
-                title="Flag for review (F)"
-                onClick={() => toggleFlag(current.id)}
+                className="mkp-btn mkp-quickmark review"
+                title="Repetition — award no mark and move on"
+                aria-label="Mark as repetition, award no mark"
+                onClick={() => {
+                  handleScoreChange(current.id, 0, current.max_marks);
+                  const note = "<p>Repetition — no mark awarded.</p>";
+                  const existing = remarks[current.id] || "";
+                  if (!/repetition/i.test(existing)) {
+                    handleRemarkChange(current.id, existing ? `${existing}${note}` : note);
+                  }
+                  markAndAdvance();
+                }}
               >
                 R
               </button>

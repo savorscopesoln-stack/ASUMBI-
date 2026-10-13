@@ -7,7 +7,7 @@ import { isLoggedIn } from "../utils/auth";
    Mounted once at the app root (inside <BrowserRouter>).
 
    Two independent rules, either one logs the user out:
-   1. INACTIVITY  — 5 minutes with no mouse/keyboard/touch/scroll
+   1. INACTIVITY  — 30 minutes with no mouse/keyboard/touch/scroll
       activity anywhere in the app.
    2. ABSOLUTE    — 24 hours since the user actually logged in,
       no matter how active they've been. Login.jsx stamps
@@ -19,7 +19,7 @@ import { isLoggedIn } from "../utils/auth";
    student mid-exam.
 ========================================================= */
 
-const INACTIVITY_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
+const INACTIVITY_LIMIT_MS = 30 * 60 * 1000; // 30 minutes
 const ABSOLUTE_SESSION_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CHECK_INTERVAL_MS = 10 * 1000; // how often we check the clocks
 const ACTIVITY_WRITE_THROTTLE_MS = 5000; // don't hammer localStorage on every mousemove
