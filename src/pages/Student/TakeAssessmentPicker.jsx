@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
 import {
   MonitorCheck, Clock, Loader2, Inbox, AlertTriangle, FileText,
-  CalendarClock, PlayCircle,
+  CalendarClock, PlayCircle, Timer, BookOpen, CalendarDays, Eye,
 } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
@@ -67,8 +67,6 @@ const injectStyles = () => {
     @keyframes spin { to { transform: rotate(360deg); } }
     .dash-spin { animation: spin 0.8s linear infinite; }
 
-    .assess-card:hover { box-shadow: var(--shadow); border-color: var(--primary) !important; }
-    .assess-take-btn:hover { filter: brightness(0.95); }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
     .live-dot { animation: pulse 1.4s ease-in-out infinite; }
 
@@ -81,8 +79,43 @@ const injectStyles = () => {
     @media (max-width: 900px) {
       .dash-main { padding: 20px 16px 48px !important; }
     }
-    @media (max-width: 640px) {
-      .upcoming-row { flex-direction: column !important; align-items: flex-start !important; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+  `;
+  document.head.appendChild(el);
+};
+
+/* ─── page-specific rules (separate id so they always load, even when
+   the shared token sheet was already mounted by another page) ─── */
+const injectPickerStyles = () => {
+  if (document.getElementById("picker-page-styles")) return;
+  const el = document.createElement("style");
+  el.id = "picker-page-styles";
+  el.textContent = `
+    .pick-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 20px;
+    }
+    .pick-card { transition: border-color .15s ease, box-shadow .15s ease; }
+    .pick-card:hover { border-color: var(--primary) !important; box-shadow: var(--shadow); }
+    .pick-take:hover { filter: brightness(0.93); }
+    .pick-ghost:hover { background: var(--bg) !important; }
+
+    .up-row {
+      display: grid;
+      grid-template-columns: 84px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 22px;
+    }
+    @media (max-width: 860px) {
+      .up-row { grid-template-columns: 72px minmax(0, 1fr); }
+      .up-row > .up-clock { grid-column: 1 / -1; justify-content: flex-start !important; }
+    }
+    @media (max-width: 480px) {
+      .pick-grid { grid-template-columns: 1fr; }
+      .up-row { grid-template-columns: 1fr; }
     }
   `;
   document.head.appendChild(el);
@@ -105,24 +138,34 @@ const pickTime = (row, keys) => {
   return null;
 };
 
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// Splits a millisecond gap into display parts.
+const splitCountdown = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return {
+    d: Math.floor(s / 86400),
+    h: Math.floor((s % 86400) / 3600),
+    m: Math.floor((s % 3600) / 60),
+    s: s % 60,
+  };
+};
+
+// Compact single-line countdown, used for "time left" on open papers.
 const fmtCountdown = (ms) => {
   if (ms <= 0) return "0s";
-  const s = Math.floor(ms / 1000);
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  const pad = (n) => String(n).padStart(2, "0");
-  if (d > 0) return `${d}d ${pad(h)}h ${pad(m)}m`;
-  if (h > 0) return `${h}h ${pad(m)}m ${pad(sec)}s`;
-  return `${m}m ${pad(sec)}s`;
+  const { d, h, m, s } = splitCountdown(ms);
+  if (d > 0) return `${d}d ${pad2(h)}h ${pad2(m)}m`;
+  if (h > 0) return `${h}h ${pad2(m)}m ${pad2(s)}s`;
+  return `${m}m ${pad2(s)}s`;
 };
 
 const fmtWhen = (t) =>
-  new Date(t).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  new Date(t).toLocaleString([], { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 
 export default function TakeAssessmentPicker() {
   injectStyles();
+  injectPickerStyles();
 
   const navigate = useNavigate();
 
@@ -195,18 +238,18 @@ export default function TakeAssessmentPicker() {
   return (
     <main className="dash-main" style={S.main}>
       <header style={S.pageHeader}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <MonitorCheck size={20} color="var(--primary)" />
-          <div>
-            <h1 style={S.pageTitle}>Take an Assessment</h1>
-            <p style={S.pageSub}>Choose an active assessment, then sign in with your exam password</p>
-          </div>
+        <div style={S.headerIcon}>
+          <MonitorCheck size={26} color="var(--primary)" aria-hidden="true" />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={S.pageTitle}>Take an Assessment</h1>
+          <p style={S.pageSub}>Choose an assessment that is open, then sign in with your username and exam password.</p>
         </div>
       </header>
 
       {error && !loading && (
         <div style={S.errorBanner} role="alert">
-          <AlertTriangle size={16} color="var(--destructive)" style={{ flexShrink: 0 }} />
+          <AlertTriangle size={18} color="var(--destructive)" style={{ flexShrink: 0 }} aria-hidden="true" />
           <span style={{ flex: 1 }}>{error}</span>
           <button onClick={fetchAssessments} style={S.retryBtn}>Retry</button>
         </div>
@@ -214,55 +257,90 @@ export default function TakeAssessmentPicker() {
 
       {loading && data.active.length === 0 && data.upcoming.length === 0 ? (
         <div style={S.loadingState}>
-          <Loader2 size={18} className="dash-spin" />
+          <Loader2 size={20} className="dash-spin" aria-hidden="true" />
           Loading assessments…
         </div>
       ) : (
         <>
-          {/* ── ACTIVE ASSESSMENTS — held to about a quarter of the
-              page height (scrolls inside) so the cover page below
-              stays in view ── */}
-          <section style={S.activePanel} aria-label="Active assessments">
+          {/* ── ACTIVE ASSESSMENTS ── */}
+          <section style={S.section} aria-labelledby="active-heading">
             <div style={S.sectionHead}>
-              <span className="live-dot" style={S.liveDot} />
-              Active assessments
+              <span className="live-dot" style={S.liveDot} aria-hidden="true" />
+              <h2 id="active-heading" style={S.sectionTitle}>Open now</h2>
               <span style={S.countPill}>{active.length}</span>
             </div>
+
             {active.length === 0 ? (
-              <div style={S.emptyInline}>
-                <Inbox size={18} color="var(--text-muted)" />
-                No assessment is active right now
+              <div style={S.emptyBox}>
+                <Inbox size={30} color="var(--text-muted)" aria-hidden="true" />
+                <div style={S.emptyTitle}>No assessment is open right now</div>
+                <div style={S.emptySub}>When your teacher starts one, it appears here automatically.</div>
               </div>
             ) : (
-              <div style={S.activeList}>
+              <div className="pick-grid">
                 {active.map((a) => {
                   const isSel = selected && String(selected.id) === String(a.id);
+                  const left = a._end ? a._end - now : null;
+                  const urgent = left !== null && left < 10 * 60 * 1000;
                   return (
-                    <div
+                    <article
                       key={a.id}
-                      className="assess-card"
-                      style={{ ...S.activeRow, ...(isSel ? S.activeRowSel : null) }}
+                      className="pick-card"
+                      style={{ ...S.activeCard, ...(isSel ? S.activeCardSel : null) }}
                       onClick={() => setSelectedId(a.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedId(a.id); }}
                     >
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={S.rowTitle}>{a.title}</div>
-                        <div style={S.rowMeta}>
-                          {a.subject ? `${a.subject} · ` : ""}
-                          <Clock size={11} style={{ verticalAlign: "-1px" }} />{" "}
-                          {a._end ? `Ends in ${fmtCountdown(a._end - now)}` : `${a.duration_minutes || "—"} mins`}
+                      <div style={S.activeAccent} aria-hidden="true" />
+                      <div style={S.activeBody}>
+                        <div style={S.cardTopRow}>
+                          <span style={S.openChip}>
+                            <span className="live-dot" style={S.chipDot} aria-hidden="true" />
+                            Open now
+                          </span>
+                          {a.duration_minutes ? (
+                            <span style={S.durationChip}>
+                              <Clock size={13} aria-hidden="true" /> {a.duration_minutes} minutes
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <h3 style={S.cardTitle}>{a.title}</h3>
+                        {a.subject && (
+                          <p style={S.cardSubject}>
+                            <BookOpen size={15} aria-hidden="true" /> {a.subject}
+                          </p>
+                        )}
+
+                        <div style={{ ...S.timeBox, ...(urgent ? S.timeBoxUrgent : null) }}>
+                          <Timer size={20} color={urgent ? "var(--warning)" : "var(--success)"} aria-hidden="true" />
+                          <div>
+                            <div style={S.timeLabel}>{a._end ? "Closes in" : "Time allowed"}</div>
+                            <div style={{ ...S.timeValue, color: urgent ? "var(--warning)" : "var(--text)" }}>
+                              {a._end ? fmtCountdown(left) : `${a.duration_minutes || "Not set"}${a.duration_minutes ? " minutes" : ""}`}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={S.cardActions}>
+                          <button
+                            className="pick-take"
+                            style={S.takeBtn}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/take-assessment/${a.id}`); }}
+                          >
+                            <PlayCircle size={18} aria-hidden="true" /> Take assessment
+                          </button>
+                          {a.cover_page_url && (
+                            <button
+                              className="pick-ghost"
+                              style={{ ...S.ghostBtn, ...(isSel ? S.ghostBtnSel : null) }}
+                              aria-pressed={!!isSel}
+                              onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); }}
+                            >
+                              <Eye size={16} aria-hidden="true" /> Cover page
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <button
-                        className="assess-take-btn"
-                        style={S.takeBtn}
-                        onClick={(e) => { e.stopPropagation(); navigate(`/take-assessment/${a.id}`); }}
-                      >
-                        <PlayCircle size={14} /> Take
-                      </button>
-                    </div>
+                    </article>
                   );
                 })}
               </div>
@@ -271,9 +349,11 @@ export default function TakeAssessmentPicker() {
 
           {/* ── COVER PAGE of the selected active assessment ── */}
           {selected?.cover_page_url && (
-            <section style={S.coverSection} aria-label="Cover page">
-              <div style={S.coverHead}>
-                <FileText size={14} /> Cover page · {selected.title}
+            <section style={S.section} aria-label="Cover page">
+              <div style={S.sectionHead}>
+                <FileText size={18} color="var(--primary)" aria-hidden="true" />
+                <h2 style={S.sectionTitle}>Cover page</h2>
+                <span style={S.sectionNote}>{selected.title}</span>
               </div>
               <div style={S.coverWrap}>
                 <iframe
@@ -287,37 +367,78 @@ export default function TakeAssessmentPicker() {
           )}
 
           {/* ── UPCOMING PAPERS with time remaining ── */}
-          <section style={S.upcomingPanel} aria-label="Upcoming papers">
+          <section style={S.section} aria-labelledby="upcoming-heading">
             <div style={S.sectionHead}>
-              <CalendarClock size={15} color="var(--primary)" />
-              Upcoming papers
+              <CalendarClock size={18} color="var(--primary)" aria-hidden="true" />
+              <h2 id="upcoming-heading" style={S.sectionTitle}>Coming up</h2>
               <span style={S.countPill}>{upcoming.length}</span>
             </div>
+
             {upcoming.length === 0 ? (
-              <div style={S.emptyInline}>No upcoming papers</div>
+              <div style={S.emptyBox}>
+                <CalendarDays size={30} color="var(--text-muted)" aria-hidden="true" />
+                <div style={S.emptyTitle}>No upcoming papers</div>
+                <div style={S.emptySub}>Scheduled assessments show here with a countdown to their start.</div>
+              </div>
             ) : (
-              upcoming.map((u) => (
-                <div key={u.id} className="upcoming-row" style={S.upcomingRow}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={S.rowTitle}>{u.title}</div>
-                    <div style={S.rowMeta}>
-                      {u.subject ? `${u.subject} · ` : ""}
-                      {u.start_label ? u.start_label.replace("T", " ") : u._start ? fmtWhen(u._start) : "Date to be announced"}
-                      {u.duration_minutes ? ` · ${u.duration_minutes} mins` : ""}
-                    </div>
-                  </div>
-                  <div style={S.countdown}>
-                    {u._start ? (
-                      <>
-                        <span style={S.countdownLabel}>Starts in</span>
-                        <strong style={S.countdownValue}>{fmtCountdown(u._start - now)}</strong>
-                      </>
-                    ) : (
-                      <span style={S.countdownLabel}>Awaiting start</span>
-                    )}
-                  </div>
-                </div>
-              ))
+              <div style={S.upList}>
+                {upcoming.map((u) => {
+                  const parts = u._start ? splitCountdown(u._start - now) : null;
+                  const dateObj = u._start ? new Date(u._start) : null;
+                  const tiles = parts
+                    ? [
+                        ...(parts.d > 0 ? [["Days", parts.d]] : []),
+                        ["Hours", pad2(parts.h)],
+                        ["Minutes", pad2(parts.m)],
+                        ["Seconds", pad2(parts.s)],
+                      ]
+                    : null;
+                  return (
+                    <article key={u.id} className="up-row" style={S.upRow}>
+                      <div style={S.dateBlock} aria-hidden="true">
+                        {dateObj ? (
+                          <>
+                            <span style={S.dateDay}>{dateObj.getDate()}</span>
+                            <span style={S.dateMonth}>{dateObj.toLocaleString([], { month: "short" })}</span>
+                          </>
+                        ) : (
+                          <CalendarDays size={28} color="var(--primary)" />
+                        )}
+                      </div>
+
+                      <div style={{ minWidth: 0 }}>
+                        <h3 style={S.upTitle}>{u.title}</h3>
+                        <p style={S.upMeta}>
+                          {u.subject && (<span style={S.metaItem}><BookOpen size={14} aria-hidden="true" /> {u.subject}</span>)}
+                          <span style={S.metaItem}>
+                            <CalendarClock size={14} aria-hidden="true" />{" "}
+                            {u.start_label ? u.start_label.replace("T", " at ") : u._start ? fmtWhen(u._start) : "Date to be announced"}
+                          </span>
+                          {u.duration_minutes ? (
+                            <span style={S.metaItem}><Clock size={14} aria-hidden="true" /> {u.duration_minutes} minutes</span>
+                          ) : null}
+                        </p>
+                      </div>
+
+                      <div className="up-clock" style={S.clock}>
+                        {tiles ? (
+                          <>
+                            <span style={S.clockLead}>Starts in</span>
+                            {tiles.map(([label, value]) => (
+                              <div key={label} style={S.clockTile}>
+                                <span style={S.clockNum}>{value}</span>
+                                <span style={S.clockLabel}>{label}</span>
+                              </div>
+                            ))}
+                          </>
+                        ) : (
+                          <span style={S.awaiting}>Waiting for a start time</span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             )}
           </section>
         </>
@@ -330,102 +451,125 @@ export default function TakeAssessmentPicker() {
    STYLES
 ========================================================= */
 const S = {
+  // Full width of the page (no max-width cap).
   main: {
-    padding: "20px 32px 48px",
+    padding: "28px 40px 64px",
     background: "var(--bg)",
     color: "var(--text)",
     minHeight: "100vh",
     fontFamily: "'Inter', system-ui, sans-serif",
     boxSizing: "border-box",
-    maxWidth: 980,
-    margin: "0 auto",
+    width: "100%",
   },
-  pageHeader: { marginBottom: 14 },
-  pageTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
-  pageSub: { margin: "3px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
+  pageHeader: { display: "flex", alignItems: "center", gap: 16, marginBottom: 28 },
+  headerIcon: {
+    width: 52, height: 52, borderRadius: 14, background: "var(--primary-tint)",
+    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+  },
+  pageTitle: { margin: 0, fontSize: 28, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em" },
+  pageSub: { margin: "4px 0 0", fontSize: 14.5, color: "var(--text-secondary)", fontWeight: 500, lineHeight: 1.5 },
 
   errorBanner: {
     display: "flex", alignItems: "center", gap: 10, background: "var(--destructive-tint)",
-    border: "1px solid var(--destructive)", borderRadius: 10, padding: "10px 14px",
-    fontSize: 13, color: "var(--text)", marginBottom: 14,
+    border: "1px solid var(--destructive)", borderRadius: 12, padding: "12px 16px",
+    fontSize: 14, color: "var(--text)", marginBottom: 20,
   },
   retryBtn: {
     background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 8,
-    padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0,
+    padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0,
   },
   loadingState: {
-    display: "flex", alignItems: "center", gap: 10, padding: "36px 0",
-    color: "var(--text-secondary)", fontSize: 13.5, fontWeight: 600,
+    display: "flex", alignItems: "center", gap: 10, padding: "48px 0",
+    color: "var(--text-secondary)", fontSize: 15, fontWeight: 600,
   },
 
-  sectionHead: {
-    display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 800,
-    textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-secondary)", marginBottom: 10,
-  },
-  liveDot: { width: 8, height: 8, borderRadius: "50%", background: "var(--success)", display: "inline-block" },
+  section: { marginBottom: 36 },
+  sectionHead: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16 },
+  sectionTitle: { margin: 0, fontSize: 20, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
+  sectionNote: { fontSize: 14, color: "var(--text-secondary)", fontWeight: 600, marginLeft: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  liveDot: { width: 10, height: 10, borderRadius: "50%", background: "var(--success)", display: "inline-block", flexShrink: 0 },
   countPill: {
-    marginLeft: 2, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 20,
-    padding: "1px 8px", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)",
+    background: "var(--card)", border: "1px solid var(--border)", borderRadius: 20,
+    padding: "2px 11px", fontSize: 13, fontWeight: 800, color: "var(--text-secondary)",
   },
 
-  // Active assessments: a quarter of the viewport, scrolling inside.
-  activePanel: {
-    height: "25vh",
-    minHeight: 150,
-    display: "flex",
-    flexDirection: "column",
-    background: "var(--card)",
-    border: "1px solid var(--border)",
+  emptyBox: {
+    display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 8,
+    padding: "44px 24px", background: "var(--card)", border: "1px dashed var(--border)",
     borderRadius: "var(--radius)",
-    padding: "14px 16px 12px",
-    boxShadow: "var(--shadow-sm)",
-    boxSizing: "border-box",
-    marginBottom: 16,
   },
-  activeList: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 2 },
-  activeRow: {
-    display: "flex", alignItems: "center", gap: 12, padding: "9px 12px",
-    border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg)",
-    cursor: "pointer", transition: "box-shadow .15s ease, border-color .15s ease",
+  emptyTitle: { fontSize: 16, fontWeight: 800, color: "var(--text)" },
+  emptySub: { fontSize: 14, color: "var(--text-secondary)", fontWeight: 500 },
+
+  /* ── open now: large cards that fill the row ── */
+  activeCard: {
+    display: "flex", background: "var(--card)", border: "1px solid var(--border)",
+    borderRadius: 16, overflow: "hidden", cursor: "pointer", boxShadow: "var(--shadow-sm)",
   },
-  activeRowSel: { borderColor: "var(--primary)", background: "var(--primary-tint)" },
-  rowTitle: { fontSize: 14, fontWeight: 800, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  rowMeta: { marginTop: 3, fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 },
+  activeCardSel: { borderColor: "var(--primary)", boxShadow: "0 0 0 2px var(--primary-tint)" },
+  activeAccent: { width: 6, background: "var(--success)", flexShrink: 0 },
+  activeBody: { flex: 1, minWidth: 0, padding: "22px 24px 24px", display: "flex", flexDirection: "column" },
+  cardTopRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14 },
+  openChip: {
+    display: "inline-flex", alignItems: "center", gap: 7, background: "var(--success-tint)",
+    color: "var(--success)", borderRadius: 20, padding: "5px 12px", fontSize: 13, fontWeight: 800,
+  },
+  chipDot: { width: 8, height: 8, borderRadius: "50%", background: "var(--success)", display: "inline-block" },
+  durationChip: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 700, color: "var(--text-secondary)" },
+  cardTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", lineHeight: 1.3, letterSpacing: "-0.01em", wordBreak: "break-word" },
+  cardSubject: { display: "flex", alignItems: "center", gap: 7, margin: "8px 0 0", fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" },
+  timeBox: {
+    display: "flex", alignItems: "center", gap: 14, marginTop: 20, padding: "14px 16px",
+    background: "var(--success-tint)", borderRadius: 12,
+  },
+  timeBoxUrgent: { background: "var(--warning-tint)" },
+  timeLabel: { fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" },
+  timeValue: { marginTop: 2, fontSize: 24, fontWeight: 800, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em" },
+  cardActions: { display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" },
   takeBtn: {
-    display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: "var(--radius-sm)",
-    border: "none", background: "var(--primary)", color: "#fff", fontSize: 13, fontWeight: 700,
-    cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
+    flex: "1 1 180px", display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
+    padding: "14px 20px", borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff",
+    fontSize: 15.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
   },
-  emptyInline: {
-    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-    color: "var(--text-secondary)", fontSize: 13.5, fontWeight: 600,
+  ghostBtn: {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "14px 18px",
+    borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)",
+    color: "var(--text-secondary)", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
   },
+  ghostBtnSel: { borderColor: "var(--primary)", color: "var(--primary)", background: "var(--primary-tint)" },
 
-  coverSection: { marginBottom: 16 },
-  coverHead: {
-    display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700,
-    color: "var(--text-secondary)", marginBottom: 8,
-  },
+  /* ── cover page ── */
   coverWrap: {
-    height: "62vh",
-    minHeight: 320,
-    borderRadius: "var(--radius)",
-    overflow: "hidden",
-    border: "1px solid var(--border)",
-    boxShadow: "var(--shadow)",
-    background: "var(--card)",
+    height: "75vh", minHeight: 360, borderRadius: 16, overflow: "hidden",
+    border: "1px solid var(--border)", boxShadow: "var(--shadow)", background: "var(--card)",
   },
   coverFrame: { width: "100%", height: "100%", border: "none", display: "block" },
 
-  upcomingPanel: {
-    background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
-    padding: "14px 16px", boxShadow: "var(--shadow-sm)",
+  /* ── coming up: full-width rows with a date block and countdown tiles ── */
+  upList: { display: "flex", flexDirection: "column", gap: 14 },
+  upRow: {
+    background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16,
+    padding: "20px 24px", boxShadow: "var(--shadow-sm)",
   },
-  upcomingRow: {
-    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14,
-    padding: "10px 0", borderTop: "1px solid var(--border)",
+  dateBlock: {
+    width: 84, height: 84, borderRadius: 14, background: "var(--primary-tint)",
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
   },
-  countdown: { display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 },
-  countdownLabel: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" },
-  countdownValue: { fontSize: 16, fontWeight: 800, color: "var(--primary)", fontVariantNumeric: "tabular-nums", marginTop: 2 },
+  dateDay: { fontSize: 32, fontWeight: 800, color: "var(--primary)", lineHeight: 1, fontVariantNumeric: "tabular-nums" },
+  dateMonth: { fontSize: 14, fontWeight: 700, color: "var(--primary)" },
+  upTitle: { margin: 0, fontSize: 20, fontWeight: 800, color: "var(--text)", lineHeight: 1.3, letterSpacing: "-0.01em", wordBreak: "break-word" },
+  upMeta: { margin: "8px 0 0", display: "flex", flexWrap: "wrap", gap: "6px 20px", fontSize: 14, fontWeight: 600, color: "var(--text-secondary)" },
+  metaItem: { display: "inline-flex", alignItems: "center", gap: 6 },
+  clock: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" },
+  clockLead: { fontSize: 14, fontWeight: 700, color: "var(--text-secondary)", marginRight: 4 },
+  clockTile: {
+    minWidth: 72, padding: "10px 12px", borderRadius: 12, background: "var(--bg)",
+    border: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+  },
+  clockNum: { fontSize: 26, fontWeight: 800, color: "var(--primary)", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 },
+  clockLabel: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)" },
+  awaiting: {
+    padding: "10px 16px", borderRadius: 12, background: "var(--warning-tint)", color: "var(--warning)",
+    fontSize: 14, fontWeight: 700,
+  },
 };
