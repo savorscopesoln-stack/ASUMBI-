@@ -364,6 +364,8 @@ const S = {
   activePanel: {
     height: "25vh",
     minHeight: 150,
+    width: "95%",
+    minWidth: "250",
     display: "flex",
     flexDirection: "column",
     background: "var(--card)",
