@@ -126,7 +126,7 @@ export default function TakeAssessmentPicker() {
 
   const navigate = useNavigate();
 
-  const [data, setData] = useState({ active: [], upcoming: [] });
+  const [data, setData] = useState({ active: [], upcoming: [], fetchedAt: Date.now() });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -144,6 +144,7 @@ export default function TakeAssessmentPicker() {
       setData({
         active: Array.isArray(d.active) ? d.active : [],
         upcoming: Array.isArray(d.upcoming) ? d.upcoming : [],
+        fetchedAt: Date.now(),
       });
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load assessments");
@@ -169,7 +170,14 @@ export default function TakeAssessmentPicker() {
   // Upcoming papers: soonest first; one that has just reached its start
   // time simply drops off once the next refresh moves it to Active.
   const { active, upcoming } = useMemo(() => {
-    const withTimes = (r) => ({ ...r, _start: pickTime(r, START_KEYS), _end: pickTime(r, END_KEYS) });
+    // The server sends "seconds from now" (computed by the database, so
+    // timezone-proof); anchor them to the moment the list was fetched.
+    const rel = (secs) => (secs === null || secs === undefined ? null : data.fetchedAt + Number(secs) * 1000);
+    const withTimes = (r) => ({
+      ...r,
+      _start: rel(r.seconds_until_start) ?? pickTime(r, START_KEYS),
+      _end: rel(r.seconds_until_end) ?? pickTime(r, END_KEYS),
+    });
     return {
       active: data.active.map(withTimes).filter((r) => r._end === null || r._end > now),
       upcoming: data.upcoming
@@ -294,7 +302,7 @@ export default function TakeAssessmentPicker() {
                     <div style={S.rowTitle}>{u.title}</div>
                     <div style={S.rowMeta}>
                       {u.subject ? `${u.subject} · ` : ""}
-                      {u._start ? fmtWhen(u._start) : "Date to be announced"}
+                      {u.start_label ? u.start_label.replace("T", " ") : u._start ? fmtWhen(u._start) : "Date to be announced"}
                       {u.duration_minutes ? ` · ${u.duration_minutes} mins` : ""}
                     </div>
                   </div>
@@ -364,8 +372,6 @@ const S = {
   activePanel: {
     height: "25vh",
     minHeight: 150,
-    width: "95%",
-    minWidth: "250",
     display: "flex",
     flexDirection: "column",
     background: "var(--card)",
