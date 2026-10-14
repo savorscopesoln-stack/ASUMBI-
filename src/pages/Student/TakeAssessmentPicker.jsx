@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
 import {
-  MonitorCheck, Clock, UserRound, Loader2, Inbox, AlertTriangle,
-  User, Lock, LogIn, ClipboardList, FileText, ClipboardCheck,
+  MonitorCheck, Clock, Loader2, Inbox, AlertTriangle, FileText,
+  CalendarClock, PlayCircle,
 } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
@@ -69,6 +69,8 @@ const injectStyles = () => {
 
     .assess-card:hover { box-shadow: var(--shadow); border-color: var(--primary) !important; }
     .assess-take-btn:hover { filter: brightness(0.95); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    .live-dot { animation: pulse 1.4s ease-in-out infinite; }
 
     button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
       outline: 2px solid var(--primary);
@@ -80,103 +82,69 @@ const injectStyles = () => {
       .dash-main { padding: 20px 16px 48px !important; }
     }
     @media (max-width: 640px) {
-      .assess-grid { grid-template-columns: 1fr !important; }
-      .assess-info { flex-direction: column !important; }
+      .upcoming-row { flex-direction: column !important; align-items: flex-start !important; }
     }
   `;
   document.head.appendChild(el);
 };
 
-/* Only a full portal session (not an exam-only token scoped to a single
-   assessment) can browse the full list of assessments — an exam-only
-   token has no business seeing exams other than the one it was issued
-   for, so we treat it as "not logged in" here and ask for real
-   portal credentials instead. */
-const decodeJwtPayload = (token) => {
-  try {
-    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    const json = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join("")
-    );
-    return JSON.parse(json);
-  } catch {
-    return null;
+/* ─── Field helpers ───────────────────────────────────────────
+   The public list is read without any login. These helpers read the
+   schedule defensively so the page keeps working whichever of these
+   names the backend sends. */
+const START_KEYS = ["start_time", "starts_at", "scheduled_start", "scheduled_at", "start_at", "available_from", "opens_at", "exam_date"];
+const END_KEYS = ["end_time", "ends_at", "scheduled_end", "end_at", "available_until", "closes_at"];
+
+const pickTime = (row, keys) => {
+  for (const k of keys) {
+    if (row?.[k]) {
+      const t = new Date(row[k]).getTime();
+      if (!Number.isNaN(t)) return t;
+    }
   }
+  return null;
 };
 
-const hasUsablePortalSession = () => {
-  const token = localStorage.getItem("token");
-  if (!token) return false;
-  const payload = decodeJwtPayload(token);
-  if (!payload || payload.role !== "student") return false;
-  if (payload.exp && payload.exp * 1000 < Date.now()) return false;
-  if (payload.examOnly) return false;
-  return true;
+const fmtCountdown = (ms) => {
+  if (ms <= 0) return "0s";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  if (d > 0) return `${d}d ${pad(h)}h ${pad(m)}m`;
+  if (h > 0) return `${h}h ${pad(m)}m ${pad(sec)}s`;
+  return `${m}m ${pad(sec)}s`;
 };
+
+const fmtWhen = (t) =>
+  new Date(t).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default function TakeAssessmentPicker() {
   injectStyles();
 
   const navigate = useNavigate();
 
-  // login | list
-  const [phase, setPhase] = useState(hasUsablePortalSession() ? "list" : "login");
-
-  // login step
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [loggingIn, setLoggingIn] = useState(false);
-
-  // pre-login cover banner — a student hasn't authenticated yet at this
-  // point, so this comes from the public GET /e-assessments/public/covers
-  // (no session needed) rather than the full list below, which is
-  // per-student and requires a login. Only relevant while phase==="login".
-  const [publicCover, setPublicCover] = useState(null);
-
-  // list step
-  const [assessments, setAssessments] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState({ active: [], upcoming: [] });
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [now, setNow] = useState(Date.now());
 
-  useEffect(() => {
-    if (phase === "list") fetchAssessments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
-
-  useEffect(() => {
-    if (phase !== "login") return;
-    let cancelled = false;
-    API.get("/e-assessments/public/covers")
-      .then((res) => {
-        if (cancelled) return;
-        const rows = res.data?.assessments || res.data?.data || res.data || [];
-        setPublicCover(rows.find((r) => r.cover_page_url) || null);
-      })
-      .catch(() => {
-        // Purely decorative — no login-gate functionality depends on it,
-        // so a failed fetch here just means no banner is shown.
-        if (!cancelled) setPublicCover(null);
-      });
-    return () => { cancelled = true; };
-  }, [phase]);
-
+  // No portal login here: the list comes from the public endpoint. A
+  // student only signs in (username + exam password) on the exam page
+  // itself, after choosing an assessment.
   const fetchAssessments = async () => {
     try {
       setLoading(true);
       setError("");
-
-      const res = await API.get("/e-assessments");
-      const data = res.data?.assessments || res.data?.data || res.data || [];
-
-      const approved = data.filter(
-        (a) => String(a.status || "").toLowerCase() === "approved"
-      );
-
-      setAssessments(approved);
+      const res = await API.get("/e-assessments/public/covers");
+      const d = res.data || {};
+      setData({
+        active: Array.isArray(d.active) ? d.active : [],
+        upcoming: Array.isArray(d.upcoming) ? d.upcoming : [],
+      });
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load assessments");
     } finally {
@@ -184,123 +152,38 @@ export default function TakeAssessmentPicker() {
     }
   };
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (loggingIn) return;
-    if (!username.trim() || !password.trim()) {
-      setLoginError("Enter both your username and password.");
-      return;
-    }
-    setLoginError("");
-    setLoggingIn(true);
-    try {
-      const res = await API.post("/auth/login", {
-        username: username.trim(),
-        password: password.trim(),
-      });
+  useEffect(() => {
+    fetchAssessments();
+    // refresh the list every minute so a newly started paper appears
+    const poll = setInterval(fetchAssessments, 60000);
+    return () => clearInterval(poll);
+  }, []);
 
-      const { token, user } = res.data || {};
-      if (!token || !user) {
-        setLoginError("Invalid server response.");
-        return;
-      }
-      if (String(user.role || "").toLowerCase() !== "student") {
-        setLoginError("This login is for students only.");
-        return;
-      }
+  // one-second tick for the live countdowns
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
+  // Active papers: drop any whose live session has already ended.
+  // Upcoming papers: soonest first; one that has just reached its start
+  // time simply drops off once the next refresh moves it to Active.
+  const { active, upcoming } = useMemo(() => {
+    const withTimes = (r) => ({ ...r, _start: pickTime(r, START_KEYS), _end: pickTime(r, END_KEYS) });
+    return {
+      active: data.active.map(withTimes).filter((r) => r._end === null || r._end > now),
+      upcoming: data.upcoming
+        .map(withTimes)
+        .filter((r) => r._start === null || r._start > now - 60000),
+    };
+  }, [data, now]);
 
-      if (user.mustChangePassword) {
-        navigate("/force-password-change", { replace: true });
-        return;
-      }
+  const selected =
+    active.find((a) => String(a.id) === String(selectedId)) ||
+    active.find((a) => a.cover_page_url) ||
+    active[0] ||
+    null;
 
-      setPhase("list");
-    } catch (err) {
-      const status = err?.response?.status;
-      if (status === 401) {
-        setLoginError("Invalid username or password.");
-      } else {
-        setLoginError(err?.response?.data?.message || "Login failed. Please try again.");
-      }
-    } finally {
-      setLoggingIn(false);
-    }
-  };
-
-  /* ═══════════════════ LOGIN GATE ═══════════════════ */
-  if (phase === "login") {
-    return (
-      <div style={S.stateWrap}>
-        {publicCover && (
-          <div style={S.preLoginCoverWrap}>
-            <iframe
-              src={`${resolveFileUrl(publicCover.cover_page_url)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-              title={`${publicCover.title || "Assessment"} cover page`}
-              style={S.coverFrame}
-              tabIndex={-1}
-            />
-          </div>
-        )}
-        <div style={S.panelCard}>
-          <div style={{ ...S.iconCircle, background: "var(--primary-tint)", marginBottom: 16 }}>
-            <ClipboardList size={26} color="var(--primary)" />
-          </div>
-          <h2 style={{ margin: "0 0 6px", fontSize: 19, fontWeight: 800, color: "var(--text)" }}>
-            Take an Assessment
-          </h2>
-          <p style={{ margin: "0 0 22px", fontSize: 13.5, color: "var(--text-secondary)", textAlign: "center" }}>
-            Log in with your student account to see the assessments available to you.
-          </p>
-
-          <form onSubmit={handleLogin} style={{ width: "100%" }}>
-            <label style={S.fieldLabel}>Username</label>
-            <div style={{ ...S.inputWithIcon, marginBottom: 14 }}>
-              <User size={16} color="var(--text-muted)" />
-              <input
-                style={S.iconInput}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Your username"
-                autoComplete="username"
-              />
-            </div>
-
-            <label style={S.fieldLabel}>Password</label>
-            <div style={{ ...S.inputWithIcon, marginBottom: 14 }}>
-              <Lock size={16} color="var(--text-muted)" />
-              <input
-                type="password"
-                style={S.iconInput}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Your password"
-                autoComplete="current-password"
-              />
-            </div>
-
-            {loginError && (
-              <div style={S.errorBanner} role="alert">
-                <AlertTriangle size={15} color="var(--destructive)" style={{ flexShrink: 0 }} />
-                <span>{loginError}</span>
-              </div>
-            )}
-
-            <button type="submit" style={S.primaryBtn} disabled={loggingIn}>
-              <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                {loggingIn ? <Loader2 size={16} className="dash-spin" /> : <LogIn size={16} />}
-                {loggingIn ? "Logging in…" : "Log In"}
-              </span>
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  /* ═══════════════════ ASSESSMENT LIST ═══════════════════ */
   return (
     <main className="dash-main" style={S.main}>
       <header style={S.pageHeader}>
@@ -308,7 +191,7 @@ export default function TakeAssessmentPicker() {
           <MonitorCheck size={20} color="var(--primary)" />
           <div>
             <h1 style={S.pageTitle}>Take an Assessment</h1>
-            <p style={S.pageSub}>Pick an assessment below to begin</p>
+            <p style={S.pageSub}>Choose an active assessment, then sign in with your exam password</p>
           </div>
         </div>
       </header>
@@ -321,124 +204,115 @@ export default function TakeAssessmentPicker() {
         </div>
       )}
 
-      {loading ? (
+      {loading && data.active.length === 0 && data.upcoming.length === 0 ? (
         <div style={S.loadingState}>
           <Loader2 size={18} className="dash-spin" />
           Loading assessments…
         </div>
-      ) : assessments.length === 0 ? (
-        <section style={S.panel}>
-          <div style={S.emptyState}>
-            <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
-            <div>No available assessments right now</div>
-          </div>
-        </section>
       ) : (
-        <div className="assess-grid" style={S.grid}>
-          {assessments.map((a) => (
-            <div key={a.id} className="assess-card" style={S.card}>
-              <div style={S.cardTop}>
-                <div style={{ minWidth: 0 }}>
-                  <h2 style={S.cardTitle}>{a.title}</h2>
-                  <p style={S.subject}>{a.subject}</p>
-                </div>
-                <span style={S.badge}>{a.status}</span>
-              </div>
-
-              {a.cover_page_url && !a.my_submission_id && (
-                <div
-                  className="cover-preview"
-                  style={S.coverWrap}
-                  onClick={() => navigate(`/take-assessment/${a.id}`)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`View cover page and start ${a.title}`}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") navigate(`/take-assessment/${a.id}`);
-                  }}
-                >
-                  <iframe
-                    src={`${resolveFileUrl(a.cover_page_url)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                    title={`${a.title} cover page`}
-                    style={S.coverFrame}
-                    tabIndex={-1}
-                  />
-                  <div style={S.coverClickCatcher} />
-                  <div style={S.coverCaption}>
-                    <FileText size={12} /> Click to view cover page & start exam
-                  </div>
-                </div>
-              )}
-
-              <div className="assess-info" style={S.info}>
-                <div style={S.infoBox}>
-                  <span style={S.infoLabel}>
-                    <Clock size={12} /> Duration
-                  </span>
-                  <strong style={S.infoValue}>{a.duration_minutes} mins</strong>
-                </div>
-                <div style={S.infoBox}>
-                  <span style={S.infoLabel}>
-                    <UserRound size={12} /> Teacher
-                  </span>
-                  <strong style={S.infoValue}>{a.teacher_name || "Teacher"}</strong>
-                </div>
-              </div>
-
-              {a.my_resit_allowed ? (
-                <>
-                  <div style={S.pendingBox}>
-                    <ClipboardCheck size={14} />
-                    Resit granted by your administrator{a.my_attempt_no > 1 ? ` (attempt ${a.my_attempt_no})` : ""}
-                  </div>
-                  <button
-                    className="assess-take-btn"
-                    style={S.takeBtn}
-                    onClick={() => navigate(`/take-assessment/${a.id}`)}
-                  >
-                    Start Resit
-                  </button>
-                </>
-              ) : a.my_submission_status === "released" ? (
-                <>
-                  <div style={S.resultBox}>
-                    <div>
-                      <div style={S.resultLabel}>Your Score</div>
-                      <div style={S.resultValue}>
-                        {a.my_score ?? 0} / {a.total_marks ?? "—"}
-                      </div>
-                    </div>
-                    {a.total_marks ? (
-                      <div style={S.resultPct}>
-                        {Math.round((Number(a.my_score || 0) / Number(a.total_marks)) * 100)}%
-                      </div>
-                    ) : null}
-                  </div>
-                  <button
-                    className="assess-take-btn"
-                    style={S.takeBtn}
-                    onClick={() => navigate(`/student/e-assessments/${a.id}/result`)}
-                  >
-                    View Marked Paper
-                  </button>
-                </>
-              ) : a.my_submission_id ? (
-                <div style={S.pendingBox}>
-                  <ClipboardCheck size={14} />
-                  Submitted — awaiting results
-                </div>
-              ) : (
-                <button
-                  className="assess-take-btn"
-                  style={S.takeBtn}
-                  onClick={() => navigate(`/take-assessment/${a.id}`)}
-                >
-                  Take Assessment
-                </button>
-              )}
+        <>
+          {/* ── ACTIVE ASSESSMENTS — held to about a quarter of the
+              page height (scrolls inside) so the cover page below
+              stays in view ── */}
+          <section style={S.activePanel} aria-label="Active assessments">
+            <div style={S.sectionHead}>
+              <span className="live-dot" style={S.liveDot} />
+              Active assessments
+              <span style={S.countPill}>{active.length}</span>
             </div>
-          ))}
-        </div>
+            {active.length === 0 ? (
+              <div style={S.emptyInline}>
+                <Inbox size={18} color="var(--text-muted)" />
+                No assessment is active right now
+              </div>
+            ) : (
+              <div style={S.activeList}>
+                {active.map((a) => {
+                  const isSel = selected && String(selected.id) === String(a.id);
+                  return (
+                    <div
+                      key={a.id}
+                      className="assess-card"
+                      style={{ ...S.activeRow, ...(isSel ? S.activeRowSel : null) }}
+                      onClick={() => setSelectedId(a.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedId(a.id); }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={S.rowTitle}>{a.title}</div>
+                        <div style={S.rowMeta}>
+                          {a.subject ? `${a.subject} · ` : ""}
+                          <Clock size={11} style={{ verticalAlign: "-1px" }} />{" "}
+                          {a._end ? `Ends in ${fmtCountdown(a._end - now)}` : `${a.duration_minutes || "—"} mins`}
+                        </div>
+                      </div>
+                      <button
+                        className="assess-take-btn"
+                        style={S.takeBtn}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/take-assessment/${a.id}`); }}
+                      >
+                        <PlayCircle size={14} /> Take
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* ── COVER PAGE of the selected active assessment ── */}
+          {selected?.cover_page_url && (
+            <section style={S.coverSection} aria-label="Cover page">
+              <div style={S.coverHead}>
+                <FileText size={14} /> Cover page · {selected.title}
+              </div>
+              <div style={S.coverWrap}>
+                <iframe
+                  key={selected.id}
+                  src={`${resolveFileUrl(selected.cover_page_url)}#toolbar=0&navpanes=0&view=FitH`}
+                  title={`${selected.title} cover page`}
+                  style={S.coverFrame}
+                />
+              </div>
+            </section>
+          )}
+
+          {/* ── UPCOMING PAPERS with time remaining ── */}
+          <section style={S.upcomingPanel} aria-label="Upcoming papers">
+            <div style={S.sectionHead}>
+              <CalendarClock size={15} color="var(--primary)" />
+              Upcoming papers
+              <span style={S.countPill}>{upcoming.length}</span>
+            </div>
+            {upcoming.length === 0 ? (
+              <div style={S.emptyInline}>No upcoming papers</div>
+            ) : (
+              upcoming.map((u) => (
+                <div key={u.id} className="upcoming-row" style={S.upcomingRow}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={S.rowTitle}>{u.title}</div>
+                    <div style={S.rowMeta}>
+                      {u.subject ? `${u.subject} · ` : ""}
+                      {u._start ? fmtWhen(u._start) : "Date to be announced"}
+                      {u.duration_minutes ? ` · ${u.duration_minutes} mins` : ""}
+                    </div>
+                  </div>
+                  <div style={S.countdown}>
+                    {u._start ? (
+                      <>
+                        <span style={S.countdownLabel}>Starts in</span>
+                        <strong style={S.countdownValue}>{fmtCountdown(u._start - now)}</strong>
+                      </>
+                    ) : (
+                      <span style={S.countdownLabel}>Awaiting start</span>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </section>
+        </>
       )}
     </main>
   );
@@ -449,256 +323,101 @@ export default function TakeAssessmentPicker() {
 ========================================================= */
 const S = {
   main: {
-    padding: "24px 32px 56px",
+    padding: "20px 32px 48px",
     background: "var(--bg)",
     color: "var(--text)",
     minHeight: "100vh",
     fontFamily: "'Inter', system-ui, sans-serif",
     boxSizing: "border-box",
+    maxWidth: 980,
+    margin: "0 auto",
   },
-  pageHeader: { marginBottom: 22 },
+  pageHeader: { marginBottom: 14 },
   pageTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
   pageSub: { margin: "3px 0 0", fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 },
 
   errorBanner: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    background: "var(--destructive-tint)",
-    border: "1px solid var(--destructive)",
-    borderRadius: 10,
-    padding: "10px 14px",
-    fontSize: 13,
-    color: "var(--text)",
-    marginBottom: 18,
+    display: "flex", alignItems: "center", gap: 10, background: "var(--destructive-tint)",
+    border: "1px solid var(--destructive)", borderRadius: 10, padding: "10px 14px",
+    fontSize: 13, color: "var(--text)", marginBottom: 14,
   },
   retryBtn: {
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    color: "var(--text)",
-    borderRadius: 8,
-    padding: "5px 12px",
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
-    flexShrink: 0,
+    background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 8,
+    padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0,
   },
-
   loadingState: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "36px 0",
-    color: "var(--text-secondary)",
-    fontSize: 13.5,
-    fontWeight: 600,
+    display: "flex", alignItems: "center", gap: 10, padding: "36px 0",
+    color: "var(--text-secondary)", fontSize: 13.5, fontWeight: 600,
   },
 
-  panel: {
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    padding: "20px 22px",
-    boxShadow: "var(--shadow-sm)",
+  sectionHead: {
+    display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 800,
+    textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-secondary)", marginBottom: 10,
   },
-  emptyState: {
-    padding: "36px 0",
-    textAlign: "center",
-    color: "var(--text-secondary)",
-    fontSize: 13.5,
-    fontWeight: 600,
+  liveDot: { width: 8, height: 8, borderRadius: "50%", background: "var(--success)", display: "inline-block" },
+  countPill: {
+    marginLeft: 2, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 20,
+    padding: "1px 8px", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)",
+  },
+
+  // Active assessments: a quarter of the viewport, scrolling inside.
+  activePanel: {
+    height: "25vh",
+    minHeight: 150,
     display: "flex",
     flexDirection: "column",
-    alignItems: "center",
-  },
-
-  // Cards now cap at a sensible max width instead of stretching to
-  // fill the entire row when only one (or a partial row of) cards is
-  // present — that stretch was what let the aspect-ratio cover
-  // preview below balloon to full-viewport height.
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 340px))",
-    gap: 16,
-  },
-  card: {
     background: "var(--card)",
     border: "1px solid var(--border)",
     borderRadius: "var(--radius)",
-    padding: 20,
+    padding: "14px 16px 12px",
     boxShadow: "var(--shadow-sm)",
-    transition: "box-shadow 0.15s ease, border-color 0.15s ease",
-    width: "100%",
-    maxWidth: 340,
-  },
-  cardTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
+    boxSizing: "border-box",
     marginBottom: 16,
   },
-  cardTitle: { margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" },
-  subject: { margin: "6px 0 0", fontSize: 12.5, color: "var(--text-secondary)", fontWeight: 600 },
-  badge: {
-    background: "var(--success-tint)",
-    color: "var(--success)",
-    padding: "4px 10px",
-    borderRadius: 20,
-    fontSize: 11,
-    fontWeight: 700,
-    height: "fit-content",
-    textTransform: "capitalize",
-    flexShrink: 0,
+  activeList: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 2 },
+  activeRow: {
+    display: "flex", alignItems: "center", gap: 12, padding: "9px 12px",
+    border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg)",
+    cursor: "pointer", transition: "box-shadow .15s ease, border-color .15s ease",
   },
-  // Fixed-height thumbnail instead of an aspect-ratio box that scaled
-  // with the card's width — on a card stretched to fill a whole grid
-  // row (e.g. only one assessment available) that aspect-ratio math is
-  // what blew this preview up to fill most of the screen. A flat
-  // height keeps it a small, consistent "click to view" thumbnail no
-  // matter how wide the card is.
-  coverWrap: {
-    position: "relative",
-    height: 160,
-    borderRadius: "var(--radius-sm)",
-    overflow: "hidden",
-    border: "1px solid var(--border)",
-    cursor: "pointer",
-    marginBottom: 16,
-    background: "var(--bg)",
-  },
-  coverFrame: {
-    width: "100%",
-    height: "100%",
-    border: "none",
-    display: "block",
-    pointerEvents: "none",
-  },
-  coverClickCatcher: {
-    position: "absolute",
-    inset: 0,
-  },
-  coverCaption: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    display: "flex",
-    alignItems: "center",
-    gap: 5,
-    padding: "7px 10px",
-    fontSize: 11,
-    fontWeight: 700,
-    color: "#fff",
-    background: "linear-gradient(transparent, rgba(11,15,25,0.72))",
-  },
-  info: { display: "flex", gap: 10, marginBottom: 18 },
-  infoBox: {
-    flex: 1,
-    background: "var(--bg)",
-    border: "1px solid var(--border)",
-    padding: 12,
-    borderRadius: "var(--radius-sm)",
-    minWidth: 0,
-  },
-  infoLabel: {
-    display: "flex",
-    alignItems: "center",
-    gap: 5,
-    color: "var(--text-secondary)",
-    fontSize: 11,
-    fontWeight: 700,
-    marginBottom: 6,
-    textTransform: "uppercase",
-    letterSpacing: "0.03em",
-  },
-  infoValue: { fontSize: 13, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" },
+  activeRowSel: { borderColor: "var(--primary)", background: "var(--primary-tint)" },
+  rowTitle: { fontSize: 14, fontWeight: 800, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  rowMeta: { marginTop: 3, fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 },
   takeBtn: {
-    width: "100%",
-    padding: 12,
-    borderRadius: "var(--radius-sm)",
-    border: "none",
-    background: "var(--primary)",
-    color: "#fff",
-    fontSize: 13.5,
-    fontWeight: 700,
-    cursor: "pointer",
-    fontFamily: "inherit",
+    display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: "var(--radius-sm)",
+    border: "none", background: "var(--primary)", color: "#fff", fontSize: 13, fontWeight: 700,
+    cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
   },
-  resultBox: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    background: "var(--success-tint)",
-    border: "1px solid var(--success)",
-    borderRadius: "var(--radius-sm)",
-    padding: "10px 14px",
-    marginBottom: 10,
-  },
-  resultLabel: { fontSize: 10.5, fontWeight: 700, color: "var(--success)", textTransform: "uppercase", letterSpacing: "0.03em" },
-  resultValue: { fontSize: 15, fontWeight: 800, color: "var(--text)", marginTop: 2 },
-  resultPct: { fontSize: 18, fontWeight: 800, color: "var(--success)" },
-  pendingBox: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    width: "100%",
-    padding: 12,
-    borderRadius: "var(--radius-sm)",
-    background: "var(--bg)",
-    border: "1px dashed var(--border)",
-    color: "var(--text-secondary)",
-    fontSize: 13,
-    fontWeight: 700,
+  emptyInline: {
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+    color: "var(--text-secondary)", fontSize: 13.5, fontWeight: 600,
   },
 
-  /* login gate */
-  stateWrap: {
-    minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column",
-    alignItems: "center", justifyContent: "center", gap: 16, padding: 24,
-    fontFamily: "'Inter', system-ui, sans-serif",
+  coverSection: { marginBottom: 16 },
+  coverHead: {
+    display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700,
+    color: "var(--text-secondary)", marginBottom: 8,
   },
-  // Pre-login cover-page banner. A flat, explicit height capped at 2/3
-  // of the viewport — same "fixed height, not aspect-ratio" choice used
-  // for the per-assessment cover thumbnails below (see coverWrap's
-  // comment): an aspect-ratio box here would scale with the PDF's own
-  // page shape and could balloon a tall cover to fill the whole screen,
-  // which is exactly what this cap has to prevent. The PDF's own
-  // view=FitH still fits it to the available width; this just bounds
-  // how tall that box is ever allowed to get.
-  preLoginCoverWrap: {
-    width: "100%",
-    maxWidth: 480,
-    height: "min(66vh, 520px)",
+  coverWrap: {
+    height: "62vh",
+    minHeight: 320,
     borderRadius: "var(--radius)",
     overflow: "hidden",
     border: "1px solid var(--border)",
     boxShadow: "var(--shadow)",
     background: "var(--card)",
   },
-  panelCard: {
+  coverFrame: { width: "100%", height: "100%", border: "none", display: "block" },
+
+  upcomingPanel: {
     background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
-    padding: "34px 30px", maxWidth: 400, width: "100%", display: "flex", flexDirection: "column",
-    alignItems: "center", boxShadow: "var(--shadow)",
+    padding: "14px 16px", boxShadow: "var(--shadow-sm)",
   },
-  iconCircle: {
-    width: 54, height: 54, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+  upcomingRow: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14,
+    padding: "10px 0", borderTop: "1px solid var(--border)",
   },
-  fieldLabel: {
-    display: "block", fontSize: 11.5, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 6,
-  },
-  inputWithIcon: {
-    display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "11px 14px",
-    borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg)",
-    boxSizing: "border-box",
-  },
-  iconInput: {
-    flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--text)",
-    fontSize: 14, fontFamily: "inherit",
-  },
-  primaryBtn: {
-    width: "100%", padding: "13px 18px", border: "none", borderRadius: "var(--radius-sm)",
-    background: "var(--primary)", color: "#fff", fontSize: 14.5, fontWeight: 800, cursor: "pointer",
-    marginTop: 8,
-  },
+  countdown: { display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 },
+  countdownLabel: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" },
+  countdownValue: { fontSize: 16, fontWeight: 800, color: "var(--primary)", fontVariantNumeric: "tabular-nums", marginTop: 2 },
 };
