@@ -9,6 +9,7 @@ import {
   Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle, Smartphone, ShieldCheck, Camera,
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
+import { fmtDateTime } from "../components/mainExams/shared";
 import EvidenceGallery from "../components/eassessment/EvidenceGallery";
 import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
 import { fmt2 } from "../utils/format";
@@ -301,6 +302,7 @@ export default function AdminEAssessments() {
   const [answerModal,  setAnswerModal]  = useState(null);
   const [photoModal,   setPhotoModal]   = useState(null); // { name, loading, evidence, zoom }
   const [quickStats,   setQuickStats]   = useState(null);
+  const [accessModal,  setAccessModal]  = useState(null); // { a, loading, data } — "Who can sit & schedule"
 
   /* selections */
   const [selAssessments, setSelAssessments] = useState([]);
@@ -662,6 +664,35 @@ export default function AdminEAssessments() {
     } catch {
       showToast("Could not create the attendance PDF", "error");
     } finally { setAttendanceBusy(null); }
+  };
+
+  // "Who can sit & schedule": which trainees may sit this paper (default: all
+  // active trainees in the class/year) plus an optional open/close date-time.
+  const openAccess = async (a) => {
+    setAccessModal({ a, loading: true, data: null });
+    try {
+      const res = await API.get(`/e-assessments/admin/${a.id}/access`);
+      setAccessModal({ a, loading: false, data: res.data });
+    } catch (err) {
+      setAccessModal(null);
+      showToast(err?.response?.data?.message || "Failed to load trainee access", "error");
+    }
+  };
+  const saveAccess = async (a, payload) => {
+    try {
+      const res = await API.put(`/e-assessments/admin/${a.id}/access`, payload);
+      setList((prev) => prev.map((x) => (x.id === a.id ? {
+        ...x,
+        restrict_students: res.data.restrict_students,
+        available_from: res.data.available_from,
+        available_until: res.data.available_until,
+        allowed_count: res.data.allowed_count,
+      } : x)));
+      showToast(res.data?.message || "Saved");
+      setAccessModal(null);
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to save", "error");
+    }
   };
 
   // "Desktop only" switch — restricts the assessment to Windows/Mac laptops
@@ -1395,6 +1426,7 @@ export default function AdminEAssessments() {
                   )}
                   onStart={() => startAssessment(a)}
                   onStop={() => stopAssessment(a)}
+                  onAccess={() => openAccess(a)}
                   onToggleDesktop={() => toggleDesktopOnly(a)}
                   onToggleSecurity={(key) => toggleSecurity(a, key)}
                   onSaveSeb={(payload) => saveSeb(a, payload)}
@@ -1892,6 +1924,14 @@ export default function AdminEAssessments() {
         </Modal>
       )}
 
+      {accessModal && (
+        <Modal title={`Who can sit & schedule — ${accessModal.a.title}`} onClose={() => setAccessModal(null)}>
+          {accessModal.loading || !accessModal.data
+            ? <div style={{ padding: 20, textAlign: "center", fontSize: 13 }}>Loading…</div>
+            : <AccessScheduleForm a={accessModal.a} data={accessModal.data} onSave={(payload) => saveAccess(accessModal.a, payload)} />}
+        </Modal>
+      )}
+
       {editOpen && (
         <Modal title="Edit Assessment" onClose={() => setEditOpen(false)}>
           <FieldLabel>Assessment Title *</FieldLabel>
@@ -2287,7 +2327,7 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDesktop, onToggleSecurity, onSaveSeb, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleSecurity, onSaveSeb, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
   const [sebKeysDraft, setSebKeysDraft] = React.useState(a.seb_keys || "");
   const [sebSaving, setSebSaving] = React.useState(false);
   const sebKeysDirty = (sebKeysDraft || "").trim() !== (a.seb_keys || "").trim();
@@ -2337,6 +2377,20 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onToggleDeskto
         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: isActive ? C.success : C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
           <IconDot size={7} /> {isActive ? "Active" : "Inactive"}
         </span>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${a.restrict_students || a.available_from || a.available_until ? C.accent : C.border}` }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri }}>Who can sit &amp; schedule</div>
+          <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4 }}>
+            {a.restrict_students ? `Only ${a.allowed_count || 0} selected trainee${a.allowed_count === 1 ? "" : "s"}` : "All active trainees"}
+            {" · "}
+            {a.available_from || a.available_until
+              ? `${a.available_from ? fmtDateTime(a.available_from) : "any time"} → ${a.available_until ? fmtDateTime(a.available_until) : "no end"} (EAT)`
+              : "No time limit"}
+          </div>
+        </div>
+        <MiniBtn icon={<Users size={12} />} onClick={onAccess} title="Choose which trainees can sit this paper and set its start and finish date/time">Manage</MiniBtn>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${a.desktop_only ? C.accent : C.border}` }}>
@@ -2914,7 +2968,7 @@ const ACTION_LABELS = {
   open_script_for_marking: "Opened script to mark", open_all_scripts_for_marking: "Opened all scripts to mark",
   save_marking: "Saved marking", save_marking_bulk: "Saved marking (bulk)",
   review_assessment: "Approved / rejected assessment", start_stop_assessment: "Started / stopped assessment",
-  set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", set_seb_settings: "Safe Exam Browser setting", unlock_device: "Unlocked device", grant_resit: "Granted resit",
+  set_student_access: "Trainee access / schedule", set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", set_seb_settings: "Safe Exam Browser setting", unlock_device: "Unlocked device", grant_resit: "Granted resit",
   cancel_resit: "Cancelled resit", assign_teacher: "Assigned teacher", assign_submission: "Assigned script",
   bulk_assign_submissions: "Assigned scripts (bulk)", review_remark_request: "Reviewed remark request",
   release_marks: "Released marks", bulk_release_marks: "Released marks (bulk)", update_grading_system: "Updated grading system",
@@ -3178,6 +3232,114 @@ function SaveButton({ onClick, loading, label, icon }) {
     }}>
       {loading ? "Please wait…" : <>{icon}{label}</>}
     </button>
+  );
+}
+
+// Stored times are EAT wall-clock digits labelled as UTC, so the UTC getters
+// give back exactly what the admin typed (datetime-local wants no zone).
+const toLocalInput = (v) => {
+  if (!v) return "";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 16);
+};
+
+function AccessScheduleForm({ a, data, onSave }) {
+  const C = useC();
+  const [restrict, setRestrict] = useState(!!data.restrict_students);
+  const [picked, setPicked] = useState(() => new Set(data.allowed_student_ids || []));
+  const [q, setQ] = useState("");
+  const [from, setFrom] = useState(toLocalInput(data.available_from));
+  const [until, setUntil] = useState(toLocalInput(data.available_until));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const shown = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const rows = (data.students || []).filter((s) =>
+      !t || `${s.name || ""} ${s.username || ""} ${s.studentClass || ""}`.toLowerCase().includes(t));
+    return rows;
+  }, [q, data.students]);
+  const MAX_ROWS = 300;
+
+  const toggle = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const selectShown = () => setPicked((p) => { const n = new Set(p); shown.forEach((s) => n.add(s.id)); return n; });
+  const clearShown = () => setPicked((p) => { const n = new Set(p); shown.forEach((s) => n.delete(s.id)); return n; });
+
+  const submit = async () => {
+    setErr("");
+    if (restrict && picked.size === 0) return setErr("Pick at least one trainee, or choose “All active trainees”.");
+    if (from && until && until <= from) return setErr("The finish time must be after the start time.");
+    setSaving(true);
+    await onSave({
+      restrict_students: restrict,
+      student_ids: restrict ? [...picked] : (data.allowed_student_ids || []),
+      available_from: from || null,
+      available_until: until || null,
+    });
+    setSaving(false);
+  };
+
+  const radio = (on, label, hint, onClick) => (
+    <label onClick={onClick} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 8, cursor: "pointer", marginBottom: 8, background: C.bgAlt, border: `1px solid ${on ? C.accent : C.border}` }}>
+      <input type="radio" readOnly checked={on} style={{ marginTop: 3, accentColor: C.accent }} />
+      <span><div style={{ fontSize: 13, fontWeight: 700, color: C.textPri }}>{label}</div><div style={{ fontSize: 11.5, color: C.textMuted }}>{hint}</div></span>
+    </label>
+  );
+
+  return (
+    <div>
+      <FieldLabel>Who can sit this paper</FieldLabel>
+      {radio(!restrict, "All active trainees (default)", "Every active trainee in this assessment's class / year. Inactive or suspended trainees are always blocked.", () => setRestrict(false))}
+      {radio(restrict, "Only selected trainees", "Only the trainees you tick below can see and sit it.", () => setRestrict(true))}
+
+      {restrict && (
+        <div style={{ marginBottom: 14 }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, username or class…"
+            style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bgAlt, color: C.textPri, fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 6 }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
+            <span>{picked.size} selected · {shown.length} shown</span>
+            <span style={{ display: "flex", gap: 8 }}>
+              <button type="button" onClick={selectShown} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Select shown</button>
+              <button type="button" onClick={clearShown} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Clear shown</button>
+            </span>
+          </div>
+          <div style={{ maxHeight: 240, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
+            {shown.length === 0 && <div style={{ padding: 14, fontSize: 12, color: C.textMuted }}>No active trainees found for this class / year.</div>}
+            {shown.slice(0, MAX_ROWS).map((s) => (
+              <label key={s.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "7px 12px", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13, color: C.textPri }}>
+                <input type="checkbox" checked={picked.has(s.id)} onChange={() => toggle(s.id)} style={{ accentColor: C.accent }} />
+                <span style={{ flex: 1, minWidth: 0 }}>{s.name || s.username}</span>
+                <span style={{ fontSize: 11, color: C.textMuted }}>{s.studentClass || ""}</span>
+              </label>
+            ))}
+          </div>
+          {shown.length > MAX_ROWS && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Showing the first {MAX_ROWS}. Type in the search box to narrow the list.</div>}
+        </div>
+      )}
+
+      <FieldLabel>Start &amp; finish (East Africa Time)</FieldLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 4 }}>Opens</div>
+          <ModalInput type="datetime-local" value={from} onChange={setFrom} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 4 }}>Closes</div>
+          <ModalInput type="datetime-local" value={until} onChange={setUntil} />
+        </div>
+      </div>
+      <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.5, marginTop: -4, marginBottom: 6 }}>
+        Leave both empty for no time limit. It opens by itself at the start time and closes at the finish time;
+        trainees can't enter outside these times. A trainee already sitting keeps their own timer.
+        {a.status !== "approved" && (from || until) ? " Note: this assessment isn't approved yet, so it will not open automatically until it is." : ""}
+        {(from || until) && (
+          <> <button type="button" onClick={() => { setFrom(""); setUntil(""); }} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 11.5, fontWeight: 600, padding: 0 }}>Clear times</button></>
+        )}
+      </div>
+
+      {err && <div style={{ color: C.danger || "#b45309", fontSize: 12.5, marginTop: 6 }}>{err}</div>}
+      <SaveButton onClick={submit} loading={saving} label="Save" />
+    </div>
   );
 }
 

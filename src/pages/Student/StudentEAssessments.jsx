@@ -3,6 +3,20 @@ import { useNavigate } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
 import { MonitorCheck, Clock, UserRound, Loader2, Inbox, AlertTriangle, FileText, ClipboardCheck } from "lucide-react";
 
+// available_from / available_until are East Africa Time wall-clock digits
+// labelled as UTC (same convention as the main-exam timetable), so format with
+// timeZone "UTC" and compare against "now" relabelled the same way (+3h).
+const fmtWindow = (v) => new Date(v).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+const windowState = (a) => {
+  const now = Date.now() + 3 * 60 * 60 * 1000;
+  const from = a.available_from ? new Date(a.available_from).getTime() : null;
+  const until = a.available_until ? new Date(a.available_until).getTime() : null;
+  if (from && now < from) return { open: false, text: `Opens ${fmtWindow(a.available_from)} (EAT)` };
+  if (until && now >= until) return { open: false, text: `Closed ${fmtWindow(a.available_until)} (EAT)` };
+  if (until) return { open: true, text: `Closes ${fmtWindow(a.available_until)} (EAT)` };
+  return { open: true, text: "" };
+};
+
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app; a no-op if already mounted by the layout or
    another page. ─── */
@@ -255,15 +269,27 @@ export default function StudentEAssessments() {
                   <ClipboardCheck size={14} />
                   Submitted — awaiting results
                 </div>
-              ) : (
-                <button
-                  className="assess-take-btn"
-                  style={D.takeBtn}
-                  onClick={() => navigate(`/take-assessment/${a.id}`)}
-                >
-                  Take Assessment
-                </button>
-              )}
+              ) : (() => {
+                const w = windowState(a);
+                return (
+                  <>
+                    {w.text && (
+                      <div style={D.pendingBox}>
+                        <Clock size={14} />
+                        {w.text}
+                      </div>
+                    )}
+                    <button
+                      className="assess-take-btn"
+                      style={{ ...D.takeBtn, ...(w.open ? {} : { opacity: 0.5, cursor: "not-allowed" }) }}
+                      disabled={!w.open}
+                      onClick={() => navigate(`/take-assessment/${a.id}`)}
+                    >
+                      Take Assessment
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           ))}
         </div>
