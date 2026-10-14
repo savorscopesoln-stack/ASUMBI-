@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import API, { resolveFileUrl } from "../../api";
 import {
   MonitorCheck, Clock, Loader2, Inbox, AlertTriangle, FileText,
-  CalendarClock, PlayCircle, Timer, BookOpen, CalendarDays, Eye,
+  PlayCircle, Timer, BookOpen, Eye,
 } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
@@ -86,8 +86,7 @@ const injectStyles = () => {
   document.head.appendChild(el);
 };
 
-/* ─── page-specific rules (separate id so they always load, even when
-   the shared token sheet was already mounted by another page) ─── */
+/* ─── page-specific rules ─── */
 const injectPickerStyles = () => {
   if (document.getElementById("picker-page-styles")) return;
   const el = document.createElement("style");
@@ -95,37 +94,22 @@ const injectPickerStyles = () => {
   el.textContent = `
     .pick-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+      gap: 28px;
     }
     .pick-card { transition: border-color .15s ease, box-shadow .15s ease; }
     .pick-card:hover { border-color: var(--primary) !important; box-shadow: var(--shadow); }
     .pick-take:hover { filter: brightness(0.93); }
     .pick-ghost:hover { background: var(--bg) !important; }
 
-    .up-row {
-      display: grid;
-      grid-template-columns: 84px minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 22px;
-    }
-    @media (max-width: 860px) {
-      .up-row { grid-template-columns: 72px minmax(0, 1fr); }
-      .up-row > .up-clock { grid-column: 1 / -1; justify-content: flex-start !important; }
-    }
-    @media (max-width: 480px) {
+    @media (max-width: 640px) {
       .pick-grid { grid-template-columns: 1fr; }
-      .up-row { grid-template-columns: 1fr; }
     }
   `;
   document.head.appendChild(el);
 };
 
-/* ─── Field helpers ───────────────────────────────────────────
-   The public list is read without any login. These helpers read the
-   schedule defensively so the page keeps working whichever of these
-   names the backend sends. */
-const START_KEYS = ["start_time", "starts_at", "scheduled_start", "scheduled_at", "start_at", "available_from", "opens_at", "exam_date"];
+/* ─── Field helpers ─── */
 const END_KEYS = ["end_time", "ends_at", "scheduled_end", "end_at", "available_until", "closes_at"];
 
 const pickTime = (row, keys) => {
@@ -140,28 +124,18 @@ const pickTime = (row, keys) => {
 
 const pad2 = (n) => String(n).padStart(2, "0");
 
-// Splits a millisecond gap into display parts.
-const splitCountdown = (ms) => {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return {
-    d: Math.floor(s / 86400),
-    h: Math.floor((s % 86400) / 3600),
-    m: Math.floor((s % 3600) / 60),
-    s: s % 60,
-  };
-};
-
 // Compact single-line countdown, used for "time left" on open papers.
 const fmtCountdown = (ms) => {
   if (ms <= 0) return "0s";
-  const { d, h, m, s } = splitCountdown(ms);
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
   if (d > 0) return `${d}d ${pad2(h)}h ${pad2(m)}m`;
-  if (h > 0) return `${h}h ${pad2(m)}m ${pad2(s)}s`;
-  return `${m}m ${pad2(s)}s`;
+  if (h > 0) return `${h}h ${pad2(m)}m ${pad2(sec)}s`;
+  return `${m}m ${pad2(sec)}s`;
 };
-
-const fmtWhen = (t) =>
-  new Date(t).toLocaleString([], { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 
 export default function TakeAssessmentPicker() {
   injectStyles();
@@ -169,7 +143,7 @@ export default function TakeAssessmentPicker() {
 
   const navigate = useNavigate();
 
-  const [data, setData] = useState({ active: [], upcoming: [], fetchedAt: Date.now() });
+  const [data, setData] = useState({ active: [], fetchedAt: Date.now() });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -186,7 +160,6 @@ export default function TakeAssessmentPicker() {
       const d = res.data || {};
       setData({
         active: Array.isArray(d.active) ? d.active : [],
-        upcoming: Array.isArray(d.upcoming) ? d.upcoming : [],
         fetchedAt: Date.now(),
       });
     } catch (err) {
@@ -210,23 +183,13 @@ export default function TakeAssessmentPicker() {
   }, []);
 
   // Active papers: drop any whose live session has already ended.
-  // Upcoming papers: soonest first; one that has just reached its start
-  // time simply drops off once the next refresh moves it to Active.
-  const { active, upcoming } = useMemo(() => {
+  const active = useMemo(() => {
     // The server sends "seconds from now" (computed by the database, so
     // timezone-proof); anchor them to the moment the list was fetched.
     const rel = (secs) => (secs === null || secs === undefined ? null : data.fetchedAt + Number(secs) * 1000);
-    const withTimes = (r) => ({
-      ...r,
-      _start: rel(r.seconds_until_start) ?? pickTime(r, START_KEYS),
-      _end: rel(r.seconds_until_end) ?? pickTime(r, END_KEYS),
-    });
-    return {
-      active: data.active.map(withTimes).filter((r) => r._end === null || r._end > now),
-      upcoming: data.upcoming
-        .map(withTimes)
-        .filter((r) => r._start === null || r._start > now - 60000),
-    };
+    return data.active
+      .map((r) => ({ ...r, _end: rel(r.seconds_until_end) ?? pickTime(r, END_KEYS) }))
+      .filter((r) => r._end === null || r._end > now);
   }, [data, now]);
 
   const selected =
@@ -239,7 +202,7 @@ export default function TakeAssessmentPicker() {
     <main className="dash-main" style={S.main}>
       <header style={S.pageHeader}>
         <div style={S.headerIcon}>
-          <MonitorCheck size={26} color="var(--primary)" aria-hidden="true" />
+          <MonitorCheck size={30} color="var(--primary)" aria-hidden="true" />
         </div>
         <div style={{ minWidth: 0 }}>
           <h1 style={S.pageTitle}>Take an Assessment</h1>
@@ -255,9 +218,9 @@ export default function TakeAssessmentPicker() {
         </div>
       )}
 
-      {loading && data.active.length === 0 && data.upcoming.length === 0 ? (
+      {loading && data.active.length === 0 ? (
         <div style={S.loadingState}>
-          <Loader2 size={20} className="dash-spin" aria-hidden="true" />
+          <Loader2 size={22} className="dash-spin" aria-hidden="true" />
           Loading assessments…
         </div>
       ) : (
@@ -272,7 +235,7 @@ export default function TakeAssessmentPicker() {
 
             {active.length === 0 ? (
               <div style={S.emptyBox}>
-                <Inbox size={30} color="var(--text-muted)" aria-hidden="true" />
+                <Inbox size={36} color="var(--text-muted)" aria-hidden="true" />
                 <div style={S.emptyTitle}>No assessment is open right now</div>
                 <div style={S.emptySub}>When your teacher starts one, it appears here automatically.</div>
               </div>
@@ -298,7 +261,7 @@ export default function TakeAssessmentPicker() {
                           </span>
                           {a.duration_minutes ? (
                             <span style={S.durationChip}>
-                              <Clock size={13} aria-hidden="true" /> {a.duration_minutes} minutes
+                              <Clock size={16} aria-hidden="true" /> {a.duration_minutes} minutes
                             </span>
                           ) : null}
                         </div>
@@ -306,12 +269,12 @@ export default function TakeAssessmentPicker() {
                         <h3 style={S.cardTitle}>{a.title}</h3>
                         {a.subject && (
                           <p style={S.cardSubject}>
-                            <BookOpen size={15} aria-hidden="true" /> {a.subject}
+                            <BookOpen size={18} aria-hidden="true" /> {a.subject}
                           </p>
                         )}
 
                         <div style={{ ...S.timeBox, ...(urgent ? S.timeBoxUrgent : null) }}>
-                          <Timer size={20} color={urgent ? "var(--warning)" : "var(--success)"} aria-hidden="true" />
+                          <Timer size={28} color={urgent ? "var(--warning)" : "var(--success)"} aria-hidden="true" />
                           <div>
                             <div style={S.timeLabel}>{a._end ? "Closes in" : "Time allowed"}</div>
                             <div style={{ ...S.timeValue, color: urgent ? "var(--warning)" : "var(--text)" }}>
@@ -326,7 +289,7 @@ export default function TakeAssessmentPicker() {
                             style={S.takeBtn}
                             onClick={(e) => { e.stopPropagation(); navigate(`/take-assessment/${a.id}`); }}
                           >
-                            <PlayCircle size={18} aria-hidden="true" /> Take assessment
+                            <PlayCircle size={22} aria-hidden="true" /> Take assessment
                           </button>
                           {a.cover_page_url && (
                             <button
@@ -335,7 +298,7 @@ export default function TakeAssessmentPicker() {
                               aria-pressed={!!isSel}
                               onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); }}
                             >
-                              <Eye size={16} aria-hidden="true" /> Cover page
+                              <Eye size={18} aria-hidden="true" /> Cover page
                             </button>
                           )}
                         </div>
@@ -351,7 +314,7 @@ export default function TakeAssessmentPicker() {
           {selected?.cover_page_url && (
             <section style={S.section} aria-label="Cover page">
               <div style={S.sectionHead}>
-                <FileText size={18} color="var(--primary)" aria-hidden="true" />
+                <FileText size={20} color="var(--primary)" aria-hidden="true" />
                 <h2 style={S.sectionTitle}>Cover page</h2>
                 <span style={S.sectionNote}>{selected.title}</span>
               </div>
@@ -365,82 +328,6 @@ export default function TakeAssessmentPicker() {
               </div>
             </section>
           )}
-
-          {/* ── UPCOMING PAPERS with time remaining ── */}
-          <section style={S.section} aria-labelledby="upcoming-heading">
-            <div style={S.sectionHead}>
-              <CalendarClock size={18} color="var(--primary)" aria-hidden="true" />
-              <h2 id="upcoming-heading" style={S.sectionTitle}>Coming up</h2>
-              <span style={S.countPill}>{upcoming.length}</span>
-            </div>
-
-            {upcoming.length === 0 ? (
-              <div style={S.emptyBox}>
-                <CalendarDays size={30} color="var(--text-muted)" aria-hidden="true" />
-                <div style={S.emptyTitle}>No upcoming papers</div>
-                <div style={S.emptySub}>Scheduled assessments show here with a countdown to their start.</div>
-              </div>
-            ) : (
-              <div style={S.upList}>
-                {upcoming.map((u) => {
-                  const parts = u._start ? splitCountdown(u._start - now) : null;
-                  const dateObj = u._start ? new Date(u._start) : null;
-                  const tiles = parts
-                    ? [
-                        ...(parts.d > 0 ? [["Days", parts.d]] : []),
-                        ["Hours", pad2(parts.h)],
-                        ["Minutes", pad2(parts.m)],
-                        ["Seconds", pad2(parts.s)],
-                      ]
-                    : null;
-                  return (
-                    <article key={u.id} className="up-row" style={S.upRow}>
-                      <div style={S.dateBlock} aria-hidden="true">
-                        {dateObj ? (
-                          <>
-                            <span style={S.dateDay}>{dateObj.getDate()}</span>
-                            <span style={S.dateMonth}>{dateObj.toLocaleString([], { month: "short" })}</span>
-                          </>
-                        ) : (
-                          <CalendarDays size={28} color="var(--primary)" />
-                        )}
-                      </div>
-
-                      <div style={{ minWidth: 0 }}>
-                        <h3 style={S.upTitle}>{u.title}</h3>
-                        <p style={S.upMeta}>
-                          {u.subject && (<span style={S.metaItem}><BookOpen size={14} aria-hidden="true" /> {u.subject}</span>)}
-                          <span style={S.metaItem}>
-                            <CalendarClock size={14} aria-hidden="true" />{" "}
-                            {u.start_label ? u.start_label.replace("T", " at ") : u._start ? fmtWhen(u._start) : "Date to be announced"}
-                          </span>
-                          {u.duration_minutes ? (
-                            <span style={S.metaItem}><Clock size={14} aria-hidden="true" /> {u.duration_minutes} minutes</span>
-                          ) : null}
-                        </p>
-                      </div>
-
-                      <div className="up-clock" style={S.clock}>
-                        {tiles ? (
-                          <>
-                            <span style={S.clockLead}>Starts in</span>
-                            {tiles.map(([label, value]) => (
-                              <div key={label} style={S.clockTile}>
-                                <span style={S.clockNum}>{value}</span>
-                                <span style={S.clockLabel}>{label}</span>
-                              </div>
-                            ))}
-                          </>
-                        ) : (
-                          <span style={S.awaiting}>Waiting for a start time</span>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
         </>
       )}
     </main>
@@ -451,9 +338,8 @@ export default function TakeAssessmentPicker() {
    STYLES
 ========================================================= */
 const S = {
-  // Full width of the page (no max-width cap).
   main: {
-    padding: "28px 40px 64px",
+    padding: "32px 40px 64px",
     background: "var(--bg)",
     color: "var(--text)",
     minHeight: "100vh",
@@ -461,13 +347,13 @@ const S = {
     boxSizing: "border-box",
     width: "100%",
   },
-  pageHeader: { display: "flex", alignItems: "center", gap: 16, marginBottom: 28 },
+  pageHeader: { display: "flex", alignItems: "center", gap: 18, marginBottom: 32 },
   headerIcon: {
-    width: 52, height: 52, borderRadius: 14, background: "var(--primary-tint)",
+    width: 60, height: 60, borderRadius: 16, background: "var(--primary-tint)",
     display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
-  pageTitle: { margin: 0, fontSize: 28, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em" },
-  pageSub: { margin: "4px 0 0", fontSize: 14.5, color: "var(--text-secondary)", fontWeight: 500, lineHeight: 1.5 },
+  pageTitle: { margin: 0, fontSize: 32, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em" },
+  pageSub: { margin: "6px 0 0", fontSize: 16, color: "var(--text-secondary)", fontWeight: 500, lineHeight: 1.5 },
 
   errorBanner: {
     display: "flex", alignItems: "center", gap: 10, background: "var(--destructive-tint)",
@@ -480,61 +366,61 @@ const S = {
   },
   loadingState: {
     display: "flex", alignItems: "center", gap: 10, padding: "48px 0",
-    color: "var(--text-secondary)", fontSize: 15, fontWeight: 600,
+    color: "var(--text-secondary)", fontSize: 16, fontWeight: 600,
   },
 
-  section: { marginBottom: 36 },
-  sectionHead: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16 },
-  sectionTitle: { margin: 0, fontSize: 20, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
-  sectionNote: { fontSize: 14, color: "var(--text-secondary)", fontWeight: 600, marginLeft: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  liveDot: { width: 10, height: 10, borderRadius: "50%", background: "var(--success)", display: "inline-block", flexShrink: 0 },
+  section: { marginBottom: 40 },
+  sectionHead: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 },
+  sectionTitle: { margin: 0, fontSize: 24, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.01em" },
+  sectionNote: { fontSize: 15, color: "var(--text-secondary)", fontWeight: 600, marginLeft: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  liveDot: { width: 12, height: 12, borderRadius: "50%", background: "var(--success)", display: "inline-block", flexShrink: 0 },
   countPill: {
     background: "var(--card)", border: "1px solid var(--border)", borderRadius: 20,
-    padding: "2px 11px", fontSize: 13, fontWeight: 800, color: "var(--text-secondary)",
+    padding: "3px 13px", fontSize: 14, fontWeight: 800, color: "var(--text-secondary)",
   },
 
   emptyBox: {
-    display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 8,
-    padding: "44px 24px", background: "var(--card)", border: "1px dashed var(--border)",
+    display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10,
+    padding: "64px 24px", background: "var(--card)", border: "1px dashed var(--border)",
     borderRadius: "var(--radius)",
   },
-  emptyTitle: { fontSize: 16, fontWeight: 800, color: "var(--text)" },
-  emptySub: { fontSize: 14, color: "var(--text-secondary)", fontWeight: 500 },
+  emptyTitle: { fontSize: 20, fontWeight: 800, color: "var(--text)" },
+  emptySub: { fontSize: 15, color: "var(--text-secondary)", fontWeight: 500 },
 
-  /* ── open now: large cards that fill the row ── */
+  /* ── open now: extra-large cards ── */
   activeCard: {
     display: "flex", background: "var(--card)", border: "1px solid var(--border)",
-    borderRadius: 16, overflow: "hidden", cursor: "pointer", boxShadow: "var(--shadow-sm)",
+    borderRadius: 20, overflow: "hidden", cursor: "pointer", boxShadow: "var(--shadow-sm)",
   },
-  activeCardSel: { borderColor: "var(--primary)", boxShadow: "0 0 0 2px var(--primary-tint)" },
-  activeAccent: { width: 6, background: "var(--success)", flexShrink: 0 },
-  activeBody: { flex: 1, minWidth: 0, padding: "22px 24px 24px", display: "flex", flexDirection: "column" },
-  cardTopRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14 },
+  activeCardSel: { borderColor: "var(--primary)", boxShadow: "0 0 0 3px var(--primary-tint)" },
+  activeAccent: { width: 8, background: "var(--success)", flexShrink: 0 },
+  activeBody: { flex: 1, minWidth: 0, padding: "32px 34px 34px", display: "flex", flexDirection: "column" },
+  cardTopRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 20 },
   openChip: {
-    display: "inline-flex", alignItems: "center", gap: 7, background: "var(--success-tint)",
-    color: "var(--success)", borderRadius: 20, padding: "5px 12px", fontSize: 13, fontWeight: 800,
+    display: "inline-flex", alignItems: "center", gap: 8, background: "var(--success-tint)",
+    color: "var(--success)", borderRadius: 20, padding: "7px 16px", fontSize: 15, fontWeight: 800,
   },
-  chipDot: { width: 8, height: 8, borderRadius: "50%", background: "var(--success)", display: "inline-block" },
-  durationChip: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 700, color: "var(--text-secondary)" },
-  cardTitle: { margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text)", lineHeight: 1.3, letterSpacing: "-0.01em", wordBreak: "break-word" },
-  cardSubject: { display: "flex", alignItems: "center", gap: 7, margin: "8px 0 0", fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" },
+  chipDot: { width: 10, height: 10, borderRadius: "50%", background: "var(--success)", display: "inline-block" },
+  durationChip: { display: "inline-flex", alignItems: "center", gap: 7, fontSize: 16, fontWeight: 700, color: "var(--text-secondary)" },
+  cardTitle: { margin: 0, fontSize: 30, fontWeight: 800, color: "var(--text)", lineHeight: 1.25, letterSpacing: "-0.015em", wordBreak: "break-word" },
+  cardSubject: { display: "flex", alignItems: "center", gap: 9, margin: "12px 0 0", fontSize: 18, fontWeight: 600, color: "var(--text-secondary)" },
   timeBox: {
-    display: "flex", alignItems: "center", gap: 14, marginTop: 20, padding: "14px 16px",
-    background: "var(--success-tint)", borderRadius: 12,
+    display: "flex", alignItems: "center", gap: 18, marginTop: 28, padding: "20px 22px",
+    background: "var(--success-tint)", borderRadius: 16,
   },
   timeBoxUrgent: { background: "var(--warning-tint)" },
-  timeLabel: { fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" },
-  timeValue: { marginTop: 2, fontSize: 24, fontWeight: 800, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em" },
-  cardActions: { display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" },
+  timeLabel: { fontSize: 15, fontWeight: 700, color: "var(--text-secondary)" },
+  timeValue: { marginTop: 4, fontSize: 38, fontWeight: 800, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.015em", lineHeight: 1.1 },
+  cardActions: { display: "flex", gap: 12, marginTop: 30, flexWrap: "wrap" },
   takeBtn: {
-    flex: "1 1 180px", display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
-    padding: "14px 20px", borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff",
-    fontSize: 15.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
+    flex: "1 1 220px", display: "flex", alignItems: "center", justifyContent: "center", gap: 11,
+    padding: "20px 26px", borderRadius: 14, border: "none", background: "var(--primary)", color: "#fff",
+    fontSize: 19, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
   },
   ghostBtn: {
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "14px 18px",
-    borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)",
-    color: "var(--text-secondary)", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "20px 24px",
+    borderRadius: 14, border: "1px solid var(--border)", background: "var(--card)",
+    color: "var(--text-secondary)", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
   },
   ghostBtnSel: { borderColor: "var(--primary)", color: "var(--primary)", background: "var(--primary-tint)" },
 
@@ -544,32 +430,4 @@ const S = {
     border: "1px solid var(--border)", boxShadow: "var(--shadow)", background: "var(--card)",
   },
   coverFrame: { width: "100%", height: "100%", border: "none", display: "block" },
-
-  /* ── coming up: full-width rows with a date block and countdown tiles ── */
-  upList: { display: "flex", flexDirection: "column", gap: 14 },
-  upRow: {
-    background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16,
-    padding: "20px 24px", boxShadow: "var(--shadow-sm)",
-  },
-  dateBlock: {
-    width: 84, height: 84, borderRadius: 14, background: "var(--primary-tint)",
-    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
-  },
-  dateDay: { fontSize: 32, fontWeight: 800, color: "var(--primary)", lineHeight: 1, fontVariantNumeric: "tabular-nums" },
-  dateMonth: { fontSize: 14, fontWeight: 700, color: "var(--primary)" },
-  upTitle: { margin: 0, fontSize: 20, fontWeight: 800, color: "var(--text)", lineHeight: 1.3, letterSpacing: "-0.01em", wordBreak: "break-word" },
-  upMeta: { margin: "8px 0 0", display: "flex", flexWrap: "wrap", gap: "6px 20px", fontSize: 14, fontWeight: 600, color: "var(--text-secondary)" },
-  metaItem: { display: "inline-flex", alignItems: "center", gap: 6 },
-  clock: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" },
-  clockLead: { fontSize: 14, fontWeight: 700, color: "var(--text-secondary)", marginRight: 4 },
-  clockTile: {
-    minWidth: 72, padding: "10px 12px", borderRadius: 12, background: "var(--bg)",
-    border: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-  },
-  clockNum: { fontSize: 26, fontWeight: 800, color: "var(--primary)", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 },
-  clockLabel: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)" },
-  awaiting: {
-    padding: "10px 16px", borderRadius: 12, background: "var(--warning-tint)", color: "var(--warning)",
-    fontSize: 14, fontWeight: 700,
-  },
 };
