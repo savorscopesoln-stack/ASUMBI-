@@ -240,9 +240,6 @@ const markInfo = (m, gradingSystem) => {
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—";
 
-const fmtDateTime = (d) =>
-  d ? new Date(d).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
-
 const TABS = [
   { label: "Assessments",     icon: IconClipboardList },
   { label: "Submissions",     icon: IconFileText },
