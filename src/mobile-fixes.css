@@ -197,3 +197,39 @@ canvas {
     overflow-x: auto;
   }
 }
+
+/* ============================================================
+   PHONE FIXES (round 2)
+============================================================ */
+@media (max-width: 900px) {
+  /* The sidebar sets `zIndex: 10` INLINE, which beats the stylesheet's
+     `z-index: 60`. The gray backdrop (55) then sat ON TOP of the open menu —
+     the menu looked gray and no tap reached it. `!important` is the only way
+     for a stylesheet to beat an inline style. */
+  .dash-sidebar { z-index: 1000 !important; }
+  .dash-backdrop.open { z-index: 900 !important; }
+  .dash-page-header { z-index: 450 !important; }
+
+  /* Headings / big numbers were sized for a desktop. Scale them for a phone
+     (inline pixel sizes need attribute selectors + !important to override). */
+  .dash-main h1 { font-size: 21px !important; line-height: 1.25 !important; }
+  .dash-main h2 { font-size: 17px !important; }
+  .dash-main h3 { font-size: 15px !important; }
+  .dash-main [style*="font-size: 32px"], .dash-main [style*="font-size:32px"],
+  .dash-main [style*="font-size: 30px"], .dash-main [style*="font-size:30px"],
+  .dash-main [style*="font-size: 28px"], .dash-main [style*="font-size:28px"] { font-size: 22px !important; }
+  .dash-main [style*="font-size: 26px"], .dash-main [style*="font-size:26px"],
+  .dash-main [style*="font-size: 24px"], .dash-main [style*="font-size:24px"] { font-size: 20px !important; }
+  .dash-main [style*="font-size: 22px"], .dash-main [style*="font-size:22px"],
+  .dash-main [style*="font-size: 20px"], .dash-main [style*="font-size:20px"] { font-size: 17px !important; }
+  .dash-main [style*="font-size: 18px"], .dash-main [style*="font-size:18px"] { font-size: 15px !important; }
+
+  /* the user name / role card in the page header */
+  .dash-page-header .dash-profile-card { max-width: 100%; min-width: 0; }
+  .dash-page-header [style*="font-size: 20px"], .dash-page-header [style*="font-size:20px"] { font-size: 15px !important; }
+}
+
+@media (max-width: 480px) {
+  .dash-main { padding-left: 12px !important; padding-right: 12px !important; }
+  .dash-page-header { margin-left: -12px !important; margin-right: -12px !important; padding-left: 12px !important; padding-right: 12px !important; }
+}
