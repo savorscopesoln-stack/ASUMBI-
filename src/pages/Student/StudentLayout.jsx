@@ -321,7 +321,7 @@ export default function StudentLayout() {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button
               className="dash-mobile-toggle dash-icon-btn"
-              onClick={() => setMobileOpen(true)}
+              onClick={() => { setSidebarCollapsed(false); setMobileOpen(true); }}
               aria-label="Open menu"
               style={S.mobileToggleBtn}
             >

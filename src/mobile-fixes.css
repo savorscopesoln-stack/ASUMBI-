@@ -23,16 +23,29 @@
   box-sizing: border-box;
 }
 
+/* NOTE: `overflow-x: hidden` on html/body/#root silently turns them into
+   scroll containers, which breaks `position: sticky` (the phone header with
+   the menu button scrolled away). `clip` stops sideways scroll WITHOUT
+   creating a scroll container; `hidden` is only the fallback for very old
+   browsers. */
 html,
 body {
   max-width: 100%;
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   max-width: 100%;
-  overflow-x: hidden;
+}
+
+@supports (overflow: clip) {
+  html,
+  body {
+    overflow-x: clip;
+  }
 }
 
 /* ---- media never overflows its container ---- */
@@ -103,8 +116,8 @@ canvas {
    (those are deliberate horizontal scrollers — e.g. a chip/tab
    strip — and should keep scrolling, not wrap). ---- */
 @media (max-width: 640px) {
-  [style*="display: flex"]:not([style*="overflow-x"]):not([style*="overflowX"]),
-  [style*="display:flex"]:not([style*="overflow-x"]):not([style*="overflowX"]) {
+  [style*="display: flex"]:not([style*="overflow-x"]):not([style*="overflowX"]):not([style*="flex-direction: column"]):not([style*="flex-direction:column"]),
+  [style*="display:flex"]:not([style*="overflow-x"]):not([style*="overflowX"]):not([style*="flex-direction: column"]):not([style*="flex-direction:column"]) {
     flex-wrap: wrap !important;
   }
 }
@@ -122,5 +135,65 @@ canvas {
   [style*="width:480px"] {
     width: 100% !important;
     max-width: 100% !important;
+  }
+}
+
+
+/* ============================================================
+   PORTAL LAYOUTS (admin / student / teacher) ON PHONES
+   ------------------------------------------------------------
+   Shared by Dashboard.jsx, StudentLayout.jsx and TeacherLayout.jsx.
+   Below 900px the sidebar becomes a slide-in drawer opened by the
+   hamburger button. These rules make that drawer + header reliable:
+     • the drawer never wraps its menu into hidden extra columns
+     • the drawer fits the REAL visible screen height (100dvh) so the
+       bottom of the menu / Log out isn't hidden behind the browser bar
+     • the page itself scrolls (not an inner box), so the sticky header
+       with the menu button stays on screen
+============================================================ */
+@media (max-width: 900px) {
+  .dash-sidebar {
+    flex-wrap: nowrap !important;
+    width: min(280px, 86vw) !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: max(18px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .dash-sidebar nav {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* let the page scroll, not <main> — keeps sticky headers working */
+  .dash-main {
+    overflow: visible !important;
+    overflow-y: visible !important;
+    width: 100%;
+  }
+
+  /* menu button must always be tappable (44px target) */
+  .dash-mobile-toggle {
+    min-width: 40px;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* sticky header with the hamburger — now also on the admin portal */
+  .dash-page-header {
+    position: sticky;
+    top: 0;
+    z-index: 45;
+  }
+
+  /* wide data tables scroll sideways inside themselves, never the page */
+  .dash-main table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
   }
 }

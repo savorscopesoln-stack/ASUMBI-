@@ -115,6 +115,12 @@ const injectStyles = () => {
       .dash-mobile-toggle { display: inline-flex !important; }
       .dash-backdrop.open { display: block; position: fixed; inset: 0; background: rgba(15,17,21,0.45); z-index: 55; }
       .dash-main { padding: 20px 16px 48px !important; }
+      .dash-page-header {
+        margin: -20px -16px 16px !important;
+        padding: 14px 16px !important;
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+      }
       .dash-two-col { grid-template-columns: 1fr !important; }
     }
     @media (max-width: 1180px) and (min-width: 901px) {
@@ -820,7 +826,7 @@ function Dashboard() {
       <main className="dash-main" style={D.main}>
 
         {/* ── Header ── */}
-        <header style={D.pageHeader}>
+        <header className="dash-page-header" style={D.pageHeader}>
           <button
           type="button"
           className="dash-profile-card"
@@ -842,7 +848,7 @@ function Dashboard() {
           <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
             <button
               className="dash-mobile-toggle dash-icon-btn"
-              onClick={() => setMobileOpen(true)}
+              onClick={() => { setSidebarCollapsed(false); setMobileOpen(true); }}
               aria-label="Open menu"
               style={D.mobileToggleBtn}
             >
