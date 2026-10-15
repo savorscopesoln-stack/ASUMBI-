@@ -249,6 +249,7 @@ const TABS = [
   { label: "Local Sync",      icon: IconServer },
   { label: "Grading System",  icon: IconGraduationCap },
   { label: "Activity Log",    icon: IconFileText },
+  { label: "Students",        icon: IconUserPlus },
 ];
 
 /* ═══════════════════════════════════════════════════════════
@@ -1790,6 +1791,7 @@ export default function AdminEAssessments() {
       {activeTab === 5 && <LocalSyncPanel assessments={list} />}
 
       {activeTab === 7 && <ActivityLogTab assessments={list} />}
+      {activeTab === 8 && <StudentActivationPanel showToast={showToast} />}
 
       {activeTab === 6 && (
         <GradingSystemTab
@@ -2943,7 +2945,7 @@ const ACTION_LABELS = {
   open_script_for_marking: "Opened script to mark", open_all_scripts_for_marking: "Opened all scripts to mark",
   save_marking: "Saved marking", save_marking_bulk: "Saved marking (bulk)",
   review_assessment: "Approved / rejected assessment", start_stop_assessment: "Started / stopped assessment",
-  set_student_access: "Trainee access / schedule", set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", set_seb_settings: "Safe Exam Browser setting", unlock_device: "Unlocked device", grant_resit: "Granted resit",
+  set_student_access: "Trainee access / schedule", set_student_status: "Activated / deactivated students (all assessments)", set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", set_seb_settings: "Safe Exam Browser setting", unlock_device: "Unlocked device", grant_resit: "Granted resit",
   cancel_resit: "Cancelled resit", assign_teacher: "Assigned teacher", assign_submission: "Assigned script",
   bulk_assign_submissions: "Assigned scripts (bulk)", review_remark_request: "Reviewed remark request",
   release_marks: "Released marks", bulk_release_marks: "Released marks (bulk)", update_grading_system: "Updated grading system",
@@ -3651,6 +3653,154 @@ function AccessScheduleForm({ a, data, onSave }) {
 
       {err && <div style={{ color: C.danger || "#b45309", fontSize: 12.5, marginTop: 6 }}>{err}</div>}
       <SaveButton onClick={submit} loading={saving} label="Save" />
+    </div>
+  );
+}
+
+
+/* "Students" tab: search every detail of every student and Activate /
+   Deactivate them. A deactivated student is blocked from ALL e-assessments
+   (their portal account itself is untouched). */
+function StudentActivationPanel({ showToast }) {
+  const C = useC();
+  const [rows, setRows] = useState(null);
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all"); // all | active | deactivated
+  const [picked, setPicked] = useState(() => new Set());
+  const [busy, setBusy] = useState(false);
+  const MAX_ROWS = 300;
+
+  useEffect(() => {
+    let live = true;
+    API.get("/e-assessments/admin/students-activation")
+      .then((r) => { if (live) setRows(r.data?.students || []); })
+      .catch((err) => { if (live) { setRows([]); showToast(err?.response?.data?.message || "Failed to load students", "error"); } });
+    return () => { live = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const shown = useMemo(() => {
+    const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return (rows || []).filter((s) => {
+      if (filter === "active" && s.deactivated) return false;
+      if (filter === "deactivated" && !s.deactivated) return false;
+      if (!terms.length) return true;
+      // every typed word must match SOME detail of the student
+      const hay = [s.name, s.admissionNo, s.username, s.studentClass, s.yearOfStudy, s.gender, s.email, s.phone,
+        s.assessmentNumber, s.status, s.deactivated ? "deactivated inactive" : "active"]
+        .map((v) => String(v ?? "").toLowerCase()).join(" ");
+      return terms.every((t) => hay.includes(t));
+    });
+  }, [rows, q, filter]);
+
+  const counts = useMemo(() => {
+    const all = rows || [];
+    const off = all.filter((s) => s.deactivated).length;
+    return { all: all.length, deactivated: off, active: all.length - off };
+  }, [rows]);
+
+  const apply = async (ids, active) => {
+    if (!ids.length || busy) return;
+    setBusy(true);
+    try {
+      const res = await API.put("/e-assessments/admin/students-activation/status", { student_ids: ids, active });
+      const set = new Set(ids);
+      setRows((prev) => prev.map((s) => (set.has(s.id) ? { ...s, deactivated: !active } : s)));
+      setPicked((p) => { const n = new Set(p); ids.forEach((i) => n.delete(i)); return n; });
+      showToast(res.data?.message || "Saved");
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to update", "error");
+    } finally { setBusy(false); }
+  };
+
+  const toggle = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const visible = shown.slice(0, MAX_ROWS);
+  const allVisiblePicked = visible.length > 0 && visible.every((s) => picked.has(s.id));
+  const toggleVisible = () => setPicked((p) => {
+    const n = new Set(p);
+    if (allVisiblePicked) visible.forEach((s) => n.delete(s.id)); else visible.forEach((s) => n.add(s.id));
+    return n;
+  });
+  const pickedIds = [...picked];
+
+  const chip = (key, label, n) => (
+    <button type="button" onClick={() => setFilter(key)} style={{
+      padding: "5px 11px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer",
+      border: `1px solid ${filter === key ? C.accent : C.border}`,
+      background: filter === key ? C.accent : C.bgAlt, color: filter === key ? "#fff" : C.textSec,
+    }}>{label} ({n})</button>
+  );
+  const th = { textAlign: "left", padding: "8px 10px", fontSize: 11, fontWeight: 700, color: C.textMuted, borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" };
+  const td = { padding: "8px 10px", fontSize: 12.5, color: C.textPri, borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" };
+
+  if (rows === null) return <div style={{ padding: 20, textAlign: "center", fontSize: 13 }}>Loading…</div>;
+
+  return (
+    <div>
+      <div style={{ marginBottom: 18 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: C.textPri }}>Students</h2>
+          <p style={{ margin: "6px 0 0", color: C.textSec, fontSize: 13, maxWidth: 640, lineHeight: 1.6 }}>
+            Deactivating a student blocks them from <b>all</b> e-assessments — they won't see, sign in to or start any paper.
+            Their portal account is not affected. Search by name, admission no., username, class, phone, email… anything.
+          </p>
+        </div>
+      </div>
+      <div style={{ position: "relative", marginBottom: 10 }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search any detail…"
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bgAlt, color: C.textPri, fontSize: 13.5, outline: "none", boxSizing: "border-box" }} />
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {chip("all", "All", counts.all)}{chip("active", "Active", counts.active)}{chip("deactivated", "Deactivated", counts.deactivated)}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <MiniBtn tone="success" disabled={busy || !pickedIds.length} onClick={() => apply(pickedIds, true)}>Activate selected ({pickedIds.length})</MiniBtn>
+          <MiniBtn tone="danger" disabled={busy || !pickedIds.length} onClick={() => apply(pickedIds, false)}>Deactivate selected ({pickedIds.length})</MiniBtn>
+        </div>
+      </div>
+
+      <div style={{ overflow: "auto", maxHeight: "60vh", border: `1px solid ${C.border}`, borderRadius: 8 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead style={{ position: "sticky", top: 0, background: C.card, zIndex: 1 }}>
+            <tr>
+              <th style={th}><input type="checkbox" checked={allVisiblePicked} onChange={toggleVisible} style={{ accentColor: C.accent }} /></th>
+              <th style={th}>Name</th><th style={th}>Admission No.</th><th style={th}>Username</th><th style={th}>Class</th>
+              <th style={th}>Year</th><th style={th}>Gender</th><th style={th}>Phone</th><th style={th}>Email</th>
+              <th style={th}>Status</th><th style={th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.length === 0 && (
+              <tr><td colSpan={11} style={{ ...td, textAlign: "center", color: C.textMuted, padding: 18 }}>No students match.</td></tr>
+            )}
+            {visible.map((s) => (
+              <tr key={s.id} style={{ opacity: s.deactivated ? 0.7 : 1 }}>
+                <td style={td}><input type="checkbox" checked={picked.has(s.id)} onChange={() => toggle(s.id)} style={{ accentColor: C.accent }} /></td>
+                <td style={{ ...td, fontWeight: 600 }}>{s.name || "—"}</td>
+                <td style={td}>{s.admissionNo || "—"}</td>
+                <td style={td}>{s.username || "—"}</td>
+                <td style={td}>{s.studentClass || "—"}</td>
+                <td style={td}>{s.yearOfStudy ?? "—"}</td>
+                <td style={td}>{s.gender || "—"}</td>
+                <td style={td}>{s.phone || "—"}</td>
+                <td style={td}>{s.email || "—"}</td>
+                <td style={td}>
+                  <span style={{ fontWeight: 700, color: s.deactivated ? C.danger : C.success }}>{s.deactivated ? "Deactivated" : "Active"}</span>
+                  {!s.account_active && <div style={{ fontSize: 10.5, color: C.textMuted }}>account inactive</div>}
+                </td>
+                <td style={td}>
+                  {s.deactivated
+                    ? <MiniBtn tone="success" disabled={busy} onClick={() => apply([s.id], true)}>Activate</MiniBtn>
+                    : <MiniBtn tone="danger" disabled={busy} onClick={() => apply([s.id], false)}>Deactivate</MiniBtn>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 6 }}>
+        {shown.length} shown{shown.length > MAX_ROWS ? ` · first ${MAX_ROWS} displayed — type in the search box to narrow the list` : ""}
+      </div>
     </div>
   );
 }
