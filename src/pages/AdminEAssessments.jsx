@@ -3163,6 +3163,59 @@ function downloadSessionsCsv(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
+// PDF report of device sessions (landscape A4) — one table per group, coloured by group.
+async function downloadSessionsPdf(rows, filename, title = "Device Sessions") {
+  const [{ default: jsPDF }, atMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+  const autoTable = atMod.default || atMod.autoTable;
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const rgb = { active: [22, 163, 74], locked: [220, 38, 38], not_started: [100, 116, 139], submitted: [37, 99, 235] };
+  doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(20);
+  doc.text(title, 40, 40);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(110);
+  doc.text(`Generated ${new Date().toLocaleString()}  ·  ${rows.length} device${rows.length === 1 ? "" : "s"}`, 40, 55);
+
+  // summary counts in group colours
+  let x = 40;
+  GROUPS.forEach((g) => {
+    const n = rows.filter((r) => r.group === g.key).length;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(...rgb[g.key]);
+    doc.text(String(n), x, 82);
+    doc.setFontSize(9); doc.text(g.title.toUpperCase(), x + doc.getTextWidth(String(n)) + 6, 82);
+    x += 130;
+  });
+
+  let y = 98;
+  GROUPS.forEach((g) => {
+    const list = rows.filter((r) => r.group === g.key);
+    if (!list.length) return;
+    const c = rgb[g.key];
+    autoTable(doc, {
+      startY: y,
+      margin: { left: 40, right: 40 },
+      head: [[{ content: `${g.title} (${list.length})`, colSpan: 7, styles: { fillColor: c, textColor: 255, fontSize: 10 } }],
+        ["Student", "Class", "Assessment", "Step", g.key === "locked" ? "Lock reason" : "Time / Status", "Device", "Photos"]],
+      body: list.map((r) => [
+        r.student_name || `#${r.student_id}`, r.student_class || "—", r.assessment_title || "—",
+        `${r.step}/4 ${STEP_NAMES[(r.step || 1) - 1]}`,
+        g.key === "locked" ? `${r.lock_reason || "No reason recorded"}${r.locked_at ? " (" + new Date(r.locked_at).toLocaleString() + ")" : ""}`
+          : g.key === "submitted" ? `${r.auto_submitted ? "Auto-submitted" : "By student"}${r.submitted_at ? " · " + new Date(r.submitted_at).toLocaleString() : ""}`
+          : g.key === "active" ? `${timeLeftText(r)} · ${r.connection === "online" ? "Online" : "No signal"}` : (r.step_label || "—"),
+        r.device_label || "—", r.photo_count || 0,
+      ]),
+      styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
+      headStyles: { fillColor: [241, 245, 249], textColor: 40, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [250, 250, 252] },
+      didDrawPage: () => {
+        doc.setFontSize(8); doc.setTextColor(140);
+        doc.text(`Page ${doc.internal.getNumberOfPages()}`, W - 70, doc.internal.pageSize.getHeight() - 18);
+      },
+    });
+    y = doc.lastAutoTable.finalY + 18;
+  });
+  doc.save(filename);
+}
+
 function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCancelResit, onPhotos }) {
   const C = useC();
   const [q, setQ] = useState("");
@@ -3277,16 +3330,16 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
 
   return (
     <>
-      {/* counts — click one to jump to its group */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
+      {/* counts — bold coloured numbers, click one to jump to its group */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 36px", marginBottom: 16, alignItems: "baseline" }}>
         {GROUPS.map((g) => {
           const color = g.tone === "neutral" ? C.textSec : C[g.tone];
           return (
-            <button key={g.key} type="button" className="dash-card"
+            <button key={g.key} type="button"
               onClick={() => { setOpen((o) => ({ ...o, [g.key]: true })); document.getElementById(`dev-group-${g.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
-              style={{ textAlign: "left", cursor: "pointer", background: C.card, border: `1px solid ${C.border}`, borderLeft: `4px solid ${color}`, borderRadius: 10, padding: "12px 14px", fontFamily: "inherit" }}>
-              <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1 }}>{byGroup[g.key].length}{byGroup[g.key].length !== totals[g.key] ? <span style={{ fontSize: 13, fontWeight: 600, color: C.textMuted }}> / {totals[g.key]}</span> : null}</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginTop: 4 }}>{g.title}</div>
+              style={{ display: "inline-flex", alignItems: "baseline", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", color }}>
+              <span style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color }}>{byGroup[g.key].length}{byGroup[g.key].length !== totals[g.key] ? <span style={{ fontSize: 15, fontWeight: 700, opacity: 0.7 }}> / {totals[g.key]}</span> : null}</span>
+              <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color }}>{g.title}</span>
             </button>
           );
         })}
@@ -3302,6 +3355,8 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
         {(q || assessmentId) && <MiniBtn neutral onClick={() => { setQ(""); setAssessmentId(""); }}>Clear</MiniBtn>}
         <MiniBtn neutral icon={<IconDownload size={12} />} disabled={!filtered.length} title="One report with every group"
           onClick={() => downloadSessionsCsv(filtered, `device-sessions-all-${stamp}.csv`)}>Download all (CSV)</MiniBtn>
+        <MiniBtn neutral icon={<IconDownload size={12} />} disabled={!filtered.length} title="One PDF with every group"
+          onClick={() => downloadSessionsPdf(filtered, `device-sessions-all-${stamp}.pdf`, "Device Sessions — All Groups")}>Download all (PDF)</MiniBtn>
       </div>
 
       {GROUPS.map((g) => {
@@ -3327,6 +3382,8 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
               )}
               <MiniBtn neutral icon={<IconDownload size={12} />} disabled={!rows.length} title={`Download the ${g.title} group${filterNote}`}
                 onClick={() => downloadSessionsCsv(rows, `device-sessions-${g.key.replace("_", "-")}-${stamp}.csv`)}>Download CSV</MiniBtn>
+              <MiniBtn neutral icon={<IconDownload size={12} />} disabled={!rows.length} title={`Download the ${g.title} group as PDF${filterNote}`}
+                onClick={() => downloadSessionsPdf(rows, `device-sessions-${g.key.replace("_", "-")}-${stamp}.pdf`, `Device Sessions — ${g.title}`)}>Download PDF</MiniBtn>
             </div>
 
             {isOpen && (rows.length === 0 ? (
