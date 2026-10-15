@@ -1042,6 +1042,20 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
+  // Unlock many locked sessions in one go (explicit list of session ids — what
+  // is on screen after search/filter, or what the admin ticked).
+  const bulkUnlock = async (sessionIds) => {
+    if (!sessionIds.length) return;
+    try {
+      setSaving(true);
+      const res = await API.put("/e-assessments/admin/exam-sessions/unlock-bulk", { sessionIds });
+      showToast(res.data?.message || `${res.data?.unlocked ?? sessionIds.length} unlocked — students will see a Resume button`);
+      loadAll();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Bulk unlock failed", "error");
+    } finally { setSaving(false); }
+  };
+
   // Allow / revoke one rejected phone-or-tablet for the Desktop-only switch.
   const changeDeviceAccess = async (row, allow) => {
     try {
@@ -1708,61 +1722,23 @@ export default function AdminEAssessments() {
             <div>
               <h2 style={sx.tabTitle}>Device Locks</h2>
               <p style={sx.tabSub}>
-                Each student's exam token is bound to the first device it's used on. If a token is used
-                on a second device the session locks automatically — unlock it here once you've confirmed
-                which device the student should continue on.
+                Every device, grouped by where it is: Active, Locked, Not started and Submitted — with the
+                step each one has reached. A student's token is bound to the first device it's used on; if
+                it's used on a second device the session locks. Unlock one or many here once you've
+                confirmed which device each student should continue on. A locked device's saved answers are
+                submitted automatically when the time ends.
               </p>
             </div>
           </div>
 
-          {examSessions.length === 0 ? (
-            <EmptyState icon={<IconUnlock size={26} />} text="No active exam sessions right now." />
-          ) : (
-            <div className="dash-card" style={sx.tableWrap}>
-              <table style={sx.table}>
-                <thead>
-                  <tr>{["Student","Assessment","Token","Status","Lock reason","Device","Last Activity","Photos","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
-                </thead>
-                <tbody>
-                  {examSessions.map((sess) => (
-                    <tr key={sess.id} className="row-hover">
-                      <Td><span style={{ fontWeight: 600, color: C.textPri }}>{sess.student_name || `#${sess.student_id}`}</span></Td>
-                      <Td style={{ color: C.textSec, fontSize: 13 }}>{sess.assessment_title || "—"}</Td>
-                      <Td><span style={{ fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", color: C.textPri }}>{sess.token}</span></Td>
-                      <Td>
-                        {sess.status === "locked" && <Chip icon={<IconLock size={11} />} text="Locked" tone="danger" />}
-                        {sess.status === "active" && <Chip icon={<IconDot size={7} />} text="Active" tone="success" />}
-                        {sess.status === "issued" && (sess.resit_allowed
-                          ? <Chip text={`Resit granted${sess.attempt_no > 1 ? ` · attempt ${sess.attempt_no}` : ""}`} tone="success" />
-                          : <Chip text="Not started" tone="neutral" />)}
-                      </Td>
-                      <Td style={{ color: sess.status === "locked" ? C.danger || "#dc2626" : C.textMuted, fontSize: 12, maxWidth: 260, fontWeight: sess.status === "locked" ? 600 : 400 }}>
-                        {sess.status === "locked" ? (<>{sess.lock_reason || "No reason recorded"}{sess.locked_at ? <div style={{ fontWeight: 400, color: C.textMuted, marginTop: 2 }}>{fmtDateTime(sess.locked_at)}</div> : null}</>) : "—"}
-                      </Td>
-                      <Td style={{ color: C.textMuted, fontSize: 12, maxWidth: 220 }}>{sess.device_label || "—"}</Td>
-                      <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(sess.last_heartbeat || sess.activated_at)}</Td>
-                      <Td>
-                        {sess.photo_count > 0 ? (
-                          <MiniBtn neutral icon={<Camera size={12} />} onClick={() => openPhotoModal(sess.e_assessment_id, sess.student_id, sess.student_name)}>{sess.photo_count}</MiniBtn>
-                        ) : (
-                          <span style={{ color: C.textMuted, fontSize: 12 }}>—</span>
-                        )}
-                      </Td>
-                      <Td>
-                        {sess.status === "locked" ? (
-                          <MiniBtn tone="success" icon={<IconUnlock size={12} />} onClick={() => unlockSession(sess.id)}>Unlock</MiniBtn>
-                        ) : (sess.status === "issued" && sess.resit_allowed) ? (
-                          <MiniBtn tone="warning" onClick={() => cancelResit(sess)}>Cancel resit</MiniBtn>
-                        ) : (
-                          <span style={{ color: C.textMuted, fontSize: 12 }}>—</span>
-                        )}
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DeviceSessionsPanel
+            sessions={examSessions}
+            saving={saving}
+            onUnlock={unlockSession}
+            onBulkUnlock={bulkUnlock}
+            onCancelResit={cancelResit}
+            onPhotos={(sess) => openPhotoModal(sess.e_assessment_id, sess.student_id, sess.student_name)}
+          />
 
           <BlockedDevicesPanel rows={deviceAccess} saving={saving} onAllow={(d) => changeDeviceAccess(d, true)} onRevoke={(d) => changeDeviceAccess(d, false)} />
 
@@ -3097,6 +3073,286 @@ function ActivityLogTab({ assessments }) {
           <ActionButton onClick={() => setPage((p) => Math.min(pages, p + 1))}>Next</ActionButton>
         </span>
       </div>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DEVICE SESSIONS — grouped by where each device is
+   Active · Locked · Not started · Submitted, with a count, the STEP each
+   device has reached, search, per-group CSV reports and mass unlock.
+   Data: GET /e-assessments/admin/exam-sessions (already grouped/stepped
+   server-side — see describeExamSession in eAssessment.controller.js).
+═══════════════════════════════════════════════════════════ */
+const STEP_NAMES = ["Token issued", "Entered", "Answering", "Submitted"];
+const GROUPS = [
+  { key: "active",      title: "Active",      tone: "success", hint: "Connected and sitting the exam right now." },
+  { key: "locked",      title: "Locked",      tone: "danger",  hint: "Locked by the device rules. Their saved answers are submitted automatically when the time ends." },
+  { key: "not_started", title: "Not started", tone: "neutral", hint: "Token issued but the student hasn't entered yet (or was unlocked and hasn't resumed)." },
+  { key: "submitted",   title: "Submitted",   tone: "accent",  hint: "Finished — submitted by the student or automatically at time up." },
+];
+const PAGE_ROWS = 50;
+
+function StepTracker({ step, locked }) {
+  const C = useC();
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start" }} role="img" aria-label={`Step ${step} of 4: ${STEP_NAMES[step - 1]}${locked ? " (locked)" : ""}`}>
+      {STEP_NAMES.map((name, i) => {
+        const n = i + 1;
+        const done = n < step;
+        const cur = n === step;
+        const color = cur ? (locked ? C.danger : step === 4 ? C.accent : C.success) : done ? C.success : C.border;
+        return (
+          <React.Fragment key={name}>
+            <div title={name} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 56 }}>
+              <span style={{
+                width: 16, height: 16, borderRadius: "50%", boxSizing: "border-box",
+                background: cur || done ? color : "transparent", border: `2px solid ${color}`,
+                color: "#fff", fontSize: 10, fontWeight: 800, lineHeight: "12px", textAlign: "center",
+              }}>{done ? "✓" : cur && locked ? "!" : ""}</span>
+              <span style={{ fontSize: 9.5, marginTop: 3, fontWeight: cur ? 800 : 500, color: cur ? color : C.textMuted, whiteSpace: "nowrap" }}>{name}</span>
+            </div>
+            {n < 4 && <span style={{ flex: "0 0 12px", height: 2, marginTop: 7, background: done ? C.success : C.border }} />}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+const timeLeftText = (sess) => {
+  if (sess.seconds_left == null) return "—";
+  if (sess.seconds_left <= 0) return "Time up";
+  const m = Math.ceil(sess.seconds_left / 60);
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m left` : `${m} min left`;
+};
+const lastSignalText = (sess) => {
+  if (sess.last_heartbeat_age == null && !sess.last_heartbeat) return "—";
+  return fmtDateTime(sess.last_heartbeat);
+};
+
+// CSV that opens correctly in Excel (BOM) and can't be abused as a formula.
+function downloadSessionsCsv(rows, filename) {
+  const esc = (v) => {
+    let t = v == null ? "" : String(v);
+    if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+    return `"${t.replace(/"/g, '""')}"`;
+  };
+  const head = ["Student", "Class", "Username", "Assessment", "Subject", "Token", "Group", "Step", "Progress", "Answered", "Total questions",
+    "Time left", "Connection", "Last signal", "Device", "Lock reason", "Locked at", "Entered at", "Submitted at", "Auto-submitted", "Violation photos"];
+  const lines = [head.map(esc).join(",")];
+  for (const r of rows) {
+    lines.push([
+      r.student_name || `#${r.student_id}`, r.student_class, r.student_username, r.assessment_title, r.subject_name, r.token,
+      (GROUPS.find((g) => g.key === r.group) || {}).title || r.group,
+      `${r.step}/4 ${STEP_NAMES[(r.step || 1) - 1]}`, r.step_label, r.answered_count, r.total_questions,
+      r.group === "active" || r.group === "locked" ? timeLeftText(r) : "",
+      r.group === "active" ? (r.connection === "online" ? "Online" : "No signal") : "",
+      r.last_heartbeat ? new Date(r.last_heartbeat).toLocaleString() : "",
+      r.device_label, r.group === "locked" ? r.lock_reason : "",
+      r.locked_at && r.group === "locked" ? new Date(r.locked_at).toLocaleString() : "",
+      r.activated_at ? new Date(r.activated_at).toLocaleString() : "",
+      r.submitted_at ? new Date(r.submitted_at).toLocaleString() : "",
+      r.group === "submitted" ? (r.auto_submitted ? "Yes" : "No") : "",
+      r.photo_count || 0,
+    ].map(esc).join(","));
+  }
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  Object.assign(document.createElement("a"), { href: url, download: filename }).click();
+  URL.revokeObjectURL(url);
+}
+
+function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCancelResit, onPhotos }) {
+  const C = useC();
+  const [q, setQ] = useState("");
+  const [assessmentId, setAssessmentId] = useState("");
+  const [open, setOpen] = useState({ active: true, locked: true, not_started: true, submitted: false });
+  const [shown, setShown] = useState({});          // rows shown per group (paging)
+  const [picked, setPicked] = useState(() => new Set()); // ticked locked session ids
+
+  const assessmentOptions = useMemo(() => {
+    const m = new Map();
+    sessions.forEach((s) => { if (s.e_assessment_id && !m.has(s.e_assessment_id)) m.set(s.e_assessment_id, s.assessment_title || `#${s.e_assessment_id}`); });
+    return [...m.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  }, [sessions]);
+
+  // Search + assessment filter apply to every group and to every count.
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return sessions.filter((s) => {
+      if (assessmentId && String(s.e_assessment_id) !== assessmentId) return false;
+      if (!term) return true;
+      const hay = [s.student_name, s.student_class, s.student_username, s.assessment_title, s.subject_name, s.token,
+        s.device_label, s.lock_reason, s.step_label].join(" ").toLowerCase();
+      return term.split(/\s+/).every((w) => hay.includes(w));
+    });
+  }, [sessions, q, assessmentId]);
+
+  const byGroup = useMemo(() => {
+    const out = { active: [], locked: [], not_started: [], submitted: [] };
+    filtered.forEach((s) => { (out[s.group] || out.not_started).push(s); });
+    return out;
+  }, [filtered]);
+
+  const totals = useMemo(() => {
+    const out = { active: 0, locked: 0, not_started: 0, submitted: 0 };
+    sessions.forEach((s) => { if (assessmentId && String(s.e_assessment_id) !== assessmentId) return; out[s.group] = (out[s.group] || 0) + 1; });
+    return out;
+  }, [sessions, assessmentId]);
+
+  // Drop ticks for sessions that are no longer locked (unlocked / auto-submitted / refreshed away).
+  useEffect(() => {
+    const lockedIds = new Set(sessions.filter((s) => s.group === "locked").map((s) => s.id));
+    setPicked((prev) => {
+      const next = new Set([...prev].filter((id) => lockedIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [sessions]);
+
+  const lockedVisible = byGroup.locked;
+  const pickedVisible = lockedVisible.filter((s) => picked.has(s.id));
+  const allPicked = lockedVisible.length > 0 && pickedVisible.length === lockedVisible.length;
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filterNote = q.trim() || assessmentId ? " (current search/filter)" : "";
+
+  const confirmUnlock = (rows, label) => {
+    if (!rows.length) return;
+    if (!window.confirm(`Unlock ${label} (${rows.length} device${rows.length === 1 ? "" : "s"})?\n\nEach student will see a Resume button and can continue on the device they choose.`)) return;
+    onBulkUnlock(rows.map((r) => r.id));
+  };
+
+  const input = { padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 13, minWidth: 0 };
+
+  const columnsFor = (key) => {
+    const student = { label: "Student", render: (s) => (
+      <>
+        <div style={{ fontWeight: 600, color: C.textPri }}>{s.student_name || `#${s.student_id}`}</div>
+        <div style={{ fontSize: 11, color: C.textMuted }}>{[s.student_class, s.student_username].filter(Boolean).join(" · ") || "—"}</div>
+      </>) };
+    const assessment = { label: "Assessment", render: (s) => <span style={{ color: C.textSec, fontSize: 13 }}>{s.assessment_title || "—"}</span> };
+    const token = { label: "Token", render: (s) => <span style={{ fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", color: C.textPri }}>{s.token}</span> };
+    const step = { label: "Step", render: (s) => (
+      <div style={{ minWidth: 230 }}>
+        <StepTracker step={s.step} locked={s.group === "locked"} />
+        <div style={{ fontSize: 11.5, color: s.group === "locked" ? C.danger : C.textSec, fontWeight: 600, marginTop: 4 }}>{s.step_label}</div>
+      </div>) };
+    const device = { label: "Device", render: (s) => <span style={{ color: C.textMuted, fontSize: 12 }}>{s.device_label || "—"}</span> };
+    const photos = { label: "Photos", render: (s) => s.photo_count > 0
+      ? <MiniBtn neutral icon={<Camera size={12} />} onClick={() => onPhotos(s)}>{s.photo_count}</MiniBtn>
+      : <span style={{ color: C.textMuted, fontSize: 12 }}>—</span> };
+    const timeLeft = { label: "Time left", render: (s) => {
+      const up = s.seconds_left != null && s.seconds_left <= 0;
+      return <span style={{ fontSize: 12, fontWeight: 600, color: up ? C.warning || C.danger : C.textSec }}>{up && s.group === "locked" ? "Time up — auto-submitting" : timeLeftText(s)}</span>;
+    } };
+
+    if (key === "active") return [student, assessment, step, timeLeft,
+      { label: "Connection", render: (s) => (
+        <>
+          <Chip text={s.connection === "online" ? "Online" : "No signal"} tone={s.connection === "online" ? "success" : "warning"} />
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>{lastSignalText(s)}</div>
+        </>) }, device, photos];
+    if (key === "locked") return [
+      { label: <input type="checkbox" checked={allPicked} onChange={(e) => setPicked(e.target.checked ? new Set(lockedVisible.map((s) => s.id)) : new Set())} aria-label="Select all locked devices shown" />,
+        render: (s) => <input type="checkbox" checked={picked.has(s.id)} aria-label={`Select ${s.student_name || s.student_id}`}
+          onChange={(e) => setPicked((prev) => { const n = new Set(prev); e.target.checked ? n.add(s.id) : n.delete(s.id); return n; })} /> },
+      student, assessment, step,
+      { label: "Lock reason", render: (s) => (
+        <div style={{ color: C.danger, fontSize: 12, fontWeight: 600, maxWidth: 240 }}>
+          {s.lock_reason || "No reason recorded"}
+          {s.locked_at ? <div style={{ fontWeight: 400, color: C.textMuted, marginTop: 2 }}>{fmtDateTime(s.locked_at)}</div> : null}
+        </div>) },
+      timeLeft, device, photos,
+      { label: "Actions", render: (s) => <MiniBtn tone="success" icon={<IconUnlock size={12} />} disabled={saving} onClick={() => onUnlock(s.id)}>Unlock</MiniBtn> }];
+    if (key === "not_started") return [student, assessment, token, step,
+      { label: "Issued", render: (s) => <span style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(s.issued_at)}</span> },
+      { label: "Actions", render: (s) => s.resit_allowed
+        ? <MiniBtn tone="warning" onClick={() => onCancelResit(s)}>Cancel resit</MiniBtn>
+        : <span style={{ color: C.textMuted, fontSize: 12 }}>—</span> }];
+    return [student, assessment, step,
+      { label: "Submitted", render: (s) => <span style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(s.submitted_at || s.ended_at)}</span> },
+      { label: "How", render: (s) => <Chip text={s.auto_submitted ? "Auto-submitted" : "By student"} tone={s.auto_submitted ? "warning" : "success"} /> },
+      photos];
+  };
+
+  return (
+    <>
+      {/* counts — click one to jump to its group */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
+        {GROUPS.map((g) => {
+          const color = g.tone === "neutral" ? C.textSec : C[g.tone];
+          return (
+            <button key={g.key} type="button" className="dash-card"
+              onClick={() => { setOpen((o) => ({ ...o, [g.key]: true })); document.getElementById(`dev-group-${g.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+              style={{ textAlign: "left", cursor: "pointer", background: C.card, border: `1px solid ${C.border}`, borderLeft: `4px solid ${color}`, borderRadius: 10, padding: "12px 14px", fontFamily: "inherit" }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1 }}>{byGroup[g.key].length}{byGroup[g.key].length !== totals[g.key] ? <span style={{ fontSize: 13, fontWeight: 600, color: C.textMuted }}> / {totals[g.key]}</span> : null}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginTop: 4 }}>{g.title}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* search + filter + download everything */}
+      <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 14, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <input style={{ ...input, flex: "1 1 240px" }} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search student, class, username, token, assessment, device, lock reason…" aria-label="Search devices" />
+        <select style={{ ...input, maxWidth: 240 }} value={assessmentId} onChange={(e) => setAssessmentId(e.target.value)} aria-label="Filter by assessment">
+          <option value="">All assessments</option>
+          {assessmentOptions.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+        </select>
+        {(q || assessmentId) && <MiniBtn neutral onClick={() => { setQ(""); setAssessmentId(""); }}>Clear</MiniBtn>}
+        <MiniBtn neutral icon={<IconDownload size={12} />} disabled={!filtered.length} title="One report with every group"
+          onClick={() => downloadSessionsCsv(filtered, `device-sessions-all-${stamp}.csv`)}>Download all (CSV)</MiniBtn>
+      </div>
+
+      {GROUPS.map((g) => {
+        const rows = byGroup[g.key];
+        const isOpen = open[g.key];
+        const limit = shown[g.key] || PAGE_ROWS;
+        const cols = columnsFor(g.key);
+        return (
+          <div key={g.key} id={`dev-group-${g.key}`} style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+              <button type="button" onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))} aria-expanded={isOpen}
+                style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, padding: 0, fontFamily: "inherit" }}>
+                <span style={{ color: C.textMuted, fontSize: 12, width: 12 }}>{isOpen ? "▾" : "▸"}</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: C.textPri }}>{g.title}</span>
+                <Chip text={String(rows.length)} tone={g.tone} />
+              </button>
+              <span style={{ fontSize: 12, color: C.textMuted, flex: "1 1 200px" }}>{g.hint}</span>
+              {g.key === "locked" && lockedVisible.length > 0 && (
+                <>
+                  <MiniBtn tone="success" icon={<IconUnlock size={12} />} disabled={saving || !pickedVisible.length} onClick={() => confirmUnlock(pickedVisible, "the selected devices")}>Unlock selected ({pickedVisible.length})</MiniBtn>
+                  <MiniBtn tone="success" icon={<IconUnlock size={12} />} disabled={saving} onClick={() => confirmUnlock(lockedVisible, filterNote ? "all locked devices in this search" : "ALL locked devices")}>Unlock all ({lockedVisible.length})</MiniBtn>
+                </>
+              )}
+              <MiniBtn neutral icon={<IconDownload size={12} />} disabled={!rows.length} title={`Download the ${g.title} group${filterNote}`}
+                onClick={() => downloadSessionsCsv(rows, `device-sessions-${g.key.replace("_", "-")}-${stamp}.csv`)}>Download CSV</MiniBtn>
+            </div>
+
+            {isOpen && (rows.length === 0 ? (
+              <div className="dash-card" style={{ background: C.card, border: `1px dashed ${C.border}`, borderRadius: 10, padding: "14px 16px", color: C.textMuted, fontSize: 13 }}>
+                {sessions.length && (q || assessmentId) ? `No ${g.title.toLowerCase()} devices match this search.` : `No ${g.title.toLowerCase()} devices right now.`}
+              </div>
+            ) : (
+              <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+                  <thead><tr>{cols.map((c, i) => <Th key={i}>{c.label}</Th>)}</tr></thead>
+                  <tbody>
+                    {rows.slice(0, limit).map((s) => (
+                      <tr key={s.id} className="row-hover">{cols.map((c, i) => <Td key={i}>{c.render(s)}</Td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+                {rows.length > limit && (
+                  <div style={{ padding: 10, textAlign: "center" }}>
+                    <MiniBtn neutral onClick={() => setShown((p) => ({ ...p, [g.key]: limit + PAGE_ROWS }))}>Show more ({rows.length - limit} more)</MiniBtn>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </>
   );
 }
