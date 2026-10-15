@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import API, { resolveFileUrl } from "../api";
 import { useTheme } from "../context/ThemeContext";
@@ -318,49 +318,50 @@ export default function AdminEAssessments() {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  /* ── Load all ── */
+  /* ── Load all ──
+     Two-phase + silent refresh, so the page stays snappy:
+       1. CORE data (assessments, classes, subjects, teachers, grading) is
+          fetched first; the page renders as soon as it arrives.
+       2. HEAVY lists (submissions, sessions, released marks, ...) then load
+          in the background and fill in as each one lands.
+     Only the very first load shows the full-page spinner. Later calls
+     (after every save/assign/release) refresh in the background instead of
+     blanking the whole page and closing open modals. */
+  const firstLoad = useRef(true);
   const loadAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [assessments, cls, subj, teach, assigned, subs, remarks, released, sessions, grading, noSub, devAccess, batchRes] =
-        await Promise.all([
-          API.get("/e-assessments"),
-          API.get("/e-assessments/classes"),
-          API.get("/e-assessments/subjects"),
-          API.get("/e-assessments/teachers"),
-          API.get("/e-assessments/admin/assigned-teachers").catch(() => ({ data: [] })),
-          API.get("/e-assessments/submissions").catch(() => ({ data: [] })),
-          API.get("/e-assessments/admin/remark-requests").catch(() => ({ data: [] })),
-          API.get("/e-assessments/admin/released-marks").catch(() => ({ data: [] })),
-          API.get("/e-assessments/admin/exam-sessions").catch(() => ({ data: [] })),
-          API.get("/e-assessments/grading-system").catch(() => ({ data: null })),
-          API.get("/e-assessments/admin/exam-sessions/unsubmitted").catch(() => ({ data: [] })),
-          API.get("/e-assessments/admin/device-access").catch(() => ({ data: [] })),
-          API.get("/e-assessments/admin/assignment-batches").catch(() => ({ data: [] })),
-        ]);
+    const initial = firstLoad.current;
+    if (initial) setLoading(true);
+    // Fetch one endpoint; on failure keep whatever is already on screen.
+    const pull = (url, apply) =>
+      API.get(url).then(apply).catch((e) => { console.error(url, e); });
 
-      setList(extract(assessments));
-      setClasses(extract(cls));
-      setSubjects(extract(subj));
-      setTeachers(extract(teach));
-      setAssignedTeachers(extract(assigned));
-      setSubmissions(extract(subs));
-      setRemarkRequests(extract(remarks));
-      setReleasedMarks(extract(released));
-      setExamSessions(extract(sessions));
-      setUnsubmitted(extract(noSub));
-      setDeviceAccess(extract(devAccess));
-      setAssignBatches(extract(batchRes));
-      if (grading.data) {
-        setGradingSystem(grading.data);
-        setGradingDraft(grading.data);
-      }
+    try {
+      await Promise.all([
+        API.get("/e-assessments").then((r) => setList(extract(r))),
+        pull("/e-assessments/classes",  (r) => setClasses(extract(r))),
+        pull("/e-assessments/subjects", (r) => setSubjects(extract(r))),
+        pull("/e-assessments/teachers", (r) => setTeachers(extract(r))),
+        pull("/e-assessments/grading-system", (r) => {
+          if (r.data) { setGradingSystem(r.data); setGradingDraft(r.data); }
+        }),
+      ]);
     } catch (err) {
       console.error(err);
       showToast("Failed to load dashboard data", "error");
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
+
+    // Heavy lists — not awaited, so the UI is already usable.
+    pull("/e-assessments/admin/assigned-teachers",         (r) => setAssignedTeachers(extract(r)));
+    pull("/e-assessments/submissions",                     (r) => setSubmissions(extract(r)));
+    pull("/e-assessments/admin/remark-requests",           (r) => setRemarkRequests(extract(r)));
+    pull("/e-assessments/admin/released-marks",            (r) => setReleasedMarks(extract(r)));
+    pull("/e-assessments/admin/exam-sessions",             (r) => setExamSessions(extract(r)));
+    pull("/e-assessments/admin/exam-sessions/unsubmitted", (r) => setUnsubmitted(extract(r)));
+    pull("/e-assessments/admin/device-access",             (r) => setDeviceAccess(extract(r)));
+    pull("/e-assessments/admin/assignment-batches",        (r) => setAssignBatches(extract(r)));
   }, [showToast]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -369,11 +370,12 @@ export default function AdminEAssessments() {
   useEffect(() => {
     if (activeTab !== 4) return;
     const iv = setInterval(async () => {
+      if (typeof document !== "undefined" && document.hidden) return; // don't poll a background tab
       try {
         const r = await API.get("/e-assessments/admin/exam-sessions");
         setExamSessions(extract(r));
       } catch { /* try again next tick */ }
-    }, 10000);
+    }, 15000);
     return () => clearInterval(iv);
   }, [activeTab]);
 
