@@ -219,7 +219,8 @@ const injectExamStyles = () => {
 
 // True when the page is running inside Safe Exam Browser (it adds "SEB/<version>" to the User-Agent).
 const IN_SEB = typeof navigator !== "undefined" && /\bSEB\/\d/i.test(navigator.userAgent || "");
-const HEARTBEAT_MS = 10000;
+const HEARTBEAT_MS = 15000;
+const LOCK_POLL_MS = 5000; // how often a locked screen asks the server whether an admin unlocked it
 const MAX_VIOLATIONS = 3;
 const START_PAPER_TIMEOUT_MS = 25000; // max wait for the paper to load after activation
 // Turns a getUserMedia failure into something a student can act on.
@@ -2366,8 +2367,16 @@ export default function TakeEAssessment() {
   useEffect(() => {
     if (phase !== "locked") return;
     checkLockStatus();
-    const poll = setInterval(checkLockStatus, 8000);
-    return () => clearInterval(poll);
+    const poll = setInterval(checkLockStatus, LOCK_POLL_MS);
+    // Background tabs throttle timers; check immediately when the student comes back.
+    const onVisible = () => { if (document.visibilityState === "visible") checkLockStatus(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [phase, checkLockStatus]);
 
   // Tell a screen-reader student when the admin has unlocked the exam.
@@ -2433,13 +2442,16 @@ export default function TakeEAssessment() {
     setResumeMsg("");
     try {
       if (!tokenRef.current) return; // Resume is only offered once a token is known
+      // Flag the resume BEFORE the server activates this device. The locked
+      // screen's status poll runs every few seconds; a reply landing between the
+      // server activating us and this flag being set used to see "active" +
+      // "not resumed" and re-report the lock, putting the session straight back
+      // to Locked (device never reads as active, autosave answered 423).
+      resumeAttemptedRef.current = true;
       const res = await API.post("/e-assessments/exam-session/activate", {
         token: tokenRef.current, device_id: deviceId, device_label: navigator.userAgent,
       });
       if (res.data.success) {
-        // The server now treats this device as the active one. Remember that so
-        // the locked screen's status poll can never re-lock the session.
-        resumeAttemptedRef.current = true;
         localStorage.removeItem(lockKey(id));
         setViolations(0);
         await loadSecuritySettings(); // a refresh while locked never went through bootStart
@@ -2468,11 +2480,16 @@ export default function TakeEAssessment() {
         setErrorMsg(err.response.data.message || "You have already completed this assessment.");
         setPhase("ended");
       } else if (status === 401) {
+        resumeAttemptedRef.current = false;
         localStorage.removeItem(lockKey(id));
         setPhase("examlogin");
       } else if (err?.message === "EXAM_TAB_IN_USE") {
         setResumeMsg("This exam is open in another tab or window on this device. Close it and try again.");
       } else {
+        // Request failed: the server may or may not have activated us, so keep the
+        // resume flag set (it only stops the poll re-reporting a lock) and let the
+        // student press Resume again — activation is safe to repeat on this device.
+        setCanResume(true);
         setResumeMsg("Couldn't reach the server. Check your connection and try again.");
       }
     } finally {

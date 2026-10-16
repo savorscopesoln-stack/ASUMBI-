@@ -283,6 +283,8 @@ export default function AdminEAssessments() {
   const [saving,        setSaving]        = useState(false);
   const [search,        setSearch]        = useState("");
   const [subjectFilter, setSubjectFilter] = useState("");
+  const [splitFor, setSplitFor] = useState(null); // { assessmentId } — manual split marking window
+  const [subSearch, setSubSearch] = useState(""); // submissions: individual records only render once something is searched
   const [statusFilter,  setStatusFilter]  = useState("");
   const [toast,         setToast]         = useState(null);
   const [bulkMenu,      setBulkMenu]      = useState(false);
@@ -376,7 +378,7 @@ export default function AdminEAssessments() {
         const r = await API.get("/e-assessments/admin/exam-sessions");
         setExamSessions(extract(r));
       } catch { /* try again next tick */ }
-    }, 15000);
+    }, 10000);
     return () => clearInterval(iv);
   }, [activeTab]);
 
@@ -1034,12 +1036,19 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
+  const refreshExamSessions = async () => {
+    try {
+      const r = await API.get("/e-assessments/admin/exam-sessions");
+      setExamSessions(extract(r));
+    } catch { /* the 10s Device Locks poll will catch up */ }
+  };
+
   const unlockSession = async (sessionId) => {
     try {
       setSaving(true);
       await API.put(`/e-assessments/admin/exam-sessions/${sessionId}/unlock`);
       showToast("Session unlocked — the student will see a Resume button on their screen");
-      loadAll();
+      refreshExamSessions(); // just the sessions list — loadAll() re-pulls every heavy list and made the screen crawl
     } catch (err) {
       showToast(err?.response?.data?.message || "Unlock failed", "error");
     } finally { setSaving(false); }
@@ -1053,7 +1062,7 @@ export default function AdminEAssessments() {
       setSaving(true);
       const res = await API.put("/e-assessments/admin/exam-sessions/unlock-bulk", { sessionIds });
       showToast(res.data?.message || `${res.data?.unlocked ?? sessionIds.length} unlocked — students will see a Resume button`);
-      loadAll();
+      refreshExamSessions();
     } catch (err) {
       showToast(err?.response?.data?.message || "Bulk unlock failed", "error");
     } finally { setSaving(false); }
@@ -1488,6 +1497,8 @@ export default function AdminEAssessments() {
               <ActionButton icon={<IconZap size={14} />} onClick={bulkAssignAll}>Auto-Assign All</ActionButton>
             )}
 
+            <ActionButton icon={<IconUsers size={14} />} onClick={() => setSplitFor({ assessmentId: "" })}>Split marking</ActionButton>
+
             <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
               submissions.map((s) => ({
                 student: s.student_name, assessment: s.assessment_title,
@@ -1497,11 +1508,69 @@ export default function AdminEAssessments() {
             )}>Export CSV</ActionButton>
           </div>
 
+          <div style={{ marginBottom: 20 }}>
+            <input
+              type="search" value={subSearch} onChange={(e) => setSubSearch(e.target.value)}
+              placeholder="Search a student, assessment or subject to see individual records…"
+              aria-label="Search submissions"
+              style={{ ...sx.select, width: "100%", boxSizing: "border-box", padding: "10px 12px" }}
+            />
+            {!subSearch.trim() && (
+              <p style={{ margin: "8px 2px 0", fontSize: 12, color: C.textMuted }}>
+                Records aren't listed until you search — the cards show each subject's totals and its bulk actions.
+              </p>
+            )}
+          </div>
+
           {Object.keys(submissionsBySubject).length === 0 ? (
             <EmptyState icon={<IconFileText size={26} />} text="No submissions found." />
+          ) : !subSearch.trim() ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14, marginBottom: 24 }}>
+              {Object.entries(submissionsBySubject)
+                .filter(([sName]) => !subjectFilter || sName === subjectFilter)
+                .map(([subjectName, subs]) => {
+                  const subjectTeachers = assignedTeachers.filter((t) => String(t.subject_name) === String(subjectName));
+                  const markedCount   = subs.filter((s) => s.score != null).length;
+                  const releasedCount = subs.filter((s) => s.status === "released").length;
+                  const unassigned    = subs.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length;
+                  return (
+                    <div key={subjectName} className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                      <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.textPri }}>{subjectName}</p>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: C.textPri }}>{subs.length}</span>
+                        <span style={{ fontSize: 12, color: C.textMuted }}>submitted</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: C.textMuted }}>
+                        {markedCount} marked · {releasedCount} released{unassigned ? ` · ${unassigned} unassigned` : ""}
+                      </span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {subjectTeachers.length > 0
+                          ? subjectTeachers.map((t) => <Chip key={t.id} icon={<IconUsers size={11} />} text={t.teacher_name} tone="success" />)
+                          : <Chip icon={<IconAlert size={11} />} text="No teacher assigned" tone="danger" />}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: "auto" }}>
+                        <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
+                        <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
+                        <MiniBtn icon={<IconUsers size={12} />} title="Give different parts of this paper to different teachers" onClick={() => setSplitFor({ assessmentId: String(subs[0]?.e_assessment_id || "") })}>Split marking</MiniBtn>
+                        <MiniBtn neutral onClick={() => setSubSearch(subjectName)}>View records</MiniBtn>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
           ) : (
             Object.entries(submissionsBySubject)
               .filter(([sName]) => !subjectFilter || sName === subjectFilter)
+              .map(([sName, allSubs]) => {
+                const words = subSearch.trim().toLowerCase().split(/\s+/);
+                const subs = allSubs.filter((x) => {
+                  const hay = [x.student_name, x.student_id, x.assessment_title, sName, x.status].join(" ").toLowerCase();
+                  return words.every((w) => hay.includes(w));
+                });
+                return [sName, subs, allSubs.length];
+              })
+              .filter(([, subs]) => subs.length > 0)
+              .slice(0, 50)
               .map(([subjectName, subs]) => {
                 const subjectTeachers = assignedTeachers.filter(
                   (t) => String(t.subject_name) === String(subjectName)
@@ -1537,7 +1606,7 @@ export default function AdminEAssessments() {
                           </tr>
                         </thead>
                         <tbody>
-                          {subs.map((sub) => (
+                          {subs.slice(0, 100).map((sub) => (
                             <tr key={sub.id} className="row-hover">
                               <Td><span style={{ fontWeight: 600, color: C.textPri }}>{sub.student_name || `#${sub.student_id}`}</span></Td>
                               <Td style={{ color: C.textSec, fontSize: 13 }}>{sub.assessment_title || "—"}</Td>
@@ -1579,6 +1648,7 @@ export default function AdminEAssessments() {
                           ))}
                         </tbody>
                       </table>
+                      {subs.length > 100 && <p style={{ margin: 10, fontSize: 12, color: C.textMuted }}>Showing the first 100 of {subs.length} — narrow the search to see the rest.</p>}
                     </div>
                   </div>
                 );
@@ -2117,6 +2187,18 @@ export default function AdminEAssessments() {
             <EvidenceGallery evidence={photoModal.evidence} title={null} />
           )}
         </Modal>
+      )}
+
+      {splitFor && (
+        <SplitMarkingModal
+          startAssessmentId={splitFor.assessmentId}
+          assessments={list}
+          assignedTeachers={assignedTeachers}
+          allTeachers={teachers}
+          onClose={() => setSplitFor(null)}
+          showToast={showToast}
+          onSaved={() => { loadAll(); }}
+        />
       )}
 
       {answerModal && (
@@ -3224,8 +3306,7 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
   const C = useC();
   const [q, setQ] = useState("");
   const [assessmentId, setAssessmentId] = useState("");
-  const [open, setOpen] = useState({ active: true, locked: true, not_started: true, submitted: false });
-  const [shown, setShown] = useState({});          // rows shown per group (paging)
+    const [shown, setShown] = useState({});          // rows shown per group (paging)
   const [picked, setPicked] = useState(() => new Set()); // ticked locked session ids
 
   const assessmentOptions = useMemo(() => {
@@ -3267,6 +3348,7 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
     });
   }, [sessions]);
 
+  const searching = q.trim().length > 0; // individual rows render only once something is searched
   const lockedVisible = byGroup.locked;
   const pickedVisible = lockedVisible.filter((s) => picked.has(s.id));
   const allPicked = lockedVisible.length > 0 && pickedVisible.length === lockedVisible.length;
@@ -3339,19 +3421,18 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
         {GROUPS.map((g) => {
           const color = g.tone === "neutral" ? C.textSec : C[g.tone];
           return (
-            <button key={g.key} type="button"
-              onClick={() => { setOpen((o) => ({ ...o, [g.key]: true })); document.getElementById(`dev-group-${g.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
-              style={{ display: "inline-flex", alignItems: "baseline", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", color }}>
+            <div key={g.key}
+              style={{ display: "inline-flex", alignItems: "baseline", gap: 8, fontFamily: "inherit", color }}>
               <span style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color }}>{byGroup[g.key].length}{byGroup[g.key].length !== totals[g.key] ? <span style={{ fontSize: 15, fontWeight: 700, opacity: 0.7 }}> / {totals[g.key]}</span> : null}</span>
               <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color }}>{g.title}</span>
-            </button>
+            </div>
           );
         })}
       </div>
 
       {/* search + filter + download everything */}
       <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 14, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <input style={{ ...input, flex: "1 1 240px" }} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search student, class, username, token, assessment, device, lock reason…" aria-label="Search devices" />
+        <input style={{ ...input, flex: "1 1 240px" }} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a student, class, username, token, assessment… to see individual devices" aria-label="Search devices" />
         <select style={{ ...input, maxWidth: 240 }} value={assessmentId} onChange={(e) => setAssessmentId(e.target.value)} aria-label="Filter by assessment">
           <option value="">All assessments</option>
           {assessmentOptions.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
@@ -3363,20 +3444,24 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
           onClick={() => downloadSessionsPdf(filtered, `device-sessions-all-${stamp}.pdf`, "Device Sessions — All Groups")}>Download all (PDF)</MiniBtn>
       </div>
 
+      {!searching && (
+        <p style={{ margin: "0 2px 12px", fontSize: 12, color: C.textMuted }}>
+          Individual devices aren't listed until you search. The buttons below act on the whole group{assessmentId ? " for the chosen assessment" : ""}.
+        </p>
+      )}
+
       {GROUPS.map((g) => {
         const rows = byGroup[g.key];
-        const isOpen = open[g.key];
+        const isOpen = searching; // rows only appear for a search; otherwise just the count + actions
         const limit = shown[g.key] || PAGE_ROWS;
         const cols = columnsFor(g.key);
         return (
           <div key={g.key} id={`dev-group-${g.key}`} style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-              <button type="button" onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))} aria-expanded={isOpen}
-                style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, padding: 0, fontFamily: "inherit" }}>
-                <span style={{ color: C.textMuted, fontSize: 12, width: 12 }}>{isOpen ? "▾" : "▸"}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: C.textPri }}>{g.title}</span>
                 <Chip text={String(rows.length)} tone={g.tone} />
-              </button>
+              </div>
               <span style={{ fontSize: 12, color: C.textMuted, flex: "1 1 200px" }}>{g.hint}</span>
               {g.key === "locked" && lockedVisible.length > 0 && (
                 <>
@@ -3800,6 +3885,176 @@ function StudentActivationPanel({ showToast }) {
       </div>
       <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 6 }}>
         {shown.length} shown{shown.length > MAX_ROWS ? ` · first ${MAX_ROWS} displayed — type in the search box to narrow the list` : ""}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SPLIT MARKING — give different QUESTIONS of one paper to different teachers
+   (e.g. Section A → one teacher, Section B → another). Saved as a rule per
+   question: it covers the answers already submitted and every paper that
+   arrives later. Teachers see only the questions they were given.
+═══════════════════════════════════════════════════════════ */
+function SplitMarkingModal({ startAssessmentId, assessments, assignedTeachers, allTeachers, onClose, showToast, onSaved }) {
+  const C = useC();
+  const [aid, setAid] = useState(startAssessmentId || "");
+  const [questions, setQuestions] = useState([]);
+  const [choice, setChoice] = useState({}); // question_id -> teacher_id ("" = leave as is)
+  const [checked, setChecked] = useState({}); // question_id -> true
+  const [bulkTeacher, setBulkTeacher] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const assessment = assessments.find((a) => String(a.id) === String(aid));
+
+  // Teachers who teach this assessment's subject first; everyone as a fallback.
+  const teacherOptions = useMemo(() => {
+    const subj = String(assessment?.subject || assessment?.subject_name || "").trim().toLowerCase();
+    const seen = new Map();
+    (assignedTeachers || []).forEach((t) => {
+      if (subj && String(t.subject_name || "").trim().toLowerCase() !== subj) return;
+      if (!seen.has(t.teacher_id)) seen.set(t.teacher_id, t.teacher_name || `Teacher #${t.teacher_id}`);
+    });
+    if (!seen.size) (allTeachers || []).forEach((t) => seen.set(t.id, t.name || `Teacher #${t.id}`));
+    return [...seen.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  }, [assessment, assignedTeachers, allTeachers]);
+
+  const load = useCallback(async (id) => {
+    if (!id) { setQuestions([]); return; }
+    setLoading(true);
+    try {
+      const r = await API.get(`/e-assessments/admin/assessments/${id}/split`);
+      const qs = r.data?.questions || [];
+      setQuestions(qs);
+      const c = {};
+      qs.forEach((q) => { if (q.teacher_id) c[q.id] = String(q.teacher_id); });
+      setChoice(c);
+      setChecked({});
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not load the questions", "error");
+    } finally { setLoading(false); }
+  }, [showToast]);
+
+  useEffect(() => { load(aid); }, [aid, load]);
+
+  const splittable = questions.filter((q) => q.splittable);
+  const checkedIds = splittable.filter((q) => checked[q.id]).map((q) => q.id);
+  const applyBulk = () => {
+    if (!bulkTeacher || !checkedIds.length) return;
+    setChoice((c) => { const n = { ...c }; checkedIds.forEach((id) => { n[id] = bulkTeacher; }); return n; });
+    setChecked({});
+  };
+
+  // What the admin has set up, grouped by teacher.
+  const parts = useMemo(() => {
+    const by = {};
+    Object.entries(choice).forEach(([qid, tid]) => { if (tid) (by[tid] ||= []).push(Number(qid)); });
+    return Object.entries(by).map(([teacher_id, question_ids]) => ({ teacher_id: Number(teacher_id), question_ids }));
+  }, [choice]);
+  const nameOf = (tid) => teacherOptions.find(([id]) => String(id) === String(tid))?.[1] || `Teacher #${tid}`;
+
+  const save = async () => {
+    if (!parts.length) return;
+    setSaving(true);
+    try {
+      const r = await API.post(`/e-assessments/admin/assessments/${aid}/split`, { parts });
+      showToast(r.data?.message || "Split saved");
+      onSaved?.();
+      load(aid);
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not save the split", "error");
+    } finally { setSaving(false); }
+  };
+
+  const clearAll = async () => {
+    if (!window.confirm("Remove the split for this paper? Answers a teacher has already marked stay with them; the rest go back to normal assignment.")) return;
+    setSaving(true);
+    try {
+      const r = await API.delete(`/e-assessments/admin/assessments/${aid}/split`);
+      showToast(r.data?.message || "Split removed");
+      onSaved?.();
+      load(aid);
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not remove the split", "error");
+    } finally { setSaving(false); }
+  };
+
+  const sel = { padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bgAlt, color: C.textPri, fontSize: 13, minWidth: 0 };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)", padding: 16 }} onClick={onClose}>
+      <div style={{ background: C.card, border: `1px solid ${C.borderHi}`, borderRadius: 14, padding: "24px 24px 20px", width: "100%", maxWidth: 760, maxHeight: "92vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: C.textPri }}>Split marking</h2>
+          <button style={{ background: "none", border: `1px solid ${C.border}`, color: C.textMuted, cursor: "pointer", width: 30, height: 30, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}><IconX size={14} /></button>
+        </div>
+        <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textSec, lineHeight: 1.5 }}>
+          Choose which teacher marks which questions of a paper — for example Section A to one teacher and Section B to another.
+          Each teacher then sees only their questions. Papers submitted later follow the same split.
+        </p>
+
+        <select style={{ ...sel, width: "100%", marginBottom: 14 }} value={aid} onChange={(e) => setAid(e.target.value)} aria-label="Paper to split">
+          <option value="">Choose the paper…</option>
+          {assessments.map((a) => <option key={a.id} value={a.id}>{a.title}{a.subject ? ` — ${a.subject}` : ""}</option>)}
+        </select>
+
+        {aid && loading && <p style={{ color: C.textMuted, fontSize: 13 }}>Loading questions…</p>}
+        {aid && !loading && questions.length === 0 && <p style={{ color: C.textMuted, fontSize: 13 }}>This paper has no questions yet.</p>}
+        {aid && !loading && questions.length > 0 && splittable.length === 0 && (
+          <p style={{ color: C.textMuted, fontSize: 13 }}>This paper has no essay questions — multiple-choice questions are marked automatically, so there is nothing to split.</p>
+        )}
+
+        {splittable.length > 0 && (
+          <>
+            {teacherOptions.length === 0 && <p style={{ color: C.danger, fontSize: 13 }}>No teachers are assigned to this subject yet.</p>}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, padding: 10, background: C.bgAlt, borderRadius: 10 }}>
+              <span style={{ fontSize: 12.5, color: C.textSec }}>{checkedIds.length} ticked →</span>
+              <select style={sel} value={bulkTeacher} onChange={(e) => setBulkTeacher(e.target.value)} aria-label="Teacher for the ticked questions">
+                <option value="">Choose a teacher…</option>
+                {teacherOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+              <MiniBtn disabled={!bulkTeacher || !checkedIds.length} onClick={applyBulk}>Give ticked questions to them</MiniBtn>
+              <MiniBtn neutral onClick={() => setChecked(Object.fromEntries(splittable.map((q) => [q.id, true])))}>Tick all</MiniBtn>
+            </div>
+
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+              {questions.map((q) => (
+                <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: `1px solid ${C.border}`, opacity: q.splittable ? 1 : 0.55 }}>
+                  <input type="checkbox" disabled={!q.splittable} checked={!!checked[q.id]} onChange={(e) => setChecked((c) => ({ ...c, [q.id]: e.target.checked }))} aria-label={`Tick question ${q.number}`} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.textPri, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Q{q.number}. {q.text || "(no text)"}</div>
+                    <div style={{ fontSize: 11.5, color: C.textMuted }}>
+                      {q.marks != null ? `${q.marks} mark${Number(q.marks) === 1 ? "" : "s"} · ` : ""}{q.splittable ? `${q.answers} answer${q.answers === 1 ? "" : "s"} submitted` : "Auto-marked — not split"}
+                    </div>
+                  </div>
+                  {q.splittable && (
+                    <select style={{ ...sel, width: 190 }} value={choice[q.id] || ""} onChange={(e) => setChoice((c) => ({ ...c, [q.id]: e.target.value }))} aria-label={`Teacher for question ${q.number}`}>
+                      <option value="">Not split</option>
+                      {teacherOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                    </select>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {parts.length > 0 && (
+              <div style={{ margin: "12px 0 0", fontSize: 12.5, color: C.textSec, lineHeight: 1.6 }}>
+                {parts.map((p) => <div key={p.teacher_id}><strong style={{ color: C.textPri }}>{nameOf(p.teacher_id)}</strong>: {p.question_ids.length} question{p.question_ids.length === 1 ? "" : "s"}</div>)}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+              <button onClick={save} disabled={saving || !parts.length}
+                style={{ flex: 1, minWidth: 180, padding: 12, border: "none", borderRadius: 9, background: saving || !parts.length ? C.textMuted : C.accent, color: C.white || "#fff", fontWeight: 700, fontSize: 14, cursor: saving || !parts.length ? "not-allowed" : "pointer" }}>
+                {saving ? "Please wait…" : "Save split & allocate"}
+              </button>
+              {questions.some((q) => q.teacher_id) && <MiniBtn tone="danger" disabled={saving} onClick={clearAll}>Remove split</MiniBtn>}
+            </div>
+            <p style={{ margin: "10px 0 0", fontSize: 11.5, color: C.textMuted }}>
+              Questions already marked stay with whoever marked them. You can undo this from the assignment history on the Submissions tab.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

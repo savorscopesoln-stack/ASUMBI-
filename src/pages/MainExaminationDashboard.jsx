@@ -478,6 +478,8 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
               onDelete={() => removeSubject(s)}
               assessmentOptions={assessmentOptions.filter((o) => o.value !== s.e_assessment_id)}
               onAttach={(eid) => attachAssessment(s, eid)}
+              mainExamId={id}
+              showToast={showToast}
             />
           ))}
         </div>
@@ -559,9 +561,11 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
   );
 }
 
-function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
+function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach, mainExamId, showToast }) {
   const C = useC();
   const [attaching, setAttaching] = useState(false);
+  const [replayOpen, setReplayOpen] = useState(false);
+  const canReplay = !!s.e_assessment_id && ["ended", "marking", "completed"].includes(s.status);
   // Only an actually-live session is protected from removal — a finished
   // one (ended/marking/completed) can be removed since its results live
   // entirely on the referenced e_assessment, not on this row (matches the
@@ -608,11 +612,124 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach }) {
               {assessmentOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           )}
+          {canReplay && (
+            <MiniBtn tone="warning" icon={<RotateCw size={12} />} onClick={() => setReplayOpen(true)} title="Let selected students sit this finished paper again">Replay paper</MiniBtn>
+          )}
           <MiniBtn icon={<Pencil size={12} />} onClick={onEdit}>Edit</MiniBtn>
           <MiniBtn tone="danger" icon={<Trash2 size={12} />} onClick={onDelete} disabled={deleteLocked} title={deleteLocked ? "Cannot remove while active — end it first" : "Remove"} />
         </div>
       </div>
+      {replayOpen && <ReplayPaperModal mainExamId={mainExamId} s={s} onClose={() => setReplayOpen(false)} showToast={showToast} />}
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REPLAY PAPER — a finished paper is reopened for INDIVIDUAL students only.
+   Counts first; students are listed only when searched. Ticks persist across
+   searches, so several students can be picked one search at a time.
+═══════════════════════════════════════════════════════════ */
+function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
+  const C = useC();
+  const base = `/main-exams/${mainExamId}/subjects/${s.id}/replay`;
+  const [q, setQ] = useState("");
+  const [data, setData] = useState({ summary: null, students: [], searched: false });
+  const [loading, setLoading] = useState(false);
+  const [picked, setPicked] = useState({}); // student_id -> name
+  const [policy, setPolicy] = useState("replace");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async (term) => {
+    setLoading(true);
+    try {
+      const r = await API.get(base, { params: { q: term } });
+      setData(r.data);
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not load students", "error");
+    } finally { setLoading(false); }
+  }, [base, showToast]);
+
+  // Summary on open; then a search (debounced) whenever the term changes.
+  useEffect(() => {
+    const t = setTimeout(() => load(q.trim()), q.trim() ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [q, load]);
+
+  const pickedIds = Object.keys(picked);
+  const toggle = (st) => setPicked((p) => { const n = { ...p }; n[st.student_id] ? delete n[st.student_id] : (n[st.student_id] = st.name || `#${st.student_id}`); return n; });
+
+  const grant = async () => {
+    if (!pickedIds.length) return;
+    if (!window.confirm(`Let ${pickedIds.length} selected student${pickedIds.length === 1 ? "" : "s"} sit "${s.subject}" again?\n\nOnly they can enter; the paper stays closed to everyone else.`)) return;
+    setSaving(true);
+    try {
+      const r = await API.post(base, { student_ids: pickedIds.map(Number), score_policy: policy });
+      showToast(r.data?.message || "Replay granted");
+      setPicked({});
+      load(q.trim());
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not grant the replay", "error");
+    } finally { setSaving(false); }
+  };
+
+  const cancelOne = async (st) => {
+    try {
+      const r = await API.post(`${base}/cancel`, { student_ids: [st.student_id] });
+      showToast(r.data?.message || "Replay cancelled");
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not cancel", "error");
+    }
+    load(q.trim());
+  };
+
+  const sm = data.summary;
+  return (
+    <Modal title={`Replay paper — ${s.subject}${s.paper_label ? ` (${s.paper_label})` : ""}`} onClose={onClose} maxWidth={720}>
+      <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textSec, lineHeight: 1.5 }}>
+        Only the students you tick can sit this paper again — each gets a new token and the full duration. It stays closed to everyone else.
+      </p>
+      {sm && (
+        <div style={{ display: "flex", gap: 28, marginBottom: 14, flexWrap: "wrap" }}>
+          {[["Sat the paper", sm.sat], ["Replay waiting", sm.pending], ["Already replayed", sm.replayed]].map(([label, n]) => (
+            <div key={label}><div style={{ fontSize: 26, fontWeight: 900, color: C.textPri, lineHeight: 1 }}>{n}</div><div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 3 }}>{label}</div></div>
+          ))}
+        </div>
+      )}
+
+      <ModalInput value={q} onChange={setQ} placeholder="Search a student's name, username or class (2+ letters)…" />
+
+      <div style={{ margin: "10px 0", minHeight: 40 }}>
+        {loading && <div style={{ fontSize: 12.5, color: C.textMuted }}>Searching…</div>}
+        {!loading && !data.searched && <div style={{ fontSize: 12.5, color: C.textMuted }}>Students aren't listed until you search.</div>}
+        {!loading && data.searched && data.students.length === 0 && <div style={{ fontSize: 12.5, color: C.textMuted }}>No student who sat this paper matches that search.</div>}
+        {data.students.map((st) => {
+          const pending = Number(st.resit_allowed) === 1 && st.session_status === "issued";
+          return (
+            <div key={st.student_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: `1px solid ${C.border}` }}>
+              <input type="checkbox" disabled={pending} checked={!!picked[st.student_id]} onChange={() => toggle(st)} aria-label={`Select ${st.name}`} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, color: C.textPri, fontSize: 13.5 }}>{st.name || `#${st.student_id}`}</div>
+                <div style={{ fontSize: 11.5, color: C.textMuted }}>{[st.class_name, st.username].filter(Boolean).join(" · ")}</div>
+              </div>
+              <span style={{ fontSize: 12, color: C.textSec }}>{st.score != null ? `Score ${st.score}` : "No score"}{st.attempt_no > 1 ? ` · attempt ${st.attempt_no}` : ""}</span>
+              {pending && <><Chip text="Replay waiting" tone="warning" /><MiniBtn neutral onClick={() => cancelOne(st)}>Cancel</MiniBtn></>}
+            </div>
+          );
+        })}
+      </div>
+
+      {pickedIds.length > 0 && (
+        <div style={{ margin: "6px 0 10px", fontSize: 12.5, color: C.textSec }}>
+          Selected ({pickedIds.length}): {Object.values(picked).slice(0, 6).join(", ")}{pickedIds.length > 6 ? ` +${pickedIds.length - 6} more` : ""}{" "}
+          <button type="button" onClick={() => setPicked({})} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12.5 }}>Clear</button>
+        </div>
+      )}
+
+      <FieldLabel>Which mark counts</FieldLabel>
+      <ModalSelect value={policy} onChange={setPolicy}
+        options={[{ value: "replace", label: "The replay mark replaces the old one" }, { value: "keep_best", label: "Keep whichever mark is higher" }]} />
+      <SaveButton onClick={grant} loading={saving} disabled={!pickedIds.length} label={`Allow replay for ${pickedIds.length || ""} selected`.trim()} icon={<RotateCw size={14} />} />
+    </Modal>
   );
 }
 
