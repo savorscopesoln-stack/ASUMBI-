@@ -6,6 +6,7 @@ import {
   examCacheKey, loadExamCache, saveExamCache, clearExamCache,
   claimExamTab, examTabTakenByOther,
 } from "../../utils/examCache";
+import MusicAnswerBox from "../../components/music/MusicAnswerBox";
 import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
@@ -3362,7 +3363,16 @@ export default function TakeEAssessment() {
                   </div>
                 )}
 
-                {q.question_type === "essay" ? (
+                {q.question_type === "essay" && assessment?.music_paper ? (
+                  // Music paper: typed answer + a button that unlocks the drawing pad.
+                  <MusicAnswerBox
+                    key={q.id}
+                    qid={q.id}
+                    value={answers[q.id] || ""}
+                    onChange={(val) => saveAnswer(q.id, val)}
+                    renderText={(p) => <EssayEditor {...p} />}
+                  />
+                ) : q.question_type === "essay" ? (
                   <EssayEditor
                     key={q.id}
                     id={q.id}

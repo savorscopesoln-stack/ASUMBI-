@@ -13,6 +13,7 @@ import { fmtDateTime } from "../components/mainExams/shared";
 import EvidenceGallery from "../components/eassessment/EvidenceGallery";
 import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
 import { fmt2 } from "../utils/format";
+import { answerToSafeHtml } from "../utils/safeHtml";
 
 /* ═══════════════════════════════════════════════════════════
    DESIGN TOKENS — shared with the rest of the app
@@ -746,6 +747,21 @@ export default function AdminEAssessments() {
     }
   };
 
+  // "Music paper" switch — identifies a paper whose answers need drawing
+  // (staves, notes, rests). When ON, students get a button on each essay
+  // question that unlocks the drawing pad. Optimistic, rolled back on failure.
+  const toggleMusicPaper = async (a) => {
+    const next = !a.music_paper;
+    setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, music_paper: next } : x)));
+    try {
+      const res = await API.put(`/e-assessments/${a.id}/music-paper`, { enabled: next });
+      showToast(res.data?.message || (next ? "Music paper ON" : "Music paper OFF"));
+    } catch (err) {
+      setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, music_paper: !next } : x)));
+      showToast(err?.response?.data?.message || "Failed to change the music paper setting", "error");
+    }
+  };
+
   // Bulk version of Activate / Start / Stop — runs the same per-item logic
   // as startAssessment/stopAssessment above, but across every selected
   // assessment in one go, with a single summary toast at the end instead
@@ -1451,6 +1467,7 @@ export default function AdminEAssessments() {
                   onStop={() => stopAssessment(a)}
                   onAccess={() => openAccess(a)}
                   onToggleDesktop={() => toggleDesktopOnly(a)}
+                  onToggleMusic={() => toggleMusicPaper(a)}
                   onToggleSecurity={(key) => toggleSecurity(a, key)}
                   onSaveSeb={(payload) => saveSeb(a, payload)}
                   onStats={() => openQuickStats(a)}
@@ -2246,9 +2263,17 @@ export default function AdminEAssessments() {
                         </span>
                       </div>
                     ) : (
-                      <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textSec, lineHeight: 1.7 }}>
-                        {a.essay_answer || <em style={{ color: C.textMuted }}>No answer provided.</em>}
-                      </p>
+                      a.essay_answer ? (
+                        <div
+                          className="mp-answer"
+                          style={{ margin: "4px 0 0", fontSize: 13, color: C.textSec, lineHeight: 1.7 }}
+                          dangerouslySetInnerHTML={{ __html: answerToSafeHtml(a.essay_answer) }}
+                        />
+                      ) : (
+                        <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textSec, lineHeight: 1.7 }}>
+                          <em style={{ color: C.textMuted }}>No answer provided.</em>
+                        </p>
+                      )
                     )}
 
                     {a.marks_awarded != null && (
@@ -2386,7 +2411,7 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleSecurity, onSaveSeb, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleMusic, onToggleSecurity, onSaveSeb, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
   const [sebKeysDraft, setSebKeysDraft] = React.useState(a.seb_keys || "");
   const [sebSaving, setSebSaving] = React.useState(false);
   const sebKeysDirty = (sebKeysDraft || "").trim() !== (a.seb_keys || "").trim();
@@ -2555,6 +2580,30 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onTo
             </div>
           );
         })}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${a.music_paper ? C.accent : C.border}` }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri }}>Music paper (drawing tools)</div>
+          <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4 }}>
+            {a.music_paper
+              ? "Students get a button to unlock the drawing pad (staves, notes, rests) on essay questions."
+              : /music/i.test(a.subject || "")
+                ? "This looks like a Music subject — turn on so students can draw staves and notes."
+                : "Off — students answer with the normal text box only."}
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!a.music_paper}
+          aria-label="Music paper — unlock drawing tools for students"
+          title={a.music_paper ? "Turn off the drawing tools" : "Turn on: students can draw staves, notes and rests"}
+          onClick={onToggleMusic}
+          style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: "none", padding: 2, cursor: "pointer", background: a.music_paper ? C.accent : C.border, display: "flex", alignItems: "center", justifyContent: a.music_paper ? "flex-end" : "flex-start", transition: "background .15s" }}
+        >
+          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
+        </button>
       </div>
 
       <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>

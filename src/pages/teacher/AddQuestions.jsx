@@ -152,6 +152,8 @@ export default function AddQuestions() {
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [assessment, setAssessment] = useState(null);
+  const [musicBusy, setMusicBusy] = useState(false);
+  const [musicNote, setMusicNote] = useState("");
 
   /* ── Images attached to the question currently being drafted ── */
   const [pendingImageFiles, setPendingImageFiles] = useState([]); // File[] not yet uploaded
@@ -168,6 +170,24 @@ export default function AddQuestions() {
   const docInputRef = useRef(null);
 
   /* ── Deadline ── */
+  // "Music paper" switch: marks this paper as one whose answers need drawing
+  // (staves, notes, rests). Students then get a button that unlocks the pad.
+  const toggleMusicPaper = async () => {
+    if (!assessment || musicBusy) return;
+    const next = !assessment.music_paper;
+    setMusicBusy(true);
+    setMusicNote("");
+    try {
+      await API.put(`/e-assessments/${id}/music-paper`, { enabled: next });
+      setAssessment((a) => ({ ...a, music_paper: next }));
+      setMusicNote(next ? "Drawing tools are ON for students." : "Drawing tools are OFF.");
+    } catch (err) {
+      setMusicNote(err?.response?.data?.message || "Couldn't change the music paper setting.");
+    } finally {
+      setMusicBusy(false);
+    }
+  };
+
   const deadline = assessment?.questions_deadline ? new Date(assessment.questions_deadline) : null;
   const deadlinePassed = !!deadline && deadline.getTime() < Date.now();
 
@@ -492,6 +512,36 @@ const submitQuestion = async () => {
           </span>
         </div>
       </header>
+
+      {assessment && (
+        <div style={{ ...S.banner, justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+          background: assessment.music_paper ? "var(--primary-tint)" : "var(--bg)",
+          border: `1px solid ${assessment.music_paper ? "var(--primary)" : "var(--border)"}`,
+          color: "var(--text)" }}>
+          <span style={{ flex: 1, minWidth: 220 }}>
+            <strong>Music paper (drawing tools)</strong>{" "}
+            {assessment.music_paper
+              ? "— ON. On essay questions, students get a button that unlocks a drawing pad for staves, notes and rests."
+              : /music/i.test(assessment.subject || "")
+                ? "— this looks like a Music subject. Turn it on so students can draw staves and notes."
+                : "— OFF. Turn it on if students must draw or write music notation."}
+            {musicNote && <em style={{ marginLeft: 8, color: "var(--text-secondary)" }}>{musicNote}</em>}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!assessment.music_paper}
+            aria-label="Music paper — unlock drawing tools for students"
+            onClick={toggleMusicPaper}
+            disabled={musicBusy}
+            style={{ flexShrink: 0, width: 44, height: 24, borderRadius: 12, border: "none", padding: 2, cursor: musicBusy ? "wait" : "pointer",
+              background: assessment.music_paper ? "var(--primary)" : "var(--border)",
+              display: "flex", alignItems: "center", justifyContent: assessment.music_paper ? "flex-end" : "flex-start", transition: "background .15s" }}
+          >
+            <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
+          </button>
+        </div>
+      )}
 
       {deadline && (
         <div style={{

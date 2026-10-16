@@ -19,7 +19,7 @@ const ALLOWED_TAGS = new Set([
   "P", "DIV", "BR", "SPAN", "B", "STRONG", "I", "EM", "U", "S", "STRIKE", "SUB", "SUP",
   "UL", "OL", "LI", "BLOCKQUOTE",
   "TABLE", "THEAD", "TBODY", "TFOOT", "TR", "TH", "TD", "CAPTION", "COLGROUP", "COL",
-  "MARK",
+  "MARK", "IMG",
 ]);
 
 // Removed together with everything inside them.
@@ -29,7 +29,11 @@ const DROP_WITH_CONTENT = new Set([
 ]);
 
 const ALLOWED_CLASSES = new Set(["hl-mark", "hl-status"]);
-const ALLOWED_DATA = new Set(["data-hid", "data-mark", "data-fullmark", "data-status"]);
+const ALLOWED_DATA = new Set(["data-hid", "data-mark", "data-fullmark", "data-status", "data-music-sheet", "data-tpl"]);
+
+// A music-paper drawing sheet: PNG data URL only, capped so one answer can't be abused.
+const MUSIC_SRC_RE = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/;
+const MUSIC_SRC_MAX = 3_000_000;
 const SPAN_ATTRS = new Set(["colspan", "rowspan"]);
 
 const cleanNode = (node, doc, opts) => {
@@ -46,6 +50,19 @@ const cleanNode = (node, doc, opts) => {
 
     if (!ALLOWED_TAGS.has(tag)) {
       out.appendChild(cleanNode(child, doc, opts)); // unwrap
+      continue;
+    }
+
+    if (tag === "IMG") {
+      const src = child.getAttribute("src") || "";
+      if (src.length > MUSIC_SRC_MAX || !MUSIC_SRC_RE.test(src)) continue; // any other image is dropped
+      const img = doc.createElement("img");
+      img.setAttribute("src", src);
+      img.setAttribute("data-music-sheet", "1");
+      const tplTok = child.getAttribute("data-tpl") || "";
+      if (/^[\w-]{1,24}$/.test(tplTok)) img.setAttribute("data-tpl", tplTok);
+      img.setAttribute("alt", "Music sheet drawn by the student");
+      out.appendChild(img);
       continue;
     }
 

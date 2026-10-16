@@ -85,3 +85,15 @@ html.exam-scope[data-theme='dark'] body {
   border-left: 3px solid var(--primary);
   padding-left: 10px;
 }
+
+/* music paper: a student's drawing sheet inside a rendered answer
+   (marking screens, marked paper, admin review). Always a white "paper". */
+img[data-music-sheet] {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
