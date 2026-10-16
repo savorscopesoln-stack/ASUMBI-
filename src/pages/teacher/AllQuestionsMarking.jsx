@@ -827,6 +827,7 @@ export default function Marking() {
   const [essayHTML, setEssayHTML]   = useState({});
   const [dismissed, setDismissed]   = useState(new Set());
   const [flags, setFlags]           = useState({});
+  const markingBusyRef = useRef(false);
 
   const [submissions, setSubmissions] = useState([]);
   // Auto-graded MCQ marks — kept out of the essay `queue` (nothing for a
@@ -939,6 +940,7 @@ export default function Marking() {
               // present only if the backend query selects it — used to skip
               // questions that were already graded in a previous session
               marks_awarded: a.marks_awarded,
+              remarks: a.remarks,
               // persisted highlight-to-mark data from a previous marking
               // session (see saveMarking) — a JSON array + the marked-up
               // HTML, so reopening a graded answer shows the same
@@ -957,6 +959,8 @@ export default function Marking() {
         const initialScores = {};
         const initialHighlights = {};
         const preDismissed = new Set();
+        const dbRemarks = {};
+        const committedIds = new Set();
 
         for (const item of interleaved) {
           // already graded in an earlier session — surface it as done, don't re-queue it
@@ -977,10 +981,12 @@ export default function Marking() {
               ? item.highlighted_html
               : toDisplayHTML(item.essay_answer);
             initialScores[item.id] = item.marks_awarded;
+            if (item.remarks) dbRemarks[item.id] = item.remarks;
             initialHighlights[item.id] = savedHls || [
               { id: `prior_${item.id}`, text: "Previously marked", mark: item.marks_awarded, confirmed: true, prior: true },
             ];
             preDismissed.add(item.id);
+            committedIds.add(item.id);
           } else {
             initialHTML[item.id] = toDisplayHTML(item.essay_answer);
           }
@@ -1010,27 +1016,27 @@ export default function Marking() {
         const localSavedAtMs = localSnap?.savedAt || 0;
         const winningSnap = serverUpdatedAtMs >= localSavedAtMs ? serverSnap : localSnap;
 
+        // The database is authoritative for anything already marked, so a
+        // draft may only restore work-in-progress on questions that are
+        // still unmarked — it can never un-mark or overwrite a saved one.
         const pickOwnIds = (obj) => {
           const out = {};
           for (const [k, v] of Object.entries(obj || {})) {
-            if (idSet.has(k) || idSet.has(Number(k))) out[k] = v;
+            if ((idSet.has(k) || idSet.has(Number(k))) && !committedIds.has(Number(k))) out[k] = v;
           }
           return out;
         };
 
-        let restoredRemarks = {};
+        let restoredRemarks = { ...dbRemarks };
         let restoredFlags = {};
         if (winningSnap && isMounted) {
           Object.assign(initialScores, pickOwnIds(winningSnap.scores));
           Object.assign(initialHighlights, pickOwnIds(winningSnap.highlights));
           Object.assign(initialHTML, pickOwnIds(winningSnap.essayHTML));
-          restoredRemarks = pickOwnIds(winningSnap.remarks);
+          Object.assign(restoredRemarks, pickOwnIds(winningSnap.remarks));
           restoredFlags = pickOwnIds(winningSnap.flags);
-          (winningSnap.dismissed || []).forEach((id) => {
-            if (idSet.has(id)) preDismissed.add(id);
-            else if (idSet.has(Number(id))) preDismissed.add(Number(id));
-          });
-          if (winningSnap.currentAnswerId != null && idSet.has(winningSnap.currentAnswerId)) {
+          if (winningSnap.currentAnswerId != null && idSet.has(winningSnap.currentAnswerId)
+              && !committedIds.has(winningSnap.currentAnswerId)) {
             restoredCurrentId = winningSnap.currentAnswerId;
           }
           restored = true;
@@ -1296,11 +1302,38 @@ export default function Marking() {
   }, [showToast]);
 
   /* ── MARK & ADVANCE ── */
-  const markAndAdvance = useCallback(() => {
-    if (!current) return;
-    setDismissed((prev) => new Set(prev).add(current.id));
-    setSaved(false);
-  }, [current]);
+  // Every question is committed to the database the moment the teacher
+  // marks it, so leaving at any point never loses finished work — on return
+  // the queue is rebuilt from the DB and only unmarked questions are left.
+  const commitAnswer = useCallback(async (q) => {
+    const id = q.id;
+    await API.post("/e-assessments/save-marking", {
+      scores: { [id]: Number(scores[id]) || 0 },
+      remarks: { [id]: remarks[id] || "" },
+      highlights: { [id]: highlights[id] || [] },
+      essayHTML: { [id]: essayHTML[id] || "" },
+    });
+  }, [scores, remarks, highlights, essayHTML]);
+
+  const markAndAdvance = useCallback(async () => {
+    if (!current || markingBusyRef.current) return;
+    markingBusyRef.current = true;
+    try {
+      await commitAnswer(current);
+      setDismissed((prev) => new Set(prev).add(current.id));
+      setSaved(true);
+      if (remaining.length <= 1) {
+        sessionDirtyRef.current = false;
+        clearLocalMarkingCache(assessmentId);
+        API.delete(`/e-assessments/marking-session/${assessmentId}`).catch(() => {});
+      }
+    } catch (err) {
+      console.error("AUTO-SAVE ERROR:", err);
+      showToast(err?.response?.data?.message || "Couldn't save this question — check your connection and try again", "error");
+    } finally {
+      markingBusyRef.current = false;
+    }
+  }, [current, commitAnswer, showToast, remaining.length]);
 
   const handleScoreChange = (answerId, value, maxMarks) => {
     const num = value === "" ? "" : Math.min(Number(value), maxMarks ?? Infinity);
@@ -1385,8 +1418,10 @@ export default function Marking() {
       // discarding the teacher's manual mark.
       const computedScores = {
         ...mcqScores,
+        // only questions the teacher has actually marked — never write 0
+        // over an untouched question, or it would look "marked" forever
         ...queue.reduce((acc, q) => {
-          acc[q.id] = Number(scores[q.id]) || 0;
+          if (dismissed.has(q.id)) acc[q.id] = Number(scores[q.id]) || 0;
           return acc;
         }, {}),
       };
