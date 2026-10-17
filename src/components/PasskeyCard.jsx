@@ -26,6 +26,7 @@ export default function PasskeyCard() {
       const ua = navigator.userAgent || "";
       const label = /iPhone|iPad/.test(ua) ? "iPhone / iPad" : /Android/.test(ua) ? "Android phone" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows PC" : "This device";
       await registerThisDevice(label);
+      try { const u = JSON.parse(localStorage.getItem("user") || "{}"); localStorage.setItem(`doravo_bio_done_${String(u?.role || "").toLowerCase()}_${u?.id}`, "1"); } catch { /* ignore */ }
       setMsg({ tone: "ok", text: "Done. Next time, use “Sign in with fingerprint / face” on the login page." });
       await load();
     } catch (e) { setMsg({ tone: "err", text: e.message }); }

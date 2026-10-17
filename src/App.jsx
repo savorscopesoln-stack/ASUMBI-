@@ -49,6 +49,7 @@ import Login from "./pages/Login";
 import Landing from "./pages/Landing";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
 import AccountSecurity from "./pages/AccountSecurity";
+import BiometricPrompt from "./components/BiometricPrompt";
 import CompleteProfile from "./pages/CompleteProfile";
 
 /* =========================================================
@@ -324,6 +325,7 @@ export default function App() {
   return (
     <>
     <TrialBanner />
+    <BiometricPrompt />
     <Routes>
 
       {/* ROOT — the marketing landing page for anyone not logged in yet.

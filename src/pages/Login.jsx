@@ -241,6 +241,8 @@ export default function Login() {
       const { token, user } = await signInWithPasskey();
       if (!token || !user) { setError("Invalid server response."); return; }
       const role = (user.role || "").toLowerCase();
+      // this device already uses fingerprint/face: never offer the setup prompt here
+      try { localStorage.setItem(`doravo_bio_done_${String(user?.role || "").toLowerCase()}_${user?.id}`, "1"); } catch { /* ignore */ }
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
       const now = String(Date.now());
