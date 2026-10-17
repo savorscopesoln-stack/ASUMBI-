@@ -930,18 +930,21 @@ const injectPickerStyles = () => {
     .ap-identify .ap-btn-primary:disabled { opacity: .6; cursor: not-allowed; }
     .ap-id-error { margin-top: 12px; color: #b3261e; font-size: 13px; font-weight: 650; }
     .ap-who {
-      display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
-      padding: 16px 20px; margin-bottom: 26px; border: 1px solid var(--ap-border);
-      border-radius: 14px; background: var(--ap-card);
+      display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+      padding: clamp(22px, 2.6vw, 34px) clamp(22px, 3vw, 40px); margin-bottom: 32px;
+      border: 1px solid var(--ap-border); border-left: 6px solid var(--ap-primary);
+      border-radius: 18px; background: var(--ap-card); box-shadow: 0 6px 20px rgba(30, 20, 25, .05);
     }
-    .ap-who-main { display: flex; align-items: center; gap: 13px; min-width: 0; }
+    .ap-who-main { display: flex; align-items: center; gap: clamp(16px, 2vw, 26px); min-width: 0; }
     .ap-who-avatar {
-      width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center;
+      width: clamp(64px, 6vw, 88px); height: clamp(64px, 6vw, 88px); border-radius: 22px; display: grid; place-items: center;
       background: var(--ap-tint); color: var(--ap-primary); flex-shrink: 0;
     }
-    .ap-who-name { font-size: 17px; font-weight: 800; overflow-wrap: anywhere; }
-    .ap-who-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; color: var(--ap-muted); font-size: 13px; }
-    .ap-who-meta span { display: inline-flex; align-items: center; gap: 6px; }
+    .ap-who-avatar svg { width: 46%; height: 46%; }
+    .ap-who-name { font-size: clamp(26px, 3vw, 42px); line-height: 1.15; font-weight: 850; letter-spacing: -.03em; overflow-wrap: anywhere; }
+    .ap-who-meta { display: flex; flex-wrap: wrap; gap: 8px 26px; margin-top: 10px; color: var(--ap-secondary); font-size: clamp(16px, 1.5vw, 21px); font-weight: 650; }
+    .ap-who-meta span { display: inline-flex; align-items: center; gap: 9px; }
+    .ap-who-meta svg { width: 1.1em; height: 1.1em; color: var(--ap-primary); }
     .ap-inactive {
       display: flex; gap: 11px; align-items: flex-start; padding: 16px 18px; margin-bottom: 26px;
       border: 1px solid #fecaca; border-radius: 12px; background: #fff4f4; color: #7a1f1a; font-size: 14px; line-height: 1.6;
@@ -1365,13 +1368,13 @@ export default function TakeAssessmentPicker() {
         <>
         <div className="ap-who">
           <div className="ap-who-main">
-            <div className="ap-who-avatar"><User size={22} aria-hidden="true" /></div>
+            <div className="ap-who-avatar"><User aria-hidden="true" /></div>
             <div style={{ minWidth: 0 }}>
               <div className="ap-who-name">{identity.name || identity.username}</div>
               <div className="ap-who-meta">
-                <span><ListChecks size={13} aria-hidden="true" />No. {identity.username}</span>
-                {identity.school && <span><Building2 size={13} aria-hidden="true" />{identity.school}</span>}
-                {identity.class && <span><GraduationCap size={13} aria-hidden="true" />{identity.class}</span>}
+                <span><ListChecks aria-hidden="true" />No. {identity.username}</span>
+                {identity.school && <span><Building2 aria-hidden="true" />{identity.school}</span>}
+                {identity.class && <span><GraduationCap aria-hidden="true" />{identity.class}</span>}
               </div>
             </div>
           </div>

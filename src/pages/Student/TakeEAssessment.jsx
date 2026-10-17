@@ -2813,28 +2813,39 @@ export default function TakeEAssessment() {
     );
   }
   if (sebGate === "needed") {
+    const btnBase = { display: "flex", alignItems: "center", justifyContent: "center", width: "100%", boxSizing: "border-box", borderRadius: 12, fontWeight: 800, textDecoration: "none", cursor: "pointer", textAlign: "center", fontFamily: "inherit" };
     return (
       <div className="dash-main" role="main" style={S.stateWrap}>
-        <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--info)" }}>
-          <div style={{ ...S.iconCircle, background: "var(--info-tint)" }}><ShieldAlert size={26} color="var(--info)" aria-hidden="true" /></div>
-          <h1 data-phase-heading tabIndex={-1} style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>This exam opens in Safe Exam Browser</h1>
-          <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 16px", textAlign: "center" }}>
+        {/* card = 40% of the screen width (never narrower than 360px or wider than the screen) */}
+        <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--info)", width: "min(100%, max(40vw, 360px))", maxWidth: "none", padding: "clamp(28px, 3.5vw, 52px) clamp(22px, 3vw, 44px)", boxSizing: "border-box" }}>
+          <div style={{ ...S.iconCircle, background: "var(--info-tint)", width: 72, height: 72 }}><ShieldAlert size={36} color="var(--info)" aria-hidden="true" /></div>
+          <h1 data-phase-heading tabIndex={-1} style={{ margin: "22px 0 12px", color: "var(--text)", fontSize: "clamp(22px, 2.2vw, 30px)", fontWeight: 800, textAlign: "center", lineHeight: 1.25 }}>This exam opens in Safe Exam Browser</h1>
+          <p style={{ color: "var(--text-secondary)", fontSize: "clamp(15px, 1.2vw, 17px)", lineHeight: 1.7, margin: "0 0 26px", textAlign: "center" }}>
             We are starting Safe Exam Browser on this computer. If your browser asks, choose <b>Open Safe Exam Browser</b>. Sign in and take the exam inside it.
           </p>
-          <a href={sebLaunchUrl(id)} style={{ display: "block", textAlign: "center", padding: "11px 16px", borderRadius: 8, background: "var(--info)", color: "#fff", fontWeight: 700, textDecoration: "none" }}>Open in Safe Exam Browser</a>
-          <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: "14px 0 0", textAlign: "center" }}>
-            Nothing opened? Make sure Safe Exam Browser is installed, or <a href={sebConfigHttpUrl(id)} style={{ color: "var(--info)" }}>download the exam file</a> and double-click it.
+
+          {/* biggest button */}
+          <a href={sebLaunchUrl(id)} style={{ ...btnBase, padding: "22px 20px", fontSize: "clamp(18px, 1.6vw, 22px)", background: "var(--info)", color: "#fff", boxShadow: "0 8px 22px rgba(37, 99, 235, .3)" }}>
+            Open in Safe Exam Browser
+          </a>
+
+          <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, margin: "24px 0 10px", textAlign: "center" }}>
+            Nothing opened? Make sure Safe Exam Browser is installed, then download the exam file and double-click it.
           </p>
-          <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: "10px 0 0", textAlign: "center" }}>
-            Your invigilator allowed you to use this browser?{" "}
-            <button
-              type="button"
-              onClick={() => { try { sessionStorage.setItem(`doravo_seb_continue_${id}`, "1"); } catch { /* ignore */ } setSebGate("ok"); }}
-              style={{ background: "none", border: "none", padding: 0, color: "var(--info)", fontWeight: 700, cursor: "pointer", font: "inherit" }}
-            >
-              Continue in this browser
-            </button>
+          <a href={sebConfigHttpUrl(id)} style={{ ...btnBase, padding: "13px 16px", fontSize: 15, background: "transparent", color: "var(--info)", border: "2px solid var(--info)" }}>
+            Download exam file
+          </a>
+
+          <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, margin: "24px 0 10px", textAlign: "center" }}>
+            Your invigilator allowed you to use this browser?
           </p>
+          <button
+            type="button"
+            onClick={() => { try { sessionStorage.setItem(`doravo_seb_continue_${id}`, "1"); } catch { /* ignore */ } setSebGate("ok"); }}
+            style={{ ...btnBase, padding: "13px 16px", fontSize: 15, background: "#dc2626", color: "#fff", border: "none" }}
+          >
+            Use Chrome
+          </button>
         </div>
       </div>
     );
