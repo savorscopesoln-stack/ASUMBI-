@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import API from "../api";
+import useSchoolSettings from "../hooks/useSchoolSettings";
+import { schoolInfoFromSettings, schoolHeaderHtml } from "../utils/schoolInfo";
 import {
   DoorOpen, LogIn, LogOut, CheckCircle2, XCircle, Printer,
   Calendar, ArrowLeft, Loader2, IdCard,
@@ -41,6 +43,9 @@ const injectStyles = () => {
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 export default function GatePage() {
+  const { settings: schoolSettings } = useSchoolSettings();
+  const schoolInfo = schoolInfoFromSettings(schoolSettings);
+  const schoolTitle = (schoolInfo.name || "School").toUpperCase();
   injectStyles();
   const navigate = useNavigate();
   const inputRef = useRef(null);
@@ -221,7 +226,7 @@ export default function GatePage() {
       <body>
         <div class="receipt">
           <div class="center">
-            <h1 class="school">ASUMBI SMART CAMPUS</h1>
+            <h1 class="school">${schoolTitle}</h1>
             <p class="sub">Gate &amp; Leave-Out Verification</p>
           </div>
           <div class="title center">Official Exit Pass</div>
@@ -271,7 +276,7 @@ export default function GatePage() {
           </div>
 
           <div class="footer">
-            Asumbi Smart Campus — Gate Desk<br/>
+            ${schoolInfo.name || "School"} — Gate Desk<br/>
             This is a system-generated pass. Unauthorized duplication or
             alteration invalidates it immediately.
           </div>
@@ -312,6 +317,7 @@ export default function GatePage() {
           </style>
         </head>
         <body>
+          ${schoolHeaderHtml(schoolInfo, "#111")}
           <h1>Gate Report</h1>
           <p>${date} — ${rows.length} record(s)</p>
           <table>

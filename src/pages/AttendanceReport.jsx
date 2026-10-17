@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import API from "../api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getSchoolInfo, drawSchoolHeader } from "../utils/schoolInfo";
 
 export default function AttendanceReport() {
   const [attendance, setAttendance] = useState([]);
@@ -71,12 +72,16 @@ export default function AttendanceReport() {
   const classes = ["ALL", ...new Set(students.map((s) => s.studentClass))];
 
   /* ================= EXPORT PDF ================= */
-  const downloadPDF = () => {
+  const downloadPDF = async () => {
+    const school = await getSchoolInfo();
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("ATTENDANCE REGISTER", 14, 15);
+    const top = drawSchoolHeader(doc, school, { margin: 14, top: 10, color: [127, 29, 29] });
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("ATTENDANCE REGISTER", 14, top + 4);
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.text(`Date: ${date}  |  Session: ${session}  |  Class: ${classFilter}`, 14, 23);
+    doc.text(`Date: ${date}  |  Session: ${session}  |  Class: ${classFilter}`, 14, top + 11);
 
     const body = filteredStudents.map((s, i) => [
       i + 1,
@@ -87,7 +92,7 @@ export default function AttendanceReport() {
     ]);
 
     autoTable(doc, {
-      startY: 30,
+      startY: top + 17,
       head: [["#", "Name", "Admission No", "Class", "Status"]],
       body,
       headStyles: { fillKind: "solid", fillColor: [127, 29, 29] },

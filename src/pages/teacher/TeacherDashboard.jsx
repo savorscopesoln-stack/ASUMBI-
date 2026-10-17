@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import API from "../../api";
+import API, { resolveFileUrl } from "../../api";
+import useSchoolSettings from "../../hooks/useSchoolSettings";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import {
@@ -126,6 +127,7 @@ export default function TeacherReports() {
   const [isPrinting, setIsPrinting] = useState(false);
 
   const reportRef = useRef();
+  const { settings: school } = useSchoolSettings();
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const teacherSubject = user.subject || "";
@@ -254,7 +256,7 @@ export default function TeacherReports() {
       const pdf = new jsPDF("p", "mm", "a4");
       
       const imgWidth = 210;
-      const pageHeight = 295;
+      const pageHeight = 297;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       let heightLeft = imgHeight;
       let position = 0;
@@ -262,7 +264,7 @@ export default function TeacherReports() {
       pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
-      while (heightLeft >= 0) {
+      while (heightLeft > 1) { // > 1mm: never add a page for a sliver or an exact fit
         position = heightLeft - imgHeight;
         pdf.addPage();
         pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
@@ -386,8 +388,14 @@ export default function TeacherReports() {
           <div style={printStyles.watermark}>OFFICIAL MASTER COPY</div>
 
           <div style={printStyles.header}>
-            <h2 style={printStyles.collegeTitle}>ASUMBI TEACHERS TRAINING COLLEGE</h2>
-            <p style={printStyles.collegeMeta}>P.O. BOX 1 - 40301, ASUMBI, KENYA</p>
+            {school?.logoUrl && (
+              <img src={resolveFileUrl(school.logoUrl)} alt="" crossOrigin="anonymous" style={{ width: 54, height: 54, objectFit: "contain", marginBottom: 6 }} />
+            )}
+            <h2 style={printStyles.collegeTitle}>{(school?.schoolName || "").toUpperCase()}</h2>
+            {school?.motto && <p style={{ ...printStyles.collegeMeta, fontStyle: "italic" }}>"{school.motto}"</p>}
+            <p style={printStyles.collegeMeta}>
+              {[school?.address, school?.phone && `TEL: ${school.phone}`, school?.email && `EMAIL: ${school.email}`, school?.website].filter(Boolean).join(" | ")}
+            </p>
             <div style={printStyles.divider} />
             <h3 style={printStyles.reportTitle}>OFFICIAL INSTITUTIONAL PERFORMANCE LEGER</h3>
             <p style={printStyles.dateLabel}><b>Generated:</b> {new Date().toLocaleDateString("en-GB")}</p>

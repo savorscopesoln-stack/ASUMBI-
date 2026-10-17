@@ -12,6 +12,7 @@ import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 import { fmtDateTime } from "../components/mainExams/shared";
 import MarkingLeaderboard from "../components/eassessment/MarkingLeaderboard";
 import { downloadTablesPdf } from "../utils/pdfExport";
+import { getSchoolInfo, drawSchoolHeader } from "../utils/schoolInfo";
 import EvidenceGallery from "../components/eassessment/EvidenceGallery";
 import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
 import { fmt2 } from "../utils/format";
@@ -3366,22 +3367,24 @@ async function downloadSessionsPdf(rows, filename, title = "Device Sessions") {
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
   const rgb = { active: [22, 163, 74], locked: [220, 38, 38], not_started: [100, 116, 139], submitted: [37, 99, 235] };
+  const school = await getSchoolInfo();
+  const top = drawSchoolHeader(doc, school, { margin: 40, top: 24 });
   doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(20);
-  doc.text(title, 40, 40);
+  doc.text(title, 40, top + 12);
   doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(110);
-  doc.text(`Generated ${new Date().toLocaleString()}  ·  ${rows.length} device${rows.length === 1 ? "" : "s"}`, 40, 55);
+  doc.text(`Generated ${new Date().toLocaleString()}  ·  ${rows.length} device${rows.length === 1 ? "" : "s"}`, 40, top + 27);
 
   // summary counts in group colours
   let x = 40;
   GROUPS.forEach((g) => {
     const n = rows.filter((r) => r.group === g.key).length;
     doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(...rgb[g.key]);
-    doc.text(String(n), x, 82);
-    doc.setFontSize(9); doc.text(g.title.toUpperCase(), x + doc.getTextWidth(String(n)) + 6, 82);
+    doc.text(String(n), x, top + 54);
+    doc.setFontSize(9); doc.text(g.title.toUpperCase(), x + doc.getTextWidth(String(n)) + 6, top + 54);
     x += 130;
   });
 
-  let y = 98;
+  let y = top + 70;
   GROUPS.forEach((g) => {
     const list = rows.filter((r) => r.group === g.key);
     if (!list.length) return;

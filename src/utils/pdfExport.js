@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getSchoolInfo, drawSchoolHeader } from "./schoolInfo";
 
 const BRAND = [139, 30, 45]; // matches --primary
 
@@ -10,27 +11,32 @@ const fmtStamp = (d = new Date()) =>
  * Build a PDF made of one or more titled tables and download it.
  * sections: [{ heading?, note?, head: string[], body: (string|number)[][] }]
  */
-export function downloadTablesPdf({
+export async function downloadTablesPdf({
   title, subtitle, sections, filename, orientation = "landscape", schoolName,
 }) {
+  const school = await getSchoolInfo();
   const doc = new jsPDF({ orientation, unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 36;
 
-  // header band
+  // school details (logo, name, address, contacts) on top of every report
+  const schoolInfo = schoolName && !school.name ? { ...school, name: schoolName } : school;
+  const top = drawSchoolHeader(doc, schoolInfo, { margin, top: 24, color: BRAND });
+
+  // title band
   doc.setFillColor(...BRAND);
-  doc.rect(0, 0, pageW, 58, "F");
+  doc.rect(0, top, pageW, 46, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(17);
-  doc.text(title, margin, 29);
+  doc.setFontSize(15);
+  doc.text(title, margin, top + 20);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.5);
-  const sub = [schoolName, subtitle, `Generated ${fmtStamp()}`].filter(Boolean).join("  ·  ");
-  doc.text(sub, margin, 46);
+  doc.setFontSize(9);
+  const sub = [subtitle, `Generated ${fmtStamp()}`].filter(Boolean).join("  ·  ");
+  doc.text(sub, margin, top + 36);
 
-  let y = 76;
+  let y = top + 64;
   (sections || []).forEach((sec) => {
     if (sec.heading) {
       if (y > pageH - 90) { doc.addPage(); y = margin; }

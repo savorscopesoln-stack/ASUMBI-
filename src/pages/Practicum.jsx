@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import API from "../api";
+import useSchoolSettings from "../hooks/useSchoolSettings";
+import { getSchoolInfo, schoolInfoFromSettings, schoolHeaderHtml } from "../utils/schoolInfo";
 import { getStoredUser } from "../permissions";
 import { useTheme } from "../context/ThemeContext";
 
@@ -205,6 +207,10 @@ const RESPONSIVE_CSS = `
 `;
 
 export default function Practicum() {
+  const { settings: school } = useSchoolSettings();
+  const schoolName = school?.schoolName || "";
+  const schoolShort = school?.shortName || schoolName;
+  const schoolContact = [school?.address, school?.phone && `Tel: ${school.phone}`, school?.email].filter(Boolean).join(" | ");
   const currentUser = useMemo(() => getStoredUser(), []);
   const isAdmin = String(currentUser?.role || "").toLowerCase().trim() === "admin";
 
@@ -923,6 +929,8 @@ export default function Practicum() {
   const printSection = (elementId, logLabel) => {
     const printContent = document.getElementById(elementId);
     if (!printContent) return;
+    // letters carry their own letterhead; every other report gets the school details on top
+    const headerHtml = printContent.querySelector(".letter") ? "" : schoolHeaderHtml(schoolInfoFromSettings(school));
     const win = window.open("", "", "width=1000,height=750");
     win.document.write(`
       <html>
@@ -933,11 +941,12 @@ export default function Practicum() {
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             th, td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
             th { background: #8B1E2D; color: #fff; }
-            .letter { page-break-after: always; margin-bottom: 30px; }
+            .letter { margin-bottom: 30px; }
+            .letter + .letter { page-break-before: always; } /* no blank page after the last letter */
             .header { border-bottom: 2px solid #8B1E2D; margin-bottom: 10px; }
           </style>
         </head>
-        <body>${printContent.innerHTML}</body>
+        <body>${headerHtml}${printContent.innerHTML}</body>
       </html>
     `);
     win.document.close();
@@ -949,7 +958,18 @@ export default function Practicum() {
     const el = document.getElementById(elementId);
     if (!el) return;
     notify("Generating PDF...");
-    const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+    let headerEl = null;
+    if (!el.querySelector(".letter")) {
+      headerEl = document.createElement("div");
+      headerEl.innerHTML = schoolHeaderHtml(await getSchoolInfo());
+      el.insertBefore(headerEl, el.firstChild);
+    }
+    let canvas;
+    try {
+      canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+    } finally {
+      if (headerEl) headerEl.remove();
+    }
     const imgData = canvas.toDataURL("image/png");
     const pdf = new jsPDF("p", "mm", "a4");
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -1976,7 +1996,7 @@ export default function Practicum() {
           <div className="pz-modal" style={styles.modal}>
             <div className="pz-letter-container" style={styles.letterContainer}>
               <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <h2 style={styles.letterTitle}>Asumbi TTC – Practicum Letters</h2>
+                <h2 style={styles.letterTitle}>{schoolShort ? `${schoolShort} – ` : ""}Practicum Letters</h2>
                 <div className="pz-btn-row">
                   <button style={styles.primaryBtn} onClick={() => downloadPDF("letter-print-area", "practicum-letters", "practicum letters")}>
                     Download PDF
@@ -1992,8 +2012,8 @@ export default function Practicum() {
                   .map((g, i) => (
                     <div key={i} className="letter" style={styles.letter}>
                       <div style={styles.letterHead}>
-                        <h2 style={styles.letterInstitution}>ASUMBI TEACHERS TRAINING COLLEGE</h2>
-                        <p style={styles.letterSub}>P.O BOX XXXX – KENYA | PRACTICUM OFFICE</p>
+                        <h2 style={styles.letterInstitution}>{schoolName.toUpperCase()}</h2>
+                        <p style={styles.letterSub}>{[schoolContact, "PRACTICUM OFFICE"].filter(Boolean).join(" | ")}</p>
                         <div style={styles.letterLine}></div>
                       </div>
                       <div style={styles.letterDate}>Date: {new Date().toLocaleDateString()}</div>
@@ -2002,7 +2022,7 @@ export default function Practicum() {
                       <p style={styles.letterText}>Dear {g.teacher.name},</p>
                       <p style={styles.letterText}>
                         You have been officially assigned the following students for practicum
-                        supervision under Asumbi Teachers Training College
+                        supervision under {schoolName || "the institution"}
                         {g.teacher.researchDay ? `. Your standing research day is ${g.teacher.researchDay}` : ""}.
                         Please note assessments 1–6 are due across the course of the term.
                       </p>
@@ -2017,7 +2037,7 @@ export default function Practicum() {
                       </p>
                       <div style={styles.letterFooter}>
                         <p>Yours faithfully,</p>
-                        <p><b>________________________</b><br />Practicum Coordinator<br />Asumbi TTC</p>
+                        <p><b>________________________</b><br />Practicum Coordinator<br />{schoolShort}</p>
                       </div>
                     </div>
                   ))}

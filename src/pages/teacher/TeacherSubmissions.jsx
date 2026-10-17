@@ -4,6 +4,7 @@ import API from "../../api";
 import EvidenceGallery from "../../components/eassessment/EvidenceGallery";
 import { useTheme } from "../../context/ThemeContext";
 import jsPDF from "jspdf";
+import { getSchoolInfo, drawSchoolHeader } from "../../utils/schoolInfo";
 
 /* ─────────────────────────────────────────────
    Design tokens — now shares the same palette as
@@ -320,21 +321,26 @@ export default function TeacherSubmissions() {
   };
 
   /* ── Bulk export ── */
-  const exportSelected = () => {
+  const exportSelected = async () => {
     const targets = submissions.filter(s => selectedIds.has(s.id));
     if (!targets.length) { showToast("Select at least one submission.", "error"); return; }
+    const school = await getSchoolInfo();
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("Bulk Assessment Report", 20, 20);
+    const top = drawSchoolHeader(doc, school, { margin: 20, top: 12 });
+    doc.setFontSize(15);
+    doc.setFont("helvetica", "bold");
+    doc.text("Bulk Assessment Report", 20, top + 6);
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
-    let y = 35;
+    let y = top + 18;
     targets.forEach((s, i) => {
+      // break BEFORE writing a row, so the last row never leaves a blank page behind
+      if (y > 275) { doc.addPage(); y = 20; }
       doc.text(
         `${i + 1}. ${s.student_name || s.student_id}  |  Score: ${s.score ?? "Pending"}  |  Status: ${s.status || "Submitted"}`,
         20, y
       );
       y += 10;
-      if (y > 270) { doc.addPage(); y = 20; }
     });
     doc.save(`bulk_report_assessment_${assessmentId}.pdf`);
     showToast(`Exported ${targets.length} submissions.`);
@@ -355,17 +361,22 @@ export default function TeacherSubmissions() {
     }
   };
 
-  const downloadReport = (s) => {
+  const downloadReport = async (s) => {
+    const school = await getSchoolInfo();
     const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text("Assessment Report", 20, 20);
+    const top = drawSchoolHeader(doc, school, { margin: 20, top: 12 });
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Assessment Report", 20, top + 8);
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
-    doc.text(`Student:       ${s.student_name || s.student_id}`, 20, 40);
-    doc.text(`Submission ID: ${s.id}`,                           20, 52);
-    doc.text(`Score:         ${s.score ?? "Not Marked"}`,        20, 64);
-    doc.text(`Status:        ${s.status || "Submitted"}`,        20, 76);
-    doc.text(`Submitted:     ${s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "—"}`, 20, 88);
-    if (s.remark_reason) doc.text(`Remark Reason: ${s.remark_reason}`, 20, 100);
+    const b = top + 26;
+    doc.text(`Student:       ${s.student_name || s.student_id}`, 20, b);
+    doc.text(`Submission ID: ${s.id}`,                           20, b + 12);
+    doc.text(`Score:         ${s.score ?? "Not Marked"}`,        20, b + 24);
+    doc.text(`Status:        ${s.status || "Submitted"}`,        20, b + 36);
+    doc.text(`Submitted:     ${s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "—"}`, 20, b + 48);
+    if (s.remark_reason) doc.text(`Remark Reason: ${s.remark_reason}`, 20, b + 60);
     doc.save(`submission_${s.id}.pdf`);
     showToast("PDF downloaded.");
   };

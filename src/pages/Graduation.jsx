@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import API from "../api";
+import API, { resolveFileUrl } from "../api";
+import useSchoolSettings from "../hooks/useSchoolSettings";
 import {
   BarChart,
   Bar,
@@ -13,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 
 /* ================= GRADUATION PAGE ================= */
 export default function Graduation() {
+  const { settings: school, getOfficial } = useSchoolSettings();
   const navigate = useNavigate();
 
   const [graduated, setGraduated] = useState([]);
@@ -163,14 +165,16 @@ export default function Graduation() {
       <div class="page">
 
         <div class="header">
-          <h1>ASUMBI TEACHERS TRAINING COLLEGE</h1>
+          ${school?.logoUrl ? `<img src="${resolveFileUrl(school.logoUrl)}" alt="" style="width:60px;height:60px;object-fit:contain;" />` : ""}
+          <h1>${(school?.schoolName || "").toUpperCase()}</h1>
+          ${[school?.address, school?.phone && `Tel: ${school.phone}`, school?.email].filter(Boolean).length ? `<p style="font-size:12px;color:#444;margin:2px 0;">${[school?.address, school?.phone && `Tel: ${school.phone}`, school?.email].filter(Boolean).join(" | ")}</p>` : ""}
           <h3>OFFICIAL COMPLETION LETTER</h3>
         </div>
 
         <div class="content">
           <p>Dear <b>${g.name}</b>,</p>
 
-          <p>This is to formally certify that you were a registered student at Asumbi Teachers Training College during your period of study under the approved academic programme.</p>
+          <p>This is to formally certify that you were a registered student at ${school?.schoolName || "the institution"} during your period of study under the approved academic programme.</p>
 
           <p>You successfully completed all required academic units, teaching practice, and institutional assessments as prescribed by the college curriculum.</p>
 
@@ -182,8 +186,9 @@ export default function Graduation() {
         </div>
 
         <div class="footer">
-          <p><b>Principal</b></p>
+          <p><b>${getOfficial("principal")?.name || "Principal"}</b></p>
           <p>_____________________</p>
+          <p>Principal</p>
         </div>
 
       </div>
@@ -214,9 +219,9 @@ export default function Graduation() {
           body { font-family: "Times New Roman"; }
 
           .page {
-            page-break-after: always;
             padding: 25px 40px;
           }
+          .page + .page { page-break-before: always; } /* no blank page after the last letter */
 
           .header {
             text-align: center;
