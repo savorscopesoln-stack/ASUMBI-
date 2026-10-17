@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import API, { resolveFileUrl } from "../../api";
+import API, { resolveFileUrl, BASE_URL } from "../../api";
 import { useTheme } from "../../context/ThemeContext";
 import {
   examCacheKey, loadExamCache, saveExamCache, clearExamCache,
@@ -220,6 +220,16 @@ const injectExamStyles = () => {
 
 // True when the page is running inside Safe Exam Browser (it adds "SEB/<version>" to the User-Agent).
 const IN_SEB = typeof navigator !== "undefined" && /\bSEB\/\d/i.test(navigator.userAgent || "");
+
+// URL of the .seb file for an assessment, plus the seb:// / sebs:// form that
+// makes the OS launch the INSTALLED Safe Exam Browser and hand it that file.
+const sebConfigHttpUrl = (assessmentId) => {
+  const api = new URL(BASE_URL, window.location.origin);
+  const base = api.href.replace(/\/+$/, "");
+  return `${base}/e-assessments/public/${assessmentId}/seb-config?origin=${encodeURIComponent(window.location.origin)}`;
+};
+const sebLaunchUrl = (assessmentId) =>
+  sebConfigHttpUrl(assessmentId).replace(/^https:/i, "sebs:").replace(/^http:/i, "seb:");
 const HEARTBEAT_MS = 15000;
 const LOCK_POLL_MS = 5000; // how often a locked screen asks the server whether an admin unlocked it
 const MAX_VIOLATIONS = 3;
@@ -1014,6 +1024,29 @@ export default function TakeEAssessment() {
 
   // examlogin | loading | reveal | verify | active | locked | ended | error
   const [phase, setPhase] = useState("examlogin");
+
+  // Safe Exam Browser gate: when this exam requires SEB and we are in a normal
+  // browser, launch the installed SEB automatically (it reopens this exam inside SEB).
+  const [sebGate, setSebGate] = useState(IN_SEB ? "ok" : "checking"); // checking | needed | ok
+  const sebLaunchedRef = useRef(false);
+  useEffect(() => {
+    if (IN_SEB) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await API.get(`/e-assessments/public/${id}/seb-info`);
+        if (cancelled) return;
+        if (r.data?.require_seb) {
+          setSebGate("needed");
+          if (!sebLaunchedRef.current) {
+            sebLaunchedRef.current = true;
+            window.location.href = sebLaunchUrl(id);
+          }
+        } else setSebGate("ok");
+      } catch { if (!cancelled) setSebGate("ok"); }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
   const [errorMsg, setErrorMsg] = useState("");
   const [token, setToken] = useState("");
 
@@ -2747,6 +2780,32 @@ export default function TakeEAssessment() {
   /* ═══════════════════════════════════════════════════════════
      RENDER — states
   ═══════════════════════════════════════════════════════════ */
+
+  /* ── Safe Exam Browser required: launch the installed app ── */
+  if (sebGate === "checking") {
+    return (
+      <div className="dash-main" role="main" style={S.stateWrap}>
+        <div className="dash-card" style={S.panelCard}><p style={{ textAlign: "center", color: "var(--text-secondary)" }}>Checking exam requirements…</p></div>
+      </div>
+    );
+  }
+  if (sebGate === "needed") {
+    return (
+      <div className="dash-main" role="main" style={S.stateWrap}>
+        <div className="dash-card" style={{ ...S.panelCard, border: "1px solid var(--info)" }}>
+          <div style={{ ...S.iconCircle, background: "var(--info-tint)" }}><ShieldAlert size={26} color="var(--info)" aria-hidden="true" /></div>
+          <h1 data-phase-heading tabIndex={-1} style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>This exam opens in Safe Exam Browser</h1>
+          <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 16px", textAlign: "center" }}>
+            We are starting Safe Exam Browser on this computer. If your browser asks, choose <b>Open Safe Exam Browser</b>. Sign in and take the exam inside it.
+          </p>
+          <a href={sebLaunchUrl(id)} style={{ display: "block", textAlign: "center", padding: "11px 16px", borderRadius: 8, background: "var(--info)", color: "#fff", fontWeight: 700, textDecoration: "none" }}>Open in Safe Exam Browser</a>
+          <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: "14px 0 0", textAlign: "center" }}>
+            Nothing opened? Make sure Safe Exam Browser is installed, or <a href={sebConfigHttpUrl(id)} style={{ color: "var(--info)" }}>download the exam file</a> and double-click it.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   /* ── step 0: username + this assessment's exam password —
        no portal account login required.
