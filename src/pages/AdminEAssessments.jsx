@@ -755,6 +755,37 @@ export default function AdminEAssessments() {
     }
   };
 
+  // Safe Exam Browser: upload (or remove) a .seb file made in the SEB Config Tool.
+  // Students then download THIS file instead of the automatically generated one.
+  const uploadSebConfig = async (a, file) => {
+    if (!file) return false;
+    if (file.size > 1024 * 1024) { showToast("That file is too large to be a SEB configuration.", "error"); return false; }
+    try {
+      const data_base64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = () => reject(new Error("Could not read the file"));
+        r.readAsDataURL(file);
+      });
+      const res = await API.put(`/e-assessments/admin/${a.id}/seb-config`, { file_name: file.name, data_base64 });
+      setList((p) => p.map((x) => (x.id === a.id ? { ...x, seb_config_name: res.data.seb_config_name } : x)));
+      showToast(res.data?.warning || res.data?.message || "Configuration saved", res.data?.warning ? "error" : undefined);
+      return true;
+    } catch (err) {
+      showToast(err?.response?.data?.message || err?.message || "Failed to upload the SEB configuration", "error");
+      return false;
+    }
+  };
+  const removeSebConfig = async (a) => {
+    try {
+      const res = await API.delete(`/e-assessments/admin/${a.id}/seb-config`);
+      setList((p) => p.map((x) => (x.id === a.id ? { ...x, seb_config_name: null } : x)));
+      showToast(res.data?.message || "Removed");
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Failed to remove the SEB configuration", "error");
+    }
+  };
+
   // "Music paper" switch — identifies a paper whose answers need drawing
   // (staves, notes, rests). When ON, students get a button on each essay
   // question that unlocks the drawing pad. Optimistic, rolled back on failure.
@@ -1478,6 +1509,8 @@ export default function AdminEAssessments() {
                   onToggleMusic={() => toggleMusicPaper(a)}
                   onToggleSecurity={(key) => toggleSecurity(a, key)}
                   onSaveSeb={(payload) => saveSeb(a, payload)}
+                  onUploadSebConfig={(file) => uploadSebConfig(a, file)}
+                  onRemoveSebConfig={() => removeSebConfig(a)}
                   onStats={() => openQuickStats(a)}
                   onAttendance={() => downloadAttendance(a)}
                   attendanceBusy={attendanceBusy === a.id}
@@ -2455,10 +2488,12 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleMusic, onToggleSecurity, onSaveSeb, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleMusic, onToggleSecurity, onSaveSeb, onUploadSebConfig, onRemoveSebConfig, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
   const [sebKeysDraft, setSebKeysDraft] = React.useState(a.seb_keys || "");
   const [sebSaving, setSebSaving] = React.useState(false);
   const sebKeysDirty = (sebKeysDraft || "").trim() !== (a.seb_keys || "").trim();
+  const sebFileRef = React.useRef(null);
+  const [sebUploading, setSebUploading] = React.useState(false);
   const C = useC();
   // Exact-match against "Active" — kept in lockstep with the backend's
   // toggle-active logic (see eAssessment.controller.js), which only ever
@@ -2561,6 +2596,34 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onTo
             <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
           </button>
         </div>
+        {a.require_seb && (
+          <div style={{ marginTop: 8, padding: 8, borderRadius: 6, border: `1px dashed ${C.border}` }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginBottom: 2 }}>SEB configuration file</div>
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 6 }}>
+              {a.seb_config_name
+                ? <>Students download <b>{a.seb_config_name}</b> and open it to start the exam. Paste its Config Key below.</>
+                : "Optional. Upload a .seb file from the SEB Config Tool and students will download it instead of the automatic one. Its Start URL must be this exam's page."}
+            </div>
+            <input
+              ref={sebFileRef}
+              type="file"
+              accept=".seb"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const f = e.target.files && e.target.files[0];
+                e.target.value = "";
+                if (!f) return;
+                setSebUploading(true); await onUploadSebConfig(f); setSebUploading(false);
+              }}
+            />
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <MiniBtn tone="success" disabled={sebUploading} onClick={() => sebFileRef.current && sebFileRef.current.click()}>
+                {sebUploading ? "Uploading…" : a.seb_config_name ? "Replace .seb file" : "Upload .seb file"}
+              </MiniBtn>
+              {a.seb_config_name && <MiniBtn tone="danger" disabled={sebUploading} onClick={onRemoveSebConfig}>Remove</MiniBtn>}
+            </div>
+          </div>
+        )}
         {a.require_seb && (
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 4 }}>

@@ -48,6 +48,7 @@ import SchoolSettings from "./pages/SchoolSettings";
 import Login from "./pages/Login";
 import Landing from "./pages/Landing";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
+import AccountSecurity from "./pages/AccountSecurity";
 import CompleteProfile from "./pages/CompleteProfile";
 
 /* =========================================================
@@ -747,6 +748,15 @@ export default function App() {
             page="Website"
           >
             <Website />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}>
+            <AccountSecurity />
           </ProtectedRoute>
         }
       />

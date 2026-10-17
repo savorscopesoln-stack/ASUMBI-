@@ -7,6 +7,8 @@ import { useTheme } from "../context/ThemeContext";
 import ThemeToggle from "../components/ThemeToggle";
 import PasswordInput, { authStyles } from "../components/PasswordInput";
 import { getDefaultRoute } from "../permissions";
+import { Fingerprint } from "lucide-react";
+import { passkeysAvailable, signInWithPasskey } from "../utils/passkey";
 
 /* ─── design tokens ───
    Same variable names/values as Dashboard.jsx so the app looks
@@ -228,6 +230,30 @@ export default function Login() {
      button state (`loading`) is reused as-is for the whole retry
      window, so "Signing in…" simply stays up a little longer instead
      of flashing an error on the first transient blip. ================= */
+  /* ================= FINGERPRINT / FACE (passkey) SIGN-IN ================= */
+  const [passkeyOk, setPasskeyOk] = useState(false);
+  useEffect(() => { passkeysAvailable().then(setPasskeyOk); }, []);
+
+  const loginWithPasskey = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const { token, user } = await signInWithPasskey();
+      if (!token || !user) { setError("Invalid server response."); return; }
+      const role = (user.role || "").toLowerCase();
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+      const now = String(Date.now());
+      localStorage.setItem("loginAt", now);
+      localStorage.setItem("lastActivityAt", now);
+      navigate(routes[role] || getDefaultRoute(user), { replace: true });
+    } catch (e) {
+      setError(e.message || "Fingerprint / face sign-in failed. Use your password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const login = async (e) => {
     e.preventDefault();
 
@@ -497,6 +523,24 @@ export default function Login() {
               "Sign in"
             )}
           </button>
+
+          {passkeyOk && (
+            <button
+              type="button"
+              onClick={loginWithPasskey}
+              disabled={loading}
+              className="auth-btn"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                width: "100%", marginTop: 4, padding: "12px 16px", borderRadius: 12,
+                border: "1.5px solid var(--primary)", background: "transparent", color: "var(--primary)",
+                fontWeight: 700, fontSize: 15, cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit",
+              }}
+            >
+              <Fingerprint size={18} aria-hidden="true" />
+              Sign in with fingerprint / face
+            </button>
+          )}
         </form>
         ) : (
         /* ================= FINANCE MFA STEP =================

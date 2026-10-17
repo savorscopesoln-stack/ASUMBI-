@@ -1028,6 +1028,7 @@ export default function TakeEAssessment() {
   // Safe Exam Browser gate: when this exam requires SEB and we are in a normal
   // browser, launch the installed SEB automatically (it reopens this exam inside SEB).
   const [sebGate, setSebGate] = useState(IN_SEB ? "ok" : "checking"); // checking | needed | ok
+  const [sebCustom, setSebCustom] = useState(false); // admin uploaded a .seb file for this exam
   const sebLaunchedRef = useRef(false);
   useEffect(() => {
     if (IN_SEB) return undefined;
@@ -1044,7 +1045,11 @@ export default function TakeEAssessment() {
           try { continued = sessionStorage.getItem(`doravo_seb_continue_${id}`) === "1"; } catch { /* ignore */ }
           if (continued) { setSebGate("ok"); return; }
           setSebGate("needed");
-          if (!sebLaunchedRef.current) {
+          if (r.data?.custom_config) {
+            // Admin uploaded their own .seb: student downloads that file and opens it.
+            setSebCustom(true);
+          } else if (!sebLaunchedRef.current) {
+            // Default (unchanged): launch the installed SEB automatically via sebs:// link.
             sebLaunchedRef.current = true;
             window.location.href = sebLaunchUrl(id);
           }
@@ -1053,6 +1058,46 @@ export default function TakeEAssessment() {
     })();
     return () => { cancelled = true; };
   }, [id]);
+  // Exam file download. A web page cannot open a file by itself, so the flow is:
+  // save the .seb (Chrome/Edge: a save dialog that starts in the Desktop folder;
+  // other browsers: normal download), then the student double-clicks it.
+  const [sebFileState, setSebFileState] = useState({ status: "idle", where: "", name: "" }); // idle | saving | saved | error
+  const saveSebFile = async () => {
+    setSebFileState({ status: "saving", where: "", name: "" });
+    const fileName = `exam-${id}.seb`;
+    try {
+      const res = await API.get(`/e-assessments/public/${id}/seb-config`, {
+        params: { origin: window.location.origin },
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "application/seb" });
+      if (typeof window.showSaveFilePicker === "function") {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: fileName,
+            startIn: "desktop",
+            types: [{ description: "Safe Exam Browser exam file", accept: { "application/seb": [".seb"] } }],
+          });
+          const w = await handle.createWritable();
+          await w.write(blob);
+          await w.close();
+          setSebFileState({ status: "saved", where: "the folder you chose", name: handle.name || fileName });
+          return;
+        } catch (e) {
+          if (e && e.name === "AbortError") { setSebFileState({ status: "idle", where: "", name: "" }); return; } // dialog closed
+          /* picker unavailable/blocked: fall through to a normal download */
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      setSebFileState({ status: "saved", where: "your Downloads folder", name: fileName });
+    } catch {
+      setSebFileState({ status: "error", where: "", name: "" });
+    }
+  };
   const [errorMsg, setErrorMsg] = useState("");
   const [token, setToken] = useState("");
 
@@ -2821,9 +2866,39 @@ export default function TakeEAssessment() {
           <div style={{ ...S.iconCircle, background: "var(--info-tint)", width: 72, height: 72 }}><ShieldAlert size={36} color="var(--info)" aria-hidden="true" /></div>
           <h1 data-phase-heading tabIndex={-1} style={{ margin: "22px 0 12px", color: "var(--text)", fontSize: "clamp(22px, 2.2vw, 30px)", fontWeight: 800, textAlign: "center", lineHeight: 1.25 }}>This exam opens in Safe Exam Browser</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "clamp(15px, 1.2vw, 17px)", lineHeight: 1.7, margin: "0 0 26px", textAlign: "center" }}>
+            {sebCustom ? (<>
+Download the exam file, then open it. Safe Exam Browser starts and loads this exam. Sign in and take the exam inside it.
+            </>) : (<>
             We are starting Safe Exam Browser on this computer. If your browser asks, choose <b>Open Safe Exam Browser</b>. Sign in and take the exam inside it.
+            </>)}
           </p>
 
+          {sebCustom ? (<>
+
+          <button type="button" onClick={saveSebFile} disabled={sebFileState.status === "saving"}
+            style={{ ...btnBase, padding: "22px 20px", fontSize: "clamp(18px, 1.6vw, 22px)", background: "var(--info)", color: "#fff", border: "none", boxShadow: "0 8px 22px rgba(37, 99, 235, .3)", opacity: sebFileState.status === "saving" ? 0.7 : 1 }}>
+            {sebFileState.status === "saving" ? "Preparing…" : sebFileState.status === "saved" ? "Download again" : "Download exam file"}
+          </button>
+
+          {sebFileState.status === "saved" && (
+            <div role="status" style={{ marginTop: 18, padding: "14px 16px", borderRadius: 12, background: "var(--info-tint)", color: "var(--text)", fontSize: 15, lineHeight: 1.6, textAlign: "center" }}>
+              <b>{sebFileState.name}</b> was saved to {sebFileState.where}.<br />
+              <b>Double-click it</b> now. Safe Exam Browser will open and start the exam. You can close this tab afterwards.
+            </div>
+          )}
+          {sebFileState.status === "error" && (
+            <div role="alert" style={{ marginTop: 18, color: "#dc2626", fontSize: 14, textAlign: "center" }}>
+              The exam file could not be downloaded. Check your internet connection and try again.
+            </div>
+          )}
+
+          <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, margin: "24px 0 10px", textAlign: "center" }}>
+            Make sure Safe Exam Browser is installed. Prefer to launch it directly?
+          </p>
+          <a href={sebLaunchUrl(id)} style={{ ...btnBase, padding: "13px 16px", fontSize: 15, background: "transparent", color: "var(--info)", border: "2px solid var(--info)" }}>
+            Open in Safe Exam Browser
+          </a>
+          </>) : (<>
           {/* biggest button */}
           <a href={sebLaunchUrl(id)} style={{ ...btnBase, padding: "22px 20px", fontSize: "clamp(18px, 1.6vw, 22px)", background: "var(--info)", color: "#fff", boxShadow: "0 8px 22px rgba(37, 99, 235, .3)" }}>
             Open in Safe Exam Browser
@@ -2835,6 +2910,7 @@ export default function TakeEAssessment() {
           <a href={sebConfigHttpUrl(id)} style={{ ...btnBase, padding: "13px 16px", fontSize: 15, background: "transparent", color: "var(--info)", border: "2px solid var(--info)" }}>
             Download exam file
           </a>
+          </>)}
 
           <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, margin: "24px 0 10px", textAlign: "center" }}>
             Your invigilator allowed you to use this browser?

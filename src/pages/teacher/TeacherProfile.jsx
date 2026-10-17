@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import API, { resolvePhotoUrl } from "../../api";
+import PasskeyCard from "../../components/PasskeyCard";
 import {
   UserRound,
   KeyRound,
@@ -675,6 +676,7 @@ export default function TeacherProfile() {
           )}
         </section>
       </div>
+      <PasskeyCard />
     </main>
   );
 }
