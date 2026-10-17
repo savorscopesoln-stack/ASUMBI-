@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 import { fmtDateTime } from "../components/mainExams/shared";
+import MarkingLeaderboard from "../components/eassessment/MarkingLeaderboard";
+import { downloadTablesPdf } from "../utils/pdfExport";
 import EvidenceGallery from "../components/eassessment/EvidenceGallery";
 import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
 import { fmt2 } from "../utils/format";
@@ -244,7 +246,7 @@ const fmtDate = (d) =>
 const TABS = [
   { label: "Assessments",     icon: IconClipboardList },
   { label: "Submissions",     icon: IconFileText },
-  { label: "Remark Requests", icon: IconMessage },
+  { label: "Marking", icon: IconMessage },
   { label: "Released Marks",  icon: IconAward },
   { label: "Device Locks",    icon: IconLockKeyhole },
   { label: "Local Sync",      icon: IconServer },
@@ -287,6 +289,7 @@ export default function AdminEAssessments() {
   const [splitFor, setSplitFor] = useState(null); // { assessmentId } — manual split marking window
   const [subSearch, setSubSearch] = useState(""); // submissions: individual records only render once something is searched
   const [statusFilter,  setStatusFilter]  = useState("");
+  const [markFilter,    setMarkFilter]    = useState(""); // submissions tab: "" | awaiting | marked | auto | released
   const [toast,         setToast]         = useState(null);
   const [bulkMenu,      setBulkMenu]      = useState(false);
 
@@ -296,6 +299,7 @@ export default function AdminEAssessments() {
   const [assignOpen,   setAssignOpen]   = useState(false);
   const [selected,     setSelected]     = useState(null);
   const [remarkModal,  setRemarkModal]  = useState(null);
+  const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "remarks"
   const [releaseModal, setReleaseModal] = useState(null);
   const [unsubmitted,    setUnsubmitted]    = useState([]);   // sat the exam, nothing submitted
   const [resitModal,     setResitModal]     = useState(null); // { student_id, e_assessment_id, student_name, assessment_title, hasPrevious }
@@ -373,13 +377,16 @@ export default function AdminEAssessments() {
   // Device Locks tab: refresh quietly so a fresh lock (and its reason) shows up without a manual reload.
   useEffect(() => {
     if (activeTab !== 4) return;
+    let busy = false; // never start a poll while the previous one is still running
     const iv = setInterval(async () => {
-      if (typeof document !== "undefined" && document.hidden) return; // don't poll a background tab
+      if (busy || (typeof document !== "undefined" && document.hidden)) return;
+      busy = true;
       try {
         const r = await API.get("/e-assessments/admin/exam-sessions");
         setExamSessions(extract(r));
       } catch { /* try again next tick */ }
-    }, 10000);
+      finally { busy = false; }
+    }, 20000);
     return () => clearInterval(iv);
   }, [activeTab]);
 
@@ -964,7 +971,7 @@ export default function AdminEAssessments() {
   const bulkReleaseMarks = async (subjectName) => {
     const ready = submissions.filter(
       (s) => String(s.subject_name) === String(subjectName) &&
-             s.score != null && s.status !== "released"
+             s.score != null && isMarkedState(s) && s.status !== "released"
     );
     if (!ready.length) { showToast("No marked submissions ready for release", "error"); return; }
     try {
@@ -1211,7 +1218,7 @@ export default function AdminEAssessments() {
   const subStats = useMemo(() => ({
     total:      submissions.length,
     unassigned: submissions.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length,
-    marked:     submissions.filter((s) => s.score != null).length,
+    marked:     submissions.filter(isMarkedState).length,
     released:   submissions.filter((s) => s.status === "released").length,
   }), [submissions]);
 
@@ -1505,6 +1512,14 @@ export default function AdminEAssessments() {
               ))}
             </select>
 
+            <select value={markFilter} onChange={(e) => setMarkFilter(e.target.value)} style={sx.select} aria-label="Filter by marking status">
+              <option value="">All marking states</option>
+              <option value="awaiting">Awaiting marking</option>
+              <option value="marked">Marked by teacher</option>
+              <option value="auto">Auto-marked (MCQ only)</option>
+              <option value="released">Released</option>
+            </select>
+
             {subjectFilter ? (
               <>
                 <ActionButton icon={<IconZap size={14} />} onClick={() => bulkAssignBySubject(subjectFilter)}>Distribute Equally</ActionButton>
@@ -1520,7 +1535,7 @@ export default function AdminEAssessments() {
               submissions.map((s) => ({
                 student: s.student_name, assessment: s.assessment_title,
                 subject: s.subject_name, score: s.score, total: s.total_marks,
-                status: s.status, submitted: s.submitted_at,
+                status: s.status, marking: markState(s), essays_left: s.pending_essay_count ?? "", submitted: s.submitted_at,
               })), "submissions.csv"
             )}>Export CSV</ActionButton>
           </div>
@@ -1547,7 +1562,7 @@ export default function AdminEAssessments() {
                 .filter(([sName]) => !subjectFilter || sName === subjectFilter)
                 .map(([subjectName, subs]) => {
                   const subjectTeachers = assignedTeachers.filter((t) => String(t.subject_name) === String(subjectName));
-                  const markedCount   = subs.filter((s) => s.score != null).length;
+                  const markedCount   = subs.filter(isMarkedState).length;
                   const releasedCount = subs.filter((s) => s.status === "released").length;
                   const unassigned    = subs.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length;
                   return (
@@ -1581,6 +1596,7 @@ export default function AdminEAssessments() {
               .map(([sName, allSubs]) => {
                 const words = subSearch.trim().toLowerCase().split(/\s+/);
                 const subs = allSubs.filter((x) => {
+                  if (markFilter && markState(x) !== markFilter) return false;
                   const hay = [x.student_name, x.student_id, x.assessment_title, sName, x.status].join(" ").toLowerCase();
                   return words.every((w) => hay.includes(w));
                 });
@@ -1592,7 +1608,7 @@ export default function AdminEAssessments() {
                 const subjectTeachers = assignedTeachers.filter(
                   (t) => String(t.subject_name) === String(subjectName)
                 );
-                const markedCount   = subs.filter((s) => s.score != null).length;
+                const markedCount   = subs.filter(isMarkedState).length;
                 const releasedCount = subs.filter((s) => s.status === "released").length;
 
                 return (
@@ -1637,7 +1653,7 @@ export default function AdminEAssessments() {
                               </Td>
                               <Td>{sub.score != null ? <ScoreBadge score={sub.score} total={sub.total_marks || 100} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
                               <Td>{sub.score != null ? <GradeBadge grade={computeGrade(sub.score, sub.total_marks, gradingSystem)} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
-                              <Td><MarkPill status={sub.status} score={sub.score} /></Td>
+                              <Td><MarkPill sub={sub} /></Td>
                               <Td>
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                                   {!sub.assigned_teacher_id && !(Number(sub.alloc_count) > 0) && subjectTeachers.length > 0 && (
@@ -1652,7 +1668,7 @@ export default function AdminEAssessments() {
                                       ))}
                                     </select>
                                   )}
-                                  {sub.score != null && sub.status !== "released" && (
+                                  {isMarkedState(sub) && sub.status !== "released" && (
                                     <MiniBtn onClick={() => setReleaseModal(sub)} icon={<IconRocket size={12} />}>Release</MiniBtn>
                                   )}
                                   <MiniBtn tone="warning" onClick={() => grantResit(sub)} icon={<IconZap size={12} />} title="Give this student another attempt">Allow resit</MiniBtn>
@@ -1681,19 +1697,39 @@ export default function AdminEAssessments() {
         <>
           <div style={sx.tabTopRow}>
             <div>
-              <h2 style={sx.tabTitle}>Remark Requests</h2>
-              <p style={sx.tabSub}>Review and action student remark requests</p>
+              <h2 style={sx.tabTitle}>Marking</h2>
+              <p style={sx.tabSub}>Teacher marking progress, speed ranking and student remark requests</p>
             </div>
-            <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
-              remarkRequests.map((r) => ({
-                student: r.student_name, assessment: r.assessment_title,
-                subject: r.subject_name, score: r.score, status: r.remark_status,
-                reason: r.remark_reason, submitted: r.submitted_at,
-              })), "remark-requests.csv"
-            )}>Export CSV</ActionButton>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {[["leaderboard", "Leaderboard & Load"], ["remarks", `Remark Requests${pendingRemarks ? ` (${pendingRemarks})` : ""}`]].map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setMarkingView(k)}
+                style={{ padding: "8px 14px", borderRadius: 99, cursor: "pointer", fontWeight: 600, fontSize: 13,
+                  border: `1px solid ${C.border}`, background: markingView === k ? C.accent : C.card, color: markingView === k ? "#fff" : C.textPri }}>{label}</button>
+            ))}
           </div>
 
-          {remarkRequests.length === 0 ? (
+          {markingView === "leaderboard" && <MarkingLeaderboard />}
+
+          {markingView === "remarks" && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
+                remarkRequests.map((r) => ({
+                  student: r.student_name, assessment: r.assessment_title,
+                  subject: r.subject_name, score: r.score, status: r.remark_status,
+                  reason: r.remark_reason, submitted: r.submitted_at,
+                })), "remark-requests.csv"
+              )}>Export CSV</ActionButton>
+              <ActionButton icon={<IconDownload size={14} />} onClick={() => downloadTablesPdf({
+                title: "Remark Requests", subtitle: `${remarkRequests.length} request(s)`, filename: "remark-requests",
+                sections: [{ head: ["Student", "Assessment", "Subject", "Assigned to", "Score", "Status", "Reason", "Submitted"],
+                  body: remarkRequests.map((r) => [r.student_name || `#${r.student_id}`, r.assessment_title || "", r.subject_name || "",
+                    r.teacher_name || "Unassigned", r.score ?? "—", r.remark_status || "pending", r.remark_reason || "", fmtDate(r.submitted_at)]) }],
+              })}>Download PDF</ActionButton>
+            </div>
+          )}
+
+          {markingView !== "remarks" ? null : remarkRequests.length === 0 ? (
             <EmptyState icon={<IconCheckCircle size={26} />} text="No remark requests at this time." />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1769,6 +1805,13 @@ export default function AdminEAssessments() {
                 };
               }), "released-marks.csv"
             )}>Export CSV</ActionButton>
+            <ActionButton icon={<IconDownload size={14} />} onClick={() => downloadTablesPdf({
+              title: "Released Marks", subtitle: `${releasedMarks.length} record(s)`, filename: "released-marks",
+              sections: [{ head: ["Student", "Assessment", "Subject", "Score", "Total", "%", "Grade", "Released"],
+                body: releasedMarks.map((m) => { const info = markInfo(m, gradingSystem);
+                  return [m.student_name || "", m.assessment_title || "", m.subject_name || "", m.score ?? "—", info.total ?? "",
+                    info.pct != null ? fmt2(info.pct) : "", info.g?.grade ?? "", fmtDate(m.released_at)]; }) }],
+            })}>Download PDF</ActionButton>
           </div>
 
           {releasedMarks.length > 0 && <GradeDistribution marks={releasedMarks} gradingSystem={gradingSystem} />}
@@ -2700,13 +2743,31 @@ function StatusBadge({ status }) {
   return <Chip text={status || "pending"} tone={tone} uppercase />;
 }
 
-function MarkPill({ status, score }) {
-  if (status === "released") return <Chip text="Released" tone="accent" />;
-  if (status === "marked" || score != null) return <Chip text="Marked" tone="success" />;
-  if (status === "submitted") return <Chip text="Awaiting Marking" tone="warning" />;
-  return <Chip text={status || "Pending"} tone="neutral" />;
-}
+/* A score does NOT mean "marked": MCQs are graded automatically, and a teacher who has
+   saved some essays has a score too. A paper is marked once nothing is left for a teacher
+   (no answered essay without a mark) — or it is a pure-MCQ paper, which the system finished
+   at submission. Returns "released" | "marked" | "auto" | "awaiting" | "pending". */
+const markState = (s) => {
+  if (s.status === "released") return "released";
+  const left = Number(s.pending_essay_count) || 0;
+  if (left > 0) return "awaiting";
+  const hasEssay = Number(s.essay_question_count) > 0;
+  if (s.status === "marked" || s.score != null) return hasEssay ? "marked" : "auto";
+  return "pending";
+};
+const isMarkedState = (s) => ["marked", "auto", "released"].includes(markState(s));
 
+function MarkPill({ sub }) {
+  const st = markState(sub);
+  if (st === "released") return <Chip text="Released" tone="accent" />;
+  if (st === "marked")   return <Chip text="Marked" tone="success" />;
+  if (st === "auto")     return <Chip text="Auto-marked (MCQ)" tone="neutral" />;
+  if (st === "awaiting") {
+    const n = Number(sub.pending_essay_count) || 0;
+    return <Chip text={`Awaiting marking · ${n} essay${n === 1 ? "" : "s"} left`} tone="warning" />;
+  }
+  return <Chip text={sub.status || "Pending"} tone="neutral" />;
+}
 /* ── Blocked devices (Desktop-only switch) ──
    Every phone/tablet the switch turned away, per student and assessment,
    with the platform it reported (Android, iPhone, ...). "Allow" lets that ONE
