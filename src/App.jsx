@@ -90,6 +90,7 @@ import Marking from "./pages/teacher/Marking";
 import AllQuestionsMarking from "./pages/teacher/AllQuestionsMarking";
 import TeacherPracticum from "./pages/teacher/TeacherPracticum";
 import TeacherMarkingLeaderboard from "./pages/teacher/TeacherMarkingLeaderboard";
+import TrialBanner from "./components/TrialBanner";
 
 
 /* =========================================================
@@ -320,6 +321,8 @@ export default function App() {
   useSessionTimeout();
 
   return (
+    <>
+    <TrialBanner />
     <Routes>
 
       {/* ROOT — the marketing landing page for anyone not logged in yet.
@@ -990,6 +993,7 @@ export default function App() {
         }
       />
     </Routes>
+    </>
   );
 }
 

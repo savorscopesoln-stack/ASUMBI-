@@ -3,6 +3,7 @@ import API from "../../api";
 import { useTheme } from "../../context/ThemeContext";
 import AiFinanceWalletPanel from "../../components/aiMarking/AiFinanceWalletPanel";
 import AiFinanceAnalyticsPanel from "../../components/aiMarking/AiFinanceAnalyticsPanel";
+import TrialPanel from "../../components/finance/TrialPanel";
 
 /* =========================================================================
    DORAVO FINANCE DASHBOARD
@@ -97,10 +98,23 @@ const s = {
   }),
 };
 
-const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "AI Marking Wallet", "AI Marking Analytics"];
+const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "Trial Period", "AI Marking Wallet", "AI Marking Analytics"];
 
-const EMPTY_INVOICE_FORM = { creditQuantity: "", unitPrice: "", currency: "KES", taxRate: "", dueDate: "", notes: "" };
+const EMPTY_ITEM = { description: "", quantity: "1", unitPrice: "" };
+const EMPTY_INVOICE_FORM = {
+  invoiceType: "credits", // "credits" = exam credits, "custom" = anything else Finance charges for
+  items: [{ ...EMPTY_ITEM }],
+  creditQuantity: "", unitPrice: "", currency: "KES", taxRate: "", dueDate: "", notes: "",
+};
 const EMPTY_PAY_FORM = { amount: "", currency: "KES", method: "", paymentReference: "", notes: "", invoiceId: "" };
+// what an invoice was raised for: "120 credits", or the typed-in lines of an "other charges" invoice
+const invoiceFor = (inv) => {
+  if (inv.invoice_type !== "custom") return `${inv.credit_quantity} credits`;
+  let items = [];
+  try { items = JSON.parse(inv.items_json || "[]"); } catch { items = []; }
+  const first = items[0]?.description || "Other charges";
+  return items.length > 1 ? `${first} + ${items.length - 1} more` : first;
+};
 const money = (currency, n) => `${currency} ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function FinanceDashboard() {
@@ -145,6 +159,13 @@ export default function FinanceDashboard() {
       }
     })();
   }, []);
+
+  const refreshInstitutions = async () => {
+    try {
+      const res = await API.get("/finance/institutions");
+      setInstitutions(res.data?.institutions || []);
+    } catch { /* the list just stays as it was */ }
+  };
 
   const loadWallet = async (tenantKey) => {
     try {
@@ -247,10 +268,22 @@ export default function FinanceDashboard() {
 
   /* ---- invoices ---- */
   const invoicePreviewTotal = useMemo(() => {
-    const q = Number(invoiceForm.creditQuantity), p = Number(invoiceForm.unitPrice), t = Number(invoiceForm.taxRate || 0);
+    const t = Number(invoiceForm.taxRate || 0);
+    const taxFactor = 1 + (Number.isFinite(t) ? t : 0) / 100;
+    if (invoiceForm.invoiceType === "custom") {
+      const lines = invoiceForm.items.map((i) => Number(i.quantity) * Number(i.unitPrice));
+      if (!lines.length || lines.some((n) => !(n > 0))) return null;
+      return lines.reduce((a, b) => a + b, 0) * taxFactor;
+    }
+    const q = Number(invoiceForm.creditQuantity), p = Number(invoiceForm.unitPrice);
     if (!(q > 0) || !(p > 0)) return null;
-    return q * p * (1 + (Number.isFinite(t) ? t : 0) / 100);
-  }, [invoiceForm.creditQuantity, invoiceForm.unitPrice, invoiceForm.taxRate]);
+    return q * p * taxFactor;
+  }, [invoiceForm.invoiceType, invoiceForm.items, invoiceForm.creditQuantity, invoiceForm.unitPrice, invoiceForm.taxRate]);
+
+  const setItem = (idx, patch) =>
+    setInvoiceForm((f) => ({ ...f, items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }));
+  const addItem = () => setInvoiceForm((f) => (f.items.length >= 20 ? f : { ...f, items: [...f.items, { ...EMPTY_ITEM }] }));
+  const removeItem = (idx) => setInvoiceForm((f) => (f.items.length <= 1 ? f : { ...f, items: f.items.filter((_, i) => i !== idx) }));
 
   const submitCreateInvoice = async (e) => {
     e.preventDefault();
@@ -258,9 +291,12 @@ export default function FinanceDashboard() {
     setBusy(true);
     setMessage(null);
     try {
+      const isCustom = invoiceForm.invoiceType === "custom";
       const res = await API.post(`/finance/institutions/${selected}/invoices`, {
-        creditQuantity: Number(invoiceForm.creditQuantity),
-        unitPrice: Number(invoiceForm.unitPrice),
+        invoiceType: invoiceForm.invoiceType,
+        ...(isCustom
+          ? { items: invoiceForm.items.map((i) => ({ description: i.description.trim(), quantity: Number(i.quantity), unitPrice: Number(i.unitPrice) })) }
+          : { creditQuantity: Number(invoiceForm.creditQuantity), unitPrice: Number(invoiceForm.unitPrice) }),
         currency: invoiceForm.currency,
         taxRate: invoiceForm.taxRate === "" ? 0 : Number(invoiceForm.taxRate),
         dueDate: invoiceForm.dueDate || null,
@@ -443,7 +479,14 @@ export default function FinanceDashboard() {
             {inst.error ? (
               <div style={{ fontSize: 12, color: "var(--destructive)" }}>{inst.error}</div>
             ) : (
-              <div style={s.muted}>{inst.availableCredits} available · {inst.reservedCredits} reserved</div>
+              <div style={s.muted}>
+                {inst.availableCredits} available · {inst.reservedCredits} reserved
+                {inst.trial?.hasTrial && (
+                  <span style={{ color: inst.trial.active ? "var(--info)" : "var(--destructive)", fontWeight: 600 }}>
+                    {" · "}{inst.trial.active ? `trial ${inst.trial.daysLeft}d left` : "trial ended"}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -484,6 +527,10 @@ export default function FinanceDashboard() {
               ))}
             </div>
 
+            {tab === "Trial Period" && (
+              <TrialPanel key={selected} api={API} tenantKey={selected} onChanged={refreshInstitutions} />
+            )}
+
             {tab === "AI Marking Wallet" && (
               <AiFinanceWalletPanel key={selected} api={API} tenantKey={selected} />
             )}
@@ -509,12 +556,41 @@ export default function FinanceDashboard() {
                 <h3 style={{ marginTop: 0, fontSize: 14 }}>New invoice</h3>
                 <p style={s.muted}>The PDF downloads automatically as soon as the invoice is created.</p>
                 <form onSubmit={submitCreateInvoice}>
-                  <label style={s.label}>Credit quantity</label>
-                  <input style={s.input} type="number" min="1" step="1" required
-                    value={invoiceForm.creditQuantity} onChange={(e) => setInvoiceForm({ ...invoiceForm, creditQuantity: e.target.value })} />
-                  <label style={s.label}>Unit price</label>
-                  <input style={s.input} type="number" min="0.01" step="0.01" required
-                    value={invoiceForm.unitPrice} onChange={(e) => setInvoiceForm({ ...invoiceForm, unitPrice: e.target.value })} />
+                  <label style={s.label}>What is this invoice for?</label>
+                  <div style={{ ...s.tabs, marginBottom: 14 }}>
+                    {[["credits", "Exam credits"], ["custom", "Other charges"]].map(([val, text]) => (
+                      <div key={val} className="fin-tab" style={s.tab(invoiceForm.invoiceType === val)}
+                        onClick={() => setInvoiceForm({ ...invoiceForm, invoiceType: val })}>{text}</div>
+                    ))}
+                  </div>
+
+                  {invoiceForm.invoiceType === "credits" ? (
+                    <>
+                      <label style={s.label}>Credit quantity</label>
+                      <input style={s.input} type="number" min="1" step="1" required
+                        value={invoiceForm.creditQuantity} onChange={(e) => setInvoiceForm({ ...invoiceForm, creditQuantity: e.target.value })} />
+                      <label style={s.label}>Unit price</label>
+                      <input style={s.input} type="number" min="0.01" step="0.01" required
+                        value={invoiceForm.unitPrice} onChange={(e) => setInvoiceForm({ ...invoiceForm, unitPrice: e.target.value })} />
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ ...s.muted, marginTop: 0 }}>Type what you are charging for. These lines are printed on the invoice; no exam credits are involved.</p>
+                      {invoiceForm.items.map((it, idx) => (
+                        <div key={idx} style={{ display: "grid", gridTemplateColumns: "minmax(160px, 3fr) minmax(70px, 1fr) minmax(100px, 1.4fr) auto", gap: 8, alignItems: "start" }}>
+                          <input style={s.input} maxLength={200} required placeholder="Description (e.g. Setup and training fee)"
+                            value={it.description} onChange={(e) => setItem(idx, { description: e.target.value })} />
+                          <input style={s.input} type="number" min="0.01" step="0.01" required placeholder="Qty"
+                            value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} />
+                          <input style={s.input} type="number" min="0.01" step="0.01" required placeholder="Unit price"
+                            value={it.unitPrice} onChange={(e) => setItem(idx, { unitPrice: e.target.value })} />
+                          <button type="button" style={{ ...s.btnSmall, marginTop: 2 }} disabled={invoiceForm.items.length <= 1}
+                            onClick={() => removeItem(idx)} aria-label={`Remove item ${idx + 1}`}>Remove</button>
+                        </div>
+                      ))}
+                      <button type="button" style={{ ...s.btnSmall, marginBottom: 14 }} disabled={invoiceForm.items.length >= 20} onClick={addItem}>+ Add another item</button>
+                    </>
+                  )}
                   <label style={s.label}>Currency</label>
                   <input style={s.input} maxLength={3} value={invoiceForm.currency} onChange={(e) => setInvoiceForm({ ...invoiceForm, currency: e.target.value.toUpperCase() })} />
                   <label style={s.label}>Tax rate % (optional)</label>
@@ -549,12 +625,12 @@ export default function FinanceDashboard() {
 
                 <h3 style={{ marginTop: 24, fontSize: 14 }}>Invoices</h3>
                 <table style={s.table}>
-                  <thead><tr><th style={s.th}>Number</th><th style={s.th}>Credits</th><th style={s.th}>Total</th><th style={s.th}>Status</th><th style={s.th}>Due</th><th style={s.th}></th></tr></thead>
+                  <thead><tr><th style={s.th}>Number</th><th style={s.th}>For</th><th style={s.th}>Total</th><th style={s.th}>Status</th><th style={s.th}>Due</th><th style={s.th}></th></tr></thead>
                   <tbody>
                     {invoices.map((inv) => (
                       <tr key={inv.id}>
                         <td style={s.td}>{inv.invoice_number}</td>
-                        <td style={s.td}>{inv.credit_quantity}</td>
+                        <td style={s.td}>{invoiceFor(inv)}</td>
                         <td style={s.td}>{money(inv.currency, inv.total_amount)}</td>
                         <td style={s.td}><span style={s.pill(inv.status)}>{inv.status}</span></td>
                         <td style={s.td}>{inv.due_date ? new Date(inv.due_date).toLocaleDateString(undefined, { timeZone: "UTC" }) : "—"}</td>
