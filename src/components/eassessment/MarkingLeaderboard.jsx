@@ -142,7 +142,8 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
   if (err && !data) return <div style={{ ...css.card, color: "var(--destructive, #DC2626)" }}>{err} <Btn onClick={() => load()} icon={<RefreshCw size={14} />}>Retry</Btn></div>;
   if (!data) return null;
 
-  const podium = teachers.slice(0, 3);
+  // the top 3 stays blank until somebody has actually marked a response
+  const podium = teachers.filter((t) => t.marked > 0).slice(0, 3);
   const s = data.summary;
 
   return (
@@ -167,8 +168,8 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
         <Stat icon={<Users size={20} />} label="Teachers marking" value={s.teachers} />
-        <Stat icon={<Flag size={20} />} label="Items allocated" value={s.allocated} />
-        <Stat icon={<CheckCircle2 size={20} />} label="Items marked" value={s.marked} />
+        <Stat icon={<Flag size={20} />} label="Responses allocated" value={s.allocated} />
+        <Stat icon={<CheckCircle2 size={20} />} label="Responses marked" value={s.marked} />
         <Stat icon={<Timer size={20} />} label="Remaining" value={s.remaining} />
         <Stat icon={<Trophy size={20} />} label="Overall progress" value={`${s.percent}%`} />
       </div>
@@ -191,14 +192,26 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-            {podium.map((t) => (
-              <div key={t.teacher_id} style={{ ...css.card, textAlign: "center", borderColor: t.rank === 1 ? "var(--primary, #8B1E2D)" : undefined }}>
-                <div style={{ fontSize: 34 }}>{medal(t.rank)}</div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{t.teacher_name}{t.teacher_id === data.me ? " (you)" : ""}</div>
-                <div style={css.muted}>{t.percent == null ? `${t.marked} marked (open marking)` : `${t.marked} marked · ${t.percent}% of allocation`}</div>
-                <div style={css.muted}>{t.items_per_hour != null ? `${t.items_per_hour}/hr` : "speed n/a"} · {t.wins} first finish{t.wins === 1 ? "" : "es"}</div>
-              </div>
-            ))}
+            {[1, 2, 3].map((place) => {
+              const t = podium[place - 1];
+              if (!t) {
+                return (
+                  <div key={place} style={{ ...css.card, textAlign: "center", borderStyle: "dashed", background: "transparent" }}>
+                    <div style={{ fontSize: 34, opacity: 0.25 }}>{medal(place)}</div>
+                    <div style={{ ...css.muted, marginTop: 6 }}>—</div>
+                    <div style={css.muted}>Fills in once marking starts</div>
+                  </div>
+                );
+              }
+              return (
+                <div key={t.teacher_id} style={{ ...css.card, textAlign: "center", borderColor: place === 1 ? "var(--primary, #8B1E2D)" : undefined }}>
+                  <div style={{ fontSize: 34 }}>{medal(place)}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{t.teacher_name}{t.teacher_id === data.me ? " (you)" : ""}</div>
+                  <div style={css.muted}>{t.percent == null ? `${t.marked} marked (open marking)` : `${t.marked} of ${t.allocated} responses · ${t.percent}%`}</div>
+                  <div style={css.muted}>{t.items_per_hour != null ? `${t.items_per_hour}/hr` : "speed n/a"} · {t.wins} first finish{t.wins === 1 ? "" : "es"}</div>
+                </div>
+              );
+            })}
           </div>
 
           <div style={{ ...css.card, padding: 0, overflowX: "auto" }}>
@@ -209,7 +222,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
               <tbody>
                 {teachers.map((t) => (
                   <tr key={t.teacher_id} style={t.teacher_id === data.me ? { background: "var(--primary-tint, #FBEAEC)" } : undefined}>
-                    <td style={{ ...css.td, fontWeight: 700 }}>{medal(t.rank)}</td>
+                    <td style={{ ...css.td, fontWeight: 700 }}>{t.marked > 0 && t.rank <= 3 ? medal(t.rank) : `#${t.rank}`}</td>
                     <td style={{ ...css.td, fontWeight: 600 }}>{t.teacher_name}{t.teacher_id === data.me ? " (you)" : ""}</td>
                     <td style={css.td}>{t.allocated ? t.allocated : "Open"}{t.allocated && t.open_marked ? ` +${t.open_marked} open` : ""}</td>
                     <td style={css.td}>{t.marked}</td>
