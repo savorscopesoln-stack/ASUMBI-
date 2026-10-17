@@ -47,3 +47,25 @@ export function joinAnswer(html, sheets) {
 
 /** True when the answer holds at least one drawing. */
 export const hasDrawing = (answer) => typeof answer === "string" && answer.includes("data-music-sheet");
+
+const PNG_RE = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/;
+
+/** Number of drawing sheets in a stored answer. */
+export const sheetCount = (answer) => splitAnswer(answer).sheets.length;
+
+/**
+ * Lay the marker's overlay PNGs over the student's sheets in ALREADY-SANITISED
+ * answer HTML. Overlay i goes on the i-th <img data-music-sheet>. Each sheet
+ * becomes a positioned stack (sheet + transparent overlay), styled in index.css.
+ * Only strict PNG data URLs are ever inserted.
+ */
+export function withMusicOverlays(safeHtml, overlays) {
+  const list = Array.isArray(overlays) ? overlays : [];
+  if (!safeHtml || !list.some((o) => typeof o === "string" && PNG_RE.test(o))) return safeHtml;
+  let i = 0;
+  return safeHtml.replace(/<img\b[^>]*\bdata-music-sheet="1"[^>]*>/gi, (tag) => {
+    const ov = list[i++];
+    if (typeof ov !== "string" || !PNG_RE.test(ov)) return tag;
+    return `<span class="music-sheet-stack">${tag}<img class="music-overlay" alt="Marker's annotations" src="${ov}"></span>`;
+  });
+}

@@ -89,6 +89,7 @@ import TeacherSubmissions from "./pages/teacher/TeacherSubmissions";
 import Marking from "./pages/teacher/Marking";
 import AllQuestionsMarking from "./pages/teacher/AllQuestionsMarking";
 import TeacherPracticum from "./pages/teacher/TeacherPracticum";
+import TeacherMarkingLeaderboard from "./pages/teacher/TeacherMarkingLeaderboard";
 
 
 /* =========================================================
@@ -856,6 +857,10 @@ export default function App() {
         <Route
           path="practicum"
           element={<TeacherPracticum />}
+        />
+        <Route
+          path="marking-leaderboard"
+          element={<ExamThemeScope><TeacherMarkingLeaderboard /></ExamThemeScope>}
         />
         <Route
   path="/teacher/e-assessments/:id/all-questions-marking"

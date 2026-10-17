@@ -97,3 +97,11 @@ img[data-music-sheet] {
   border: 1px solid var(--border);
   border-radius: 8px;
 }
+
+/* music paper: marker's annotations laid over the student's drawing */
+.music-sheet-stack { position: relative; display: block; margin: 10px 0; line-height: 0; }
+.music-sheet-stack > img[data-music-sheet] { margin: 0; }
+.music-sheet-stack > img.music-overlay {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  margin: 0; border: 0; background: transparent; pointer-events: none;
+}
