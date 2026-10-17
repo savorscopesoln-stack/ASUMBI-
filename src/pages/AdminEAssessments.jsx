@@ -741,11 +741,11 @@ export default function AdminEAssessments() {
   // Safe Exam Browser: the on/off switch and/or the allowed Config/Browser Exam Keys.
   // Resolves true on success so the card can react (e.g. clear its "unsaved" hint).
   const saveSeb = async (a, payload) => {
-    const prev = { require_seb: a.require_seb, seb_keys: a.seb_keys };
+    const prev = { require_seb: a.require_seb, seb_keys: a.seb_keys, seb_quit_password: a.seb_quit_password };
     if ("enabled" in payload) setList((p) => p.map((x) => (x.id === a.id ? { ...x, require_seb: payload.enabled } : x)));
     try {
       const res = await API.put(`/e-assessments/admin/${a.id}/seb`, payload);
-      setList((p) => p.map((x) => (x.id === a.id ? { ...x, require_seb: res.data.require_seb, seb_keys: res.data.seb_keys } : x)));
+      setList((p) => p.map((x) => (x.id === a.id ? { ...x, require_seb: res.data.require_seb, seb_keys: res.data.seb_keys, seb_quit_password: res.data.seb_quit_password } : x)));
       showToast(res.data?.message || "Saved");
       return true;
     } catch (err) {
@@ -2492,6 +2492,9 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onTo
   const [sebKeysDraft, setSebKeysDraft] = React.useState(a.seb_keys || "");
   const [sebSaving, setSebSaving] = React.useState(false);
   const sebKeysDirty = (sebKeysDraft || "").trim() !== (a.seb_keys || "").trim();
+  const [sebQuitDraft, setSebQuitDraft] = React.useState(a.seb_quit_password || "");
+  const [sebQuitSaving, setSebQuitSaving] = React.useState(false);
+  const sebQuitDirty = (sebQuitDraft || "").trim() !== (a.seb_quit_password || "").trim();
   const sebFileRef = React.useRef(null);
   const [sebUploading, setSebUploading] = React.useState(false);
   const C = useC();
@@ -2621,6 +2624,33 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onTo
                 {sebUploading ? "Uploading…" : a.seb_config_name ? "Replace .seb file" : "Upload .seb file"}
               </MiniBtn>
               {a.seb_config_name && <MiniBtn tone="danger" disabled={sebUploading} onClick={onRemoveSebConfig}>Remove</MiniBtn>}
+            </div>
+          </div>
+        )}
+        {a.require_seb && (
+          <div style={{ marginTop: 8, padding: 8, borderRadius: 6, border: `1px dashed ${C.border}` }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri, marginBottom: 2 }}>SEB quit password</div>
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, marginBottom: 6 }}>
+              Students must type this to quit Safe Exam Browser (give it to them only when the exam ends). Applies to the automatic exam file, so students must download the file again after you change it. {a.seb_config_name ? "Your uploaded .seb file uses the password stored inside that file instead." : ""}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                type="text"
+                value={sebQuitDraft}
+                onChange={(e) => setSebQuitDraft(e.target.value)}
+                maxLength={100}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="No quit password"
+                style={{ flex: 1, minWidth: 0, boxSizing: "border-box", fontSize: 12, padding: "6px 8px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.bg || "transparent", color: C.textPri }}
+              />
+              <MiniBtn
+                tone="success"
+                disabled={sebQuitSaving || !sebQuitDirty}
+                onClick={async () => { setSebQuitSaving(true); await onSaveSeb({ quitPassword: sebQuitDraft }); setSebQuitSaving(false); }}
+              >
+                {sebQuitSaving ? "Saving…" : "Save"}
+              </MiniBtn>
             </div>
           </div>
         )}

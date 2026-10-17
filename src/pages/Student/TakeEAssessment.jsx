@@ -10,7 +10,7 @@ import MusicAnswerBox from "../../components/music/MusicAnswerBox";
 import {
   KeyRound, PenLine, Lock, Timer, AlertTriangle, CheckCircle2,
   ClipboardList, Sun, Moon, ArrowLeft, ShieldAlert, User, LogIn,
-  Camera, CameraOff, Eye, EyeOff, ChevronLeft, ChevronRight, Home, MonitorUp,
+  Camera, CameraOff, Eye, EyeOff, ChevronLeft, ChevronRight, MonitorUp,
 } from "lucide-react";
 
 // The admin's "Desktop only" switch rejects phones/tablets with a 403 whose
@@ -1030,6 +1030,7 @@ export default function TakeEAssessment() {
   const [sebGate, setSebGate] = useState(IN_SEB ? "ok" : "checking"); // checking | needed | ok
   const [sebCustom, setSebCustom] = useState(false); // admin uploaded a .seb file for this exam
   const sebLaunchedRef = useRef(false);
+  const [sebQuitIn, setSebQuitIn] = useState(null); // seconds until SEB closes itself after the exam is submitted
   useEffect(() => {
     if (IN_SEB) return undefined;
     let cancelled = false;
@@ -1493,7 +1494,10 @@ export default function TakeEAssessment() {
       localStorage.setItem("user", JSON.stringify(res.data.user));
       await bootStart();
     } catch (err) {
-      if (err?.response?.data?.code === "SEB_REQUIRED") {
+      if (err?.response?.data?.code === "SEB_REQUIRED" && err?.response?.data?.sebStale) {
+        // SEB is running but from an old / different .seb file or saved settings.
+        setExamLoginError(err.response.data.message);
+      } else if (err?.response?.data?.code === "SEB_REQUIRED") {
         setExamLoginError("This exam needs Safe Exam Browser. If you can't use it, tell your invigilator: they can allow this browser for you. Then press Continue to Exam again.");
       } else {
         setExamLoginError(err?.response?.data?.message || "Login failed. Check your username and exam password.");
@@ -2724,6 +2728,8 @@ export default function TakeEAssessment() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setLoggedOut(true);
+    // Inside Safe Exam Browser: close it a few seconds after submitting (see effect below).
+    if (IN_SEB) setSebQuitIn(10);
 
     setPhase("ended");
     setErrorMsg(auto ? "Time's up — your assessment was submitted automatically." : "Assessment submitted successfully.");
@@ -2785,11 +2791,22 @@ export default function TakeEAssessment() {
   // happened, finish the job by bouncing them off this screen and back
   // to the login page after a moment, rather than leaving them stranded
   // on a "logged out" screen with nowhere to go but the button above.
+  // Inside SEB the page must stay put so SEB can close itself instead (next effect).
   useEffect(() => {
-    if (!loggedOut) return;
+    if (!loggedOut || IN_SEB) return;
     const t = setTimeout(() => navigate("/login"), 3000);
     return () => clearTimeout(t);
   }, [loggedOut, navigate]);
+
+  // SEB closes when the browser loads its quit URL (the generated .seb file sets it to
+  // <site>/take-assessment, no confirmation, no quit password). A page cannot shut the
+  // computer down; closing SEB hands the computer back to the student.
+  useEffect(() => {
+    if (sebQuitIn === null) return undefined;
+    if (sebQuitIn <= 0) { window.location.href = `${window.location.origin}/take-assessment`; return undefined; }
+    const t = setTimeout(() => setSebQuitIn((n) => (n === null ? n : n - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [sebQuitIn]);
 
   const mmss = (total) => {
     const m = Math.floor(total / 60).toString().padStart(2, "0");
@@ -2797,7 +2814,7 @@ export default function TakeEAssessment() {
     return `${m}:${s}`;
   };
 
-  // NOTE: ThemeToggle and HomeButton are CALLED as functions ({ThemeToggle()})
+  // NOTE: ThemeToggle is CALLED as functions ({ThemeToggle()})
   // rather than rendered as <ThemeToggle />. Defined inside the render, a
   // component gets a new identity on every render — and this page re-renders
   // every second (timer) — so React would unmount/remount them and keyboard /
@@ -2815,37 +2832,7 @@ export default function TakeEAssessment() {
     </button>
   );
 
-  // "Go to Home" — shown on the sign-in, locked and finished screens.
-  const HomeButton = ({ style }) => (
-    <button
-      type="button"
-      onClick={() => {
-        // An exam-only sign-in is fenced to this one exam page (see
-        // ProtectedRoute in App.jsx), so "/" would just bounce straight back
-        // here. End that exam-only session first. Nothing is unlocked by
-        // this: a lock is kept on the server and on this device, and the
-        // student signs in to the exam again to carry on once cleared.
-        try {
-          const u = JSON.parse(localStorage.getItem("user") || "{}");
-          if (u?.examOnly) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-          }
-        } catch { /* unreadable user blob — just go home */ }
-        navigate("/");
-      }}
-      style={{
-        width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-        marginTop: 10, padding: "10px 16px", borderRadius: 10, cursor: "pointer",
-        border: "1px solid var(--border)", background: "transparent",
-        color: "var(--text-secondary)", fontWeight: 700, fontSize: 13, ...style,
-      }}
-    >
-      <Home size={15} aria-hidden="true" /> Go to Home
-    </button>
-  );
-
-  /* ═══════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════
      RENDER — states
   ═══════════════════════════════════════════════════════════ */
 
@@ -2913,6 +2900,9 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
           </>)}
 
           <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, margin: "24px 0 10px", textAlign: "center" }}>
+            Safe Exam Browser already open or showing the wrong exam? Quit it completely (Cmd+Q), delete older exam files, then download the file again.
+          </p>
+          <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, margin: "14px 0 10px", textAlign: "center" }}>
             Your invigilator allowed you to use this browser?
           </p>
           <button
@@ -3023,7 +3013,6 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
           >
             {examLoggingIn ? "Signing in…" : "Continue to Exam"}
           </button>
-          {HomeButton({})}
         </form>
         <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
@@ -3060,7 +3049,6 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
           <button style={S.primaryBtn} onClick={() => window.location.reload()}>
             Try again
           </button>
-          {HomeButton({})}
         </div>
         <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
@@ -3099,7 +3087,11 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
           <p role="alert" data-phase-heading tabIndex={-1} style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", margin: "16px 0 0" }}>
             {errorMsg || "This assessment is complete."}
           </p>
-          {loggedOut ? (
+          {loggedOut && sebQuitIn !== null ? (
+            <p style={{ color: "var(--text-secondary)", fontSize: 14, textAlign: "center", margin: "12px 0 0" }}>
+              Safe Exam Browser will close in {Math.max(sebQuitIn, 0)} second{sebQuitIn === 1 ? "" : "s"}.
+            </p>
+          ) : loggedOut ? (
             <>
               <p style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "center", margin: "12px 0 0" }}>
                 You've been logged out for security. Redirecting you to the login page…
@@ -3117,7 +3109,6 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
               Back to Assessments
             </button>
           )}
-          {HomeButton({})}
         </div>
         <div style={{ position: "absolute", top: 20, right: 24 }}>{ThemeToggle()}</div>
       </div>
@@ -3182,7 +3173,6 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
               Sign in again
             </button>
           )}
-          {HomeButton({})}
         </div>
       </div>
     );
