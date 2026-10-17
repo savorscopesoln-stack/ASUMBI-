@@ -1117,7 +1117,20 @@ export default function TakeEAssessment() {
 
   // exam-login step (username + this assessment's exam password —
   // no portal account required)
-  const [examUsername, setExamUsername] = useState("");
+  // Pre-filled from the /take-assessment picker, where the student already
+  // entered their assessment number (= username) and was identified.
+  const [examIdentity, setExamIdentity] = useState(() => {
+    try {
+      const v = JSON.parse(sessionStorage.getItem("doravo_exam_identity") || "null");
+      return v && v.username ? v : null;
+    } catch { return null; }
+  });
+  const [examUsername, setExamUsername] = useState(() => {
+    try {
+      const v = JSON.parse(sessionStorage.getItem("doravo_exam_identity") || "null");
+      return v && v.username ? String(v.username) : "";
+    } catch { return ""; }
+  });
   const [examPasswordInput, setExamPasswordInput] = useState("");
   const [examLoginError, setExamLoginError] = useState("");
   const [examLoggingIn, setExamLoggingIn] = useState(false);
@@ -1410,7 +1423,7 @@ export default function TakeEAssessment() {
     e.preventDefault();
     if (examLoggingIn) return;
     if (!examUsername.trim() || !examPasswordInput.trim()) {
-      setExamLoginError("Enter both your username and the exam password.");
+      setExamLoginError(examIdentity ? "Enter the exam password." : "Enter both your assessment number and the exam password.");
       return;
     }
     setExamLoginError("");
@@ -2827,25 +2840,50 @@ export default function TakeEAssessment() {
           </div>
           <h1 id="examlogin-title" data-phase-heading tabIndex={-1} style={{ margin: "16px 0 8px", color: "var(--text)", fontSize: 18, fontWeight: 800, textAlign: "center" }}>Sign In to Take This Assessment</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", textAlign: "center" }}>
-            Enter your username and the exam password your teacher or admin gave you for this
-            assessment. You don't need a student-portal password for this.
+            {examIdentity
+              ? "Enter the exam password your teacher or admin gave you for this assessment."
+              : "Enter your assessment number and the exam password your teacher or admin gave you for this assessment."}
+            {" "}You don't need a student-portal password for this.
           </p>
 
-          <label htmlFor="exam-username" style={S.fieldLabel}>Username</label>
-          <div style={S.inputWithIcon}>
-            <User size={15} color="var(--text-muted)" aria-hidden="true" />
-            <input
-              id="exam-username"
-              style={S.iconInput}
-              value={examUsername}
-              onChange={(e) => { setExamUsername(e.target.value); setExamLoginError(""); }}
-              placeholder="Your student username"
-              autoComplete="username"
-              aria-required="true"
-              aria-invalid={!!examLoginError}
-              aria-describedby={examLoginError ? "exam-login-error" : undefined}
-            />
-          </div>
+          {examIdentity ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--bg)" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: "var(--text)", fontWeight: 800, fontSize: 15, overflowWrap: "anywhere" }}>{examIdentity.name || examIdentity.username}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 2 }}>
+                  No. {examIdentity.username}{examIdentity.school ? ` · ${examIdentity.school}` : ""}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  try { sessionStorage.removeItem("doravo_exam_identity"); } catch { /* ignore */ }
+                  setExamIdentity(null); setExamUsername(""); setExamLoginError("");
+                }}
+                style={{ background: "none", border: "none", color: "var(--info)", fontWeight: 700, fontSize: 12.5, cursor: "pointer", flexShrink: 0 }}
+              >
+                Not you?
+              </button>
+            </div>
+          ) : (
+            <>
+              <label htmlFor="exam-username" style={S.fieldLabel}>Assessment number (username)</label>
+              <div style={S.inputWithIcon}>
+                <User size={15} color="var(--text-muted)" aria-hidden="true" />
+                <input
+                  id="exam-username"
+                  style={S.iconInput}
+                  value={examUsername}
+                  onChange={(e) => { setExamUsername(e.target.value); setExamLoginError(""); }}
+                  placeholder="Your assessment number"
+                  autoComplete="username"
+                  aria-required="true"
+                  aria-invalid={!!examLoginError}
+                  aria-describedby={examLoginError ? "exam-login-error" : undefined}
+                />
+              </div>
+            </>
+          )}
 
           <label htmlFor="exam-password" style={{ ...S.fieldLabel, marginTop: 12 }}>Exam Password</label>
           <div style={S.inputWithIcon}>
@@ -2858,6 +2896,7 @@ export default function TakeEAssessment() {
               onChange={(e) => { setExamPasswordInput(e.target.value); setExamLoginError(""); }}
               placeholder="Exam password"
               autoComplete="off"
+              autoFocus={!!examIdentity}
               aria-required="true"
               aria-invalid={!!examLoginError}
               aria-describedby={examLoginError ? "exam-login-error" : undefined}

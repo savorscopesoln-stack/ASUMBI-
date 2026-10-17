@@ -23,6 +23,10 @@ import {
   PencilLine,
   Star,
   MousePointer2,
+  User,
+  Building2,
+  LogOut,
+  ArrowRight,
 } from "lucide-react";
 
 const LOGO_URL =
@@ -899,6 +903,51 @@ const injectPickerStyles = () => {
       white-space: nowrap;
     }
 
+
+    .ap-identify {
+      max-width: 520px;
+      margin: 0 auto 34px;
+      padding: 28px;
+      border: 1px solid var(--ap-border);
+      border-radius: 18px;
+      background: var(--ap-card);
+      box-shadow: 0 8px 24px rgba(30, 20, 25, .05);
+    }
+    .ap-identify h2 { margin: 0 0 6px; font-size: 22px; font-weight: 800; letter-spacing: -.025em; }
+    .ap-identify p { margin: 0 0 18px; color: var(--ap-muted); font-size: 14px; line-height: 1.6; }
+    .ap-field-label { display: block; margin-bottom: 7px; font-size: 13px; font-weight: 750; color: var(--ap-secondary); }
+    .ap-input-wrap {
+      display: flex; align-items: center; gap: 10px; padding: 0 14px; height: 52px;
+      border: 1.5px solid var(--ap-border); border-radius: 12px; background: var(--ap-bg);
+    }
+    .ap-input-wrap:focus-within { border-color: var(--ap-primary); }
+    .ap-input-wrap svg { color: var(--ap-muted); flex-shrink: 0; }
+    .ap-input {
+      flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+      color: var(--ap-text); font: inherit; font-size: 16px; font-weight: 650;
+    }
+    .ap-identify .ap-btn-primary { width: 100%; margin-top: 16px; min-height: 54px; animation: none; }
+    .ap-identify .ap-btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+    .ap-id-error { margin-top: 12px; color: #b3261e; font-size: 13px; font-weight: 650; }
+    .ap-who {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+      padding: 16px 20px; margin-bottom: 26px; border: 1px solid var(--ap-border);
+      border-radius: 14px; background: var(--ap-card);
+    }
+    .ap-who-main { display: flex; align-items: center; gap: 13px; min-width: 0; }
+    .ap-who-avatar {
+      width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center;
+      background: var(--ap-tint); color: var(--ap-primary); flex-shrink: 0;
+    }
+    .ap-who-name { font-size: 17px; font-weight: 800; overflow-wrap: anywhere; }
+    .ap-who-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; color: var(--ap-muted); font-size: 13px; }
+    .ap-who-meta span { display: inline-flex; align-items: center; gap: 6px; }
+    .ap-inactive {
+      display: flex; gap: 11px; align-items: flex-start; padding: 16px 18px; margin-bottom: 26px;
+      border: 1px solid #fecaca; border-radius: 12px; background: #fff4f4; color: #7a1f1a; font-size: 14px; line-height: 1.6;
+    }
+    .ap-seb-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 750; color: var(--ap-secondary); }
+
     .assessment-picker button:focus-visible {
       outline: 3px solid var(--ap-gold);
       outline-offset: 3px;
@@ -1011,6 +1060,20 @@ const injectPickerStyles = () => {
   document.head.appendChild(style);
 };
 
+// The student's identity (assessment number, name, school) is remembered for
+// this browser tab only, so the exam sign-in page can pre-fill the username.
+// Key is shared with TakeEAssessment.jsx.
+const IDENTITY_KEY = "doravo_exam_identity";
+const readIdentity = () => {
+  try {
+    const raw = sessionStorage.getItem(IDENTITY_KEY);
+    const v = raw ? JSON.parse(raw) : null;
+    return v && v.username ? v : null;
+  } catch { return null; }
+};
+const saveIdentity = (v) => { try { sessionStorage.setItem(IDENTITY_KEY, JSON.stringify(v)); } catch { /* ignore */ } };
+const clearIdentity = () => { try { sessionStorage.removeItem(IDENTITY_KEY); } catch { /* ignore */ } };
+
 const END_KEYS = [
   "end_time",
   "ends_at",
@@ -1091,45 +1154,78 @@ export default function TakeAssessmentPicker() {
     fetchedAt: Date.now(),
   });
 
-  const [loading, setLoading] = useState(true);
+  // identity: null until the student has entered their assessment number
+  const [identity, setIdentity] = useState(readIdentity);
+  const [accountActive, setAccountActive] = useState(true);
+  const [inactiveMsg, setInactiveMsg] = useState("");
+  const [numberInput, setNumberInput] = useState("");
+  const [identifying, setIdentifying] = useState(false);
+  const [identifyError, setIdentifyError] = useState("");
+
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [now, setNow] = useState(Date.now());
 
-  const fetchAssessments = async () => {
+  // Looks the student up and loads the exams they may sit.
+  // `initial` = the explicit submit of the form (shows errors on the form);
+  // otherwise it's a quiet background refresh.
+  const identify = async (username, { initial = false } = {}) => {
     try {
-      setLoading(true);
+      if (initial) { setIdentifying(true); setIdentifyError(""); } else setLoading(true);
       setError("");
 
-      const response = await API.get(
-        "/e-assessments/public/covers"
-      );
-
+      const response = await API.post("/e-assessments/public/identify", { username });
       const payload = response.data || {};
+      const who = payload.student || { username };
 
+      saveIdentity(who);
+      setIdentity(who);
+      setAccountActive(payload.active !== false);
+      setInactiveMsg(payload.message || "");
       setData({
-        active: Array.isArray(payload.active)
-          ? payload.active
-          : [],
+        active: Array.isArray(payload.assessments) ? payload.assessments : [],
         fetchedAt: Date.now(),
       });
     } catch (err) {
-      setError(
+      const msg =
         err?.response?.data?.message ||
-          "We couldn't load assessments. Please try again."
-      );
+        "We couldn't check that right now. Please try again.";
+      if (initial) setIdentifyError(msg);
+      else if (err?.response?.status === 404) { clearIdentity(); setIdentity(null); setIdentifyError(msg); }
+      else setError(msg);
     } finally {
+      setIdentifying(false);
       setLoading(false);
     }
   };
 
+  const handleIdentify = (e) => {
+    e.preventDefault();
+    const v = numberInput.trim();
+    if (!v) { setIdentifyError("Enter your assessment number."); return; }
+    identify(v, { initial: true });
+  };
+
+  const notYou = () => {
+    clearIdentity();
+    setIdentity(null);
+    setNumberInput("");
+    setData({ active: [], fetchedAt: Date.now() });
+    setIdentifyError("");
+  };
+
+  const fetchAssessments = () => identity && identify(identity.username);
+
+  // Remembered identity (same tab): load their exams straight away, then keep fresh.
   useEffect(() => {
-    fetchAssessments();
-
-    const poll = setInterval(fetchAssessments, 60000);
-
+    if (!identity?.username) return undefined;
+    identify(identity.username);
+    // 60s +/- up to 15s of jitter so 400 students don't all refresh on the same second
+    const poll = setInterval(() => identify(identity.username), 45000 + Math.floor(Math.random() * 30000));
     return () => clearInterval(poll);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity?.username]);
 
   useEffect(() => {
     const tick = setInterval(() => {
@@ -1237,6 +1333,61 @@ export default function TakeAssessmentPicker() {
           </div>
         </header>
 
+        {!identity ? (
+          <form className="ap-identify" onSubmit={handleIdentify} aria-labelledby="ap-id-heading">
+            <h2 id="ap-id-heading">Enter your assessment number</h2>
+            <p>We'll find your school and show the assessments that are open for you.</p>
+
+            <label className="ap-field-label" htmlFor="ap-number">Assessment number</label>
+            <div className="ap-input-wrap">
+              <User size={18} aria-hidden="true" />
+              <input
+                id="ap-number"
+                className="ap-input"
+                value={numberInput}
+                onChange={(e) => { setNumberInput(e.target.value); setIdentifyError(""); }}
+                placeholder="e.g. 1234"
+                autoComplete="username"
+                autoCapitalize="off"
+                autoFocus
+                aria-invalid={!!identifyError}
+              />
+            </div>
+
+            {identifyError && <div className="ap-id-error" role="alert">{identifyError}</div>}
+
+            <button className="ap-btn ap-btn-primary" type="submit" disabled={identifying || !numberInput.trim()}>
+              {identifying ? <Loader2 size={20} className="ap-spin" aria-hidden="true" /> : <ArrowRight size={20} aria-hidden="true" />}
+              <span>{identifying ? "Checking…" : "Continue"}</span>
+            </button>
+          </form>
+        ) : (
+        <>
+        <div className="ap-who">
+          <div className="ap-who-main">
+            <div className="ap-who-avatar"><User size={22} aria-hidden="true" /></div>
+            <div style={{ minWidth: 0 }}>
+              <div className="ap-who-name">{identity.name || identity.username}</div>
+              <div className="ap-who-meta">
+                <span><ListChecks size={13} aria-hidden="true" />No. {identity.username}</span>
+                {identity.school && <span><Building2 size={13} aria-hidden="true" />{identity.school}</span>}
+                {identity.class && <span><GraduationCap size={13} aria-hidden="true" />{identity.class}</span>}
+              </div>
+            </div>
+          </div>
+          <button className="ap-btn ap-btn-secondary" type="button" onClick={notYou}>
+            <LogOut size={15} aria-hidden="true" />
+            Not you?
+          </button>
+        </div>
+
+        {!accountActive && (
+          <div className="ap-inactive" role="alert">
+            <AlertTriangle size={20} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+            <span>{inactiveMsg || "Your account isn't active, so you can't sit for assessments. Please contact the school office."}</span>
+          </div>
+        )}
+
         {error && !loading && (
           <div className="ap-error" role="alert">
             <AlertTriangle size={19} aria-hidden="true" />
@@ -1256,7 +1407,7 @@ export default function TakeAssessmentPicker() {
           </div>
         )}
 
-        {loading && data.active.length === 0 ? (
+        {!accountActive ? null : loading && data.active.length === 0 ? (
           <div
             className="ap-loading"
             role="status"
@@ -1326,8 +1477,8 @@ export default function TakeAssessmentPicker() {
                   </h3>
 
                   <p className="ap-empty-copy">
-                    There are no open assessments at the
-                    moment. When your teacher opens one, it
+                    There are no open assessments for you at
+                    the moment. When your teacher opens one, it
                     will appear here automatically.
                   </p>
 
@@ -1589,6 +1740,8 @@ export default function TakeAssessmentPicker() {
               </section>
             )}
           </>
+        )}
+        </>
         )}
       </div>
     </main>

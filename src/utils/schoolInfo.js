@@ -19,6 +19,10 @@ import API, { resolveFileUrl } from "../api";
 
 let cache = null;
 let inFlight = null;
+let cacheSession = null;
+const sessionNow = () => { try { return localStorage.getItem("token") || "anon"; } catch { return "anon"; } };
+// Same rule as useSchoolSettings: a cached header belongs to one session only.
+export const resetSchoolInfoCache = () => { cache = null; inFlight = null; cacheSession = null; };
 
 const toDataUrl = async (url) => {
   try {
@@ -60,8 +64,10 @@ export function schoolInfoFromSettings(s) {
 }
 
 export async function getSchoolInfo() {
+  if (cache && cacheSession !== sessionNow()) { cache = null; inFlight = null; }
   if (cache) return cache;
   if (inFlight) return inFlight;
+  const sessionAtStart = sessionNow();
   inFlight = (async () => {
     let s = null;
     try {
@@ -88,7 +94,7 @@ export async function getSchoolInfo() {
       info.website,
     ].filter(Boolean).join("  |  ");
     // only cache a real answer, so a failed first load is retried next time
-    if (s) cache = info;
+    if (s && sessionAtStart === sessionNow()) { cache = info; cacheSession = sessionAtStart; }
     return info;
   })().finally(() => { inFlight = null; });
   return inFlight;

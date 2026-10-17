@@ -19,17 +19,32 @@ import API from "../api";
 ========================================================= */
 
 let cache = null; // { settings, officials, classTeachers } | null
+// The cache belongs to ONE session. Fetched logged-out (Login page) it holds the
+// server's fallback school; after signing in as another school's user that stale
+// copy would keep showing (and could be re-saved from the School Settings form)
+// until a full page refresh. So it is dropped whenever the token changes.
+let cacheSession = null;
+const sessionNow = () => { try { return localStorage.getItem("token") || "anon"; } catch { return "anon"; } };
+const freshCache = () => {
+  if (cache && cacheSession !== sessionNow()) { cache = null; inFlight = null; }
+  return cache;
+};
+export const resetSchoolSettingsCache = () => { cache = null; inFlight = null; cacheSession = null; notify(); };
 let inFlight = null;
 const listeners = new Set();
 
 const notify = () => listeners.forEach((fn) => fn(cache));
 
 const load = async (force = false) => {
+  freshCache();
   if (cache && !force) return cache;
   if (inFlight && !force) return inFlight;
 
+  const sessionAtStart = sessionNow();
   inFlight = API.get("/school-settings")
     .then((res) => {
+      if (sessionAtStart !== sessionNow()) return load(true); // signed in/out mid-request: discard, refetch
+      cacheSession = sessionAtStart;
       cache = {
         settings: res.data?.settings || null,
         officials: res.data?.officials || [],
@@ -50,14 +65,16 @@ const load = async (force = false) => {
 };
 
 export default function useSchoolSettings() {
-  const [data, setData] = useState(cache || { settings: null, officials: [], classTeachers: [] });
-  const [loading, setLoading] = useState(!cache);
+  const [data, setData] = useState(() => freshCache() || { settings: null, officials: [], classTeachers: [] });
+  const [loading, setLoading] = useState(() => !freshCache());
 
   useEffect(() => {
     listeners.add(setData);
-    if (!cache) {
-      load().then(() => setLoading(false));
+    if (!freshCache()) {
+      setData({ settings: null, officials: [], classTeachers: [] });
+      load().then((c) => { setData(c); setLoading(false); });
     } else {
+      setData(cache);
       setLoading(false);
     }
     return () => listeners.delete(setData);
