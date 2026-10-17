@@ -28,17 +28,10 @@ const fmtDur = (mins) => {
 };
 
 const SORTS = {
-<<<<<<< HEAD
   progress: { label: "Progress", fn: (a, b) => (b.percent ?? -1) - (a.percent ?? -1) || b.wins - a.wins || b.marked - a.marked },
   speed:    { label: "Speed",    fn: (a, b) => (b.items_per_hour ?? -1) - (a.items_per_hour ?? -1) || b.marked - a.marked },
   wins:     { label: "First finishes", fn: (a, b) => b.wins - a.wins || b.podiums - a.podiums || b.marked - a.marked },
   marked:   { label: "Most marked", fn: (a, b) => b.marked - a.marked || (b.percent ?? -1) - (a.percent ?? -1) },
-=======
-  progress: { label: "Progress", fn: (a, b) => b.percent - a.percent || b.wins - a.wins || b.marked - a.marked },
-  speed:    { label: "Speed",    fn: (a, b) => (b.items_per_hour ?? -1) - (a.items_per_hour ?? -1) || b.percent - a.percent },
-  wins:     { label: "First finishes", fn: (a, b) => b.wins - a.wins || b.podiums - a.podiums || b.percent - a.percent },
-  marked:   { label: "Most marked", fn: (a, b) => b.marked - a.marked || b.percent - a.percent },
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
 };
 
 function Bar({ pct, done }) {
@@ -79,11 +72,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [assessmentId, setAssessmentId] = useState("");
-<<<<<<< HEAD
   const [sortKey, setSortKey] = useState("marked");
-=======
-  const [sortKey, setSortKey] = useState("progress");
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
   const inFlight = useRef(false);
 
   const load = useCallback(async (silent = false) => {
@@ -128,11 +117,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
       sections.push({
         heading: `Overall ranking — by ${SORTS[sortKey].label.toLowerCase()}`,
         head: ["Rank", "Teacher", "Allocated", "Marked", "Remaining", "Progress", "Speed (per hr)", "First finishes", "Last activity"],
-<<<<<<< HEAD
         body: teachers.map((t) => [t.rank, t.teacher_name, t.allocated || "Open", t.marked, t.allocated ? t.remaining : "—", t.percent == null ? "Open" : `${t.percent}%`,
-=======
-        body: teachers.map((t) => [t.rank, t.teacher_name, t.allocated, t.marked, t.remaining, `${t.percent}%`,
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
           t.items_per_hour ?? "—", t.wins, fmtWhen(t.last_activity)]),
       });
     }
@@ -142,13 +127,8 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
         ? `First to finish: ${a.first_finisher.teacher_name} (${fmtWhen(a.first_finisher.finished_at)})  ·  ${a.marked} of ${a.allocated} marked (${a.percent}%)`
         : `Nobody has finished yet  ·  ${a.marked} of ${a.allocated} marked (${a.percent}%)`,
       head: ["Place", "Teacher", "Allocated", "Marked", "Remaining", "Progress", "Finished at", "Time taken", "Speed (per hr)"],
-<<<<<<< HEAD
       body: a.teachers.map((c) => [c.finish_place ? `${c.finish_place}` : "—", c.teacher_name, c.open ? "Open" : c.allocated, c.marked, c.open ? "—" : c.remaining,
         c.percent == null ? "Open" : `${c.percent}%`, fmtWhen(c.finished_at), fmtDur(c.turnaround_minutes), c.items_per_hour ?? "—"]),
-=======
-      body: a.teachers.map((c) => [c.finish_place ? `${c.finish_place}` : "—", c.teacher_name, c.allocated, c.marked, c.remaining,
-        `${c.percent}%`, fmtWhen(c.finished_at), fmtDur(c.turnaround_minutes), c.items_per_hour ?? "—"]),
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
     }));
     downloadTablesPdf({
       title: onlyAssessment ? `Marking report — ${onlyAssessment.title}` : "Marking Leaderboard",
@@ -215,11 +195,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
               <div key={t.teacher_id} style={{ ...css.card, textAlign: "center", borderColor: t.rank === 1 ? "var(--primary, #8B1E2D)" : undefined }}>
                 <div style={{ fontSize: 34 }}>{medal(t.rank)}</div>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{t.teacher_name}{t.teacher_id === data.me ? " (you)" : ""}</div>
-<<<<<<< HEAD
                 <div style={css.muted}>{t.percent == null ? `${t.marked} marked (open marking)` : `${t.marked} marked · ${t.percent}% of allocation`}</div>
-=======
-                <div style={css.muted}>{t.marked} of {t.allocated} marked · {t.percent}%</div>
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
                 <div style={css.muted}>{t.items_per_hour != null ? `${t.items_per_hour}/hr` : "speed n/a"} · {t.wins} first finish{t.wins === 1 ? "" : "es"}</div>
               </div>
             ))}
@@ -235,17 +211,10 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
                   <tr key={t.teacher_id} style={t.teacher_id === data.me ? { background: "var(--primary-tint, #FBEAEC)" } : undefined}>
                     <td style={{ ...css.td, fontWeight: 700 }}>{medal(t.rank)}</td>
                     <td style={{ ...css.td, fontWeight: 600 }}>{t.teacher_name}{t.teacher_id === data.me ? " (you)" : ""}</td>
-<<<<<<< HEAD
                     <td style={css.td}>{t.allocated ? t.allocated : "Open"}{t.allocated && t.open_marked ? ` +${t.open_marked} open` : ""}</td>
                     <td style={css.td}>{t.marked}</td>
                     <td style={css.td}>{t.allocated ? t.remaining : "—"}</td>
                     <td style={css.td}>{t.percent == null ? <span style={css.muted}>Open marking</span> : <Bar pct={t.percent} done={t.percent === 100} />}</td>
-=======
-                    <td style={css.td}>{t.allocated}</td>
-                    <td style={css.td}>{t.marked}</td>
-                    <td style={css.td}>{t.remaining}</td>
-                    <td style={css.td}><Bar pct={t.percent} done={t.percent === 100} /></td>
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
                     <td style={css.td}>{t.items_per_hour != null ? `${t.items_per_hour}/hr` : "—"}</td>
                     <td style={css.td}>{t.wins}</td>
                     <td style={css.td}>{fmtWhen(t.last_activity)}</td>
@@ -254,11 +223,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
               </tbody>
             </table>
           </div>
-<<<<<<< HEAD
           <div style={css.muted}>Open marking = work a teacher marked that was never assigned to them, so there is no fixed allocation to measure progress against. Speed is items marked per hour; for work marked before tracking began it is estimated from the teacher's marking session.</div>
-=======
-          <div style={css.muted}>Speed is items marked per hour while a teacher was actively marking. It only counts work marked after tracking began.</div>
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
 
           <h4 style={{ margin: "6px 0 0", fontSize: 15 }}>The race — who finished each assessment first</h4>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12 }}>
@@ -267,11 +232,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>{a.title}</div>
-<<<<<<< HEAD
                     <div style={css.muted}>{a.subject ? `${a.subject} · ` : ""}{a.marked} of {a.allocated} marked{a.has_open_pool ? " (incl. open pool)" : ""}</div>
-=======
-                    <div style={css.muted}>{a.subject ? `${a.subject} · ` : ""}{a.marked} of {a.allocated} marked</div>
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
                   </div>
                   <Btn onClick={() => exportPdf(a)} icon={<Download size={13} />}>PDF</Btn>
                 </div>
@@ -286,13 +247,8 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
                     background: c.teacher_id === data.me ? "var(--primary-tint, #FBEAEC)" : undefined }}>
                     <span style={{ width: 30, fontWeight: 700 }}>{c.finish_place ? medal(c.finish_place) : "·"}</span>
                     <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.teacher_name}</span>
-<<<<<<< HEAD
                     <span style={{ ...css.muted, whiteSpace: "nowrap" }}>{c.open ? `${c.marked} marked (open)` : `${c.marked}/${c.allocated}`}{c.turnaround_minutes != null ? ` · ${fmtDur(c.turnaround_minutes)}` : ""}</span>
                     <div style={{ width: 90 }}>{c.percent == null ? null : <Bar pct={c.percent} done={c.finished} />}</div>
-=======
-                    <span style={{ ...css.muted, whiteSpace: "nowrap" }}>{c.marked}/{c.allocated}{c.turnaround_minutes != null ? ` · ${fmtDur(c.turnaround_minutes)}` : ""}</span>
-                    <div style={{ width: 90 }}><Bar pct={c.percent} done={c.finished} /></div>
->>>>>>> 71026baeb12d438d804c370a29bf110ee1ab2e19
                   </div>
                 ))}
               </div>

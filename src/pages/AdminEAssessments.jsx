@@ -289,6 +289,7 @@ export default function AdminEAssessments() {
   const [splitFor, setSplitFor] = useState(null); // { assessmentId } — manual split marking window
   const [subSearch, setSubSearch] = useState(""); // submissions: individual records only render once something is searched
   const [statusFilter,  setStatusFilter]  = useState("");
+  const [markFilter,    setMarkFilter]    = useState(""); // submissions tab: "" | awaiting | marked | auto | released
   const [toast,         setToast]         = useState(null);
   const [bulkMenu,      setBulkMenu]      = useState(false);
 
@@ -970,7 +971,7 @@ export default function AdminEAssessments() {
   const bulkReleaseMarks = async (subjectName) => {
     const ready = submissions.filter(
       (s) => String(s.subject_name) === String(subjectName) &&
-             s.score != null && s.status !== "released"
+             s.score != null && isMarkedState(s) && s.status !== "released"
     );
     if (!ready.length) { showToast("No marked submissions ready for release", "error"); return; }
     try {
@@ -1217,7 +1218,7 @@ export default function AdminEAssessments() {
   const subStats = useMemo(() => ({
     total:      submissions.length,
     unassigned: submissions.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length,
-    marked:     submissions.filter((s) => s.score != null).length,
+    marked:     submissions.filter(isMarkedState).length,
     released:   submissions.filter((s) => s.status === "released").length,
   }), [submissions]);
 
@@ -1511,6 +1512,14 @@ export default function AdminEAssessments() {
               ))}
             </select>
 
+            <select value={markFilter} onChange={(e) => setMarkFilter(e.target.value)} style={sx.select} aria-label="Filter by marking status">
+              <option value="">All marking states</option>
+              <option value="awaiting">Awaiting marking</option>
+              <option value="marked">Marked by teacher</option>
+              <option value="auto">Auto-marked (MCQ only)</option>
+              <option value="released">Released</option>
+            </select>
+
             {subjectFilter ? (
               <>
                 <ActionButton icon={<IconZap size={14} />} onClick={() => bulkAssignBySubject(subjectFilter)}>Distribute Equally</ActionButton>
@@ -1526,7 +1535,7 @@ export default function AdminEAssessments() {
               submissions.map((s) => ({
                 student: s.student_name, assessment: s.assessment_title,
                 subject: s.subject_name, score: s.score, total: s.total_marks,
-                status: s.status, submitted: s.submitted_at,
+                status: s.status, marking: markState(s), essays_left: s.pending_essay_count ?? "", submitted: s.submitted_at,
               })), "submissions.csv"
             )}>Export CSV</ActionButton>
           </div>
@@ -1553,7 +1562,7 @@ export default function AdminEAssessments() {
                 .filter(([sName]) => !subjectFilter || sName === subjectFilter)
                 .map(([subjectName, subs]) => {
                   const subjectTeachers = assignedTeachers.filter((t) => String(t.subject_name) === String(subjectName));
-                  const markedCount   = subs.filter((s) => s.score != null).length;
+                  const markedCount   = subs.filter(isMarkedState).length;
                   const releasedCount = subs.filter((s) => s.status === "released").length;
                   const unassigned    = subs.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length;
                   return (
@@ -1587,6 +1596,7 @@ export default function AdminEAssessments() {
               .map(([sName, allSubs]) => {
                 const words = subSearch.trim().toLowerCase().split(/\s+/);
                 const subs = allSubs.filter((x) => {
+                  if (markFilter && markState(x) !== markFilter) return false;
                   const hay = [x.student_name, x.student_id, x.assessment_title, sName, x.status].join(" ").toLowerCase();
                   return words.every((w) => hay.includes(w));
                 });
@@ -1598,7 +1608,7 @@ export default function AdminEAssessments() {
                 const subjectTeachers = assignedTeachers.filter(
                   (t) => String(t.subject_name) === String(subjectName)
                 );
-                const markedCount   = subs.filter((s) => s.score != null).length;
+                const markedCount   = subs.filter(isMarkedState).length;
                 const releasedCount = subs.filter((s) => s.status === "released").length;
 
                 return (
@@ -1643,7 +1653,7 @@ export default function AdminEAssessments() {
                               </Td>
                               <Td>{sub.score != null ? <ScoreBadge score={sub.score} total={sub.total_marks || 100} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
                               <Td>{sub.score != null ? <GradeBadge grade={computeGrade(sub.score, sub.total_marks, gradingSystem)} /> : <span style={{ color: C.textMuted }}>—</span>}</Td>
-                              <Td><MarkPill status={sub.status} score={sub.score} /></Td>
+                              <Td><MarkPill sub={sub} /></Td>
                               <Td>
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                                   {!sub.assigned_teacher_id && !(Number(sub.alloc_count) > 0) && subjectTeachers.length > 0 && (
@@ -1658,7 +1668,7 @@ export default function AdminEAssessments() {
                                       ))}
                                     </select>
                                   )}
-                                  {sub.score != null && sub.status !== "released" && (
+                                  {isMarkedState(sub) && sub.status !== "released" && (
                                     <MiniBtn onClick={() => setReleaseModal(sub)} icon={<IconRocket size={12} />}>Release</MiniBtn>
                                   )}
                                   <MiniBtn tone="warning" onClick={() => grantResit(sub)} icon={<IconZap size={12} />} title="Give this student another attempt">Allow resit</MiniBtn>
@@ -2733,13 +2743,31 @@ function StatusBadge({ status }) {
   return <Chip text={status || "pending"} tone={tone} uppercase />;
 }
 
-function MarkPill({ status, score }) {
-  if (status === "released") return <Chip text="Released" tone="accent" />;
-  if (status === "marked" || score != null) return <Chip text="Marked" tone="success" />;
-  if (status === "submitted") return <Chip text="Awaiting Marking" tone="warning" />;
-  return <Chip text={status || "Pending"} tone="neutral" />;
-}
+/* A score does NOT mean "marked": MCQs are graded automatically, and a teacher who has
+   saved some essays has a score too. A paper is marked once nothing is left for a teacher
+   (no answered essay without a mark) — or it is a pure-MCQ paper, which the system finished
+   at submission. Returns "released" | "marked" | "auto" | "awaiting" | "pending". */
+const markState = (s) => {
+  if (s.status === "released") return "released";
+  const left = Number(s.pending_essay_count) || 0;
+  if (left > 0) return "awaiting";
+  const hasEssay = Number(s.essay_question_count) > 0;
+  if (s.status === "marked" || s.score != null) return hasEssay ? "marked" : "auto";
+  return "pending";
+};
+const isMarkedState = (s) => ["marked", "auto", "released"].includes(markState(s));
 
+function MarkPill({ sub }) {
+  const st = markState(sub);
+  if (st === "released") return <Chip text="Released" tone="accent" />;
+  if (st === "marked")   return <Chip text="Marked" tone="success" />;
+  if (st === "auto")     return <Chip text="Auto-marked (MCQ)" tone="neutral" />;
+  if (st === "awaiting") {
+    const n = Number(sub.pending_essay_count) || 0;
+    return <Chip text={`Awaiting marking · ${n} essay${n === 1 ? "" : "s"} left`} tone="warning" />;
+  }
+  return <Chip text={sub.status || "Pending"} tone="neutral" />;
+}
 /* ── Blocked devices (Desktop-only switch) ──
    Every phone/tablet the switch turned away, per student and assessment,
    with the platform it reported (Android, iPhone, ...). "Allow" lets that ONE
