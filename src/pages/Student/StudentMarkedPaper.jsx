@@ -120,10 +120,10 @@ const injectAnswerStyles = () => {
     /* the teacher's highlights, read-only for the student */
     .mp-answer mark.hl-mark { color: inherit; border-radius: 3px; padding: 1px 3px; cursor: default; animation: none; }
     .mp-answer mark.hl-mark[data-status="correct"] { background: var(--success-tint); border-bottom: 2px solid var(--success); }
-    .mp-answer mark.hl-mark[data-status="wrong"] { background: var(--destructive-tint); border-bottom: 2px solid var(--destructive); text-decoration: line-through; text-decoration-color: var(--destructive); }
+    .mp-answer mark.hl-mark[data-status="wrong"] { background: var(--destructive-tint); border-bottom: none; text-decoration: underline; text-decoration-color: var(--destructive); text-decoration-thickness: 2px; text-underline-offset: 3px; }
     .mp-answer .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; vertical-align: middle; color: #fff; pointer-events: none; text-decoration: none; }
     .mp-answer .hl-status[data-status="correct"] { background: var(--success); }
-    .mp-answer .hl-status[data-status="wrong"] { background: var(--destructive); }
+    .mp-answer .hl-status[data-status="wrong"] { background: var(--destructive); width: 18px; height: 18px; font-size: 12px; }
   `;
   document.head.appendChild(el);
 };

@@ -165,15 +165,15 @@ const injectMarkingStyles = () => {
     .mkp-essay-readonly table { border-collapse: collapse; margin: 8px 0; max-width: 100%; }
     .mkp-essay-readonly th, .mkp-essay-readonly td { border: 1px solid var(--border); padding: 6px 10px; vertical-align: top; min-width: 48px; }
     .mkp-essay-readonly th { background: var(--card); font-weight: 700; }
-    /* right = green, wrong = red + struck through, so a ✗ is visible on the answer itself */
+    /* right = green highlight, wrong = red underline with a ✗ at the end of the answer */
     .hl-mark { color: inherit; background: rgba(34,197,94,.20); border-bottom: 2px solid #22c55e; border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
     .hl-mark:hover { background: rgba(34,197,94,.35); }
-    .hl-mark[data-status="wrong"] { background: rgba(239,68,68,.20); border-bottom-color: #ef4444; text-decoration: line-through; text-decoration-color: #ef4444; text-decoration-thickness: 1.5px; }
+    .hl-mark[data-status="wrong"] { background: rgba(239,68,68,.12); border-bottom: none; text-decoration: underline; text-decoration-color: #ef4444; text-decoration-thickness: 2px; text-underline-offset: 3px; }
     .hl-mark[data-status="wrong"]:hover { background: rgba(239,68,68,.35); }
     .hl-mark[data-status="wrong"] .hl-status { text-decoration: none; }
     .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; cursor: pointer; vertical-align: middle; color: #fff; user-select: none; }
     .hl-status[data-status="correct"] { background: var(--success, #22c55e); }
-    .hl-status[data-status="wrong"] { background: #ef4444; }
+    .hl-status[data-status="wrong"] { background: #ef4444; width: 18px; height: 18px; font-size: 12px; }
     .hl-status:hover { filter: brightness(1.1); }
 
     .mkp-btn { transition: filter .15s ease, opacity .2s ease, background .2s ease; cursor: pointer; font-family: inherit; }
