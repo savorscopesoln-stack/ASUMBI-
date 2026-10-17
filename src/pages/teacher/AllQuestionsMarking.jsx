@@ -1570,6 +1570,7 @@ export default function Marking() {
           <AlertTriangle size={20} style={{ flexShrink: 0 }} />
           <span>{error}</span>
         </div>
+        <AllocationStatsPanel assessmentId={assessmentId} queue={queue} markedCount={queue.length - remaining.length} />
       </div>
     );
 
@@ -1600,6 +1601,8 @@ export default function Marking() {
             </div>
           </div>
         </div>
+
+        <AllocationStatsPanel assessmentId={assessmentId} queue={queue} markedCount={queue.length - remaining.length} />
 
         {flaggedAnswers.length > 0 && (
           <div style={s.flagCard}>

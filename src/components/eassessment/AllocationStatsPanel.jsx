@@ -51,7 +51,7 @@ function Slot({ place, row, isMe }) {
   );
 }
 
-export default function AllocationStatsPanel({ assessmentId, queue, markedCount }) {
+export default function AllocationStatsPanel({ assessmentId, queue = [], markedCount = 0 }) {
   const stats = useMemo(() => {
     const questions = new Set();
     const students = new Set();
@@ -110,9 +110,9 @@ export default function AllocationStatsPanel({ assessmentId, queue, markedCount 
       .map((r) => ({ ...r, isMe: r.id === me }));
   }, [board, stats.marked, stats.percent]);
 
-  if (!stats.responses) return null;
-
-  const formula = stats.questions * stats.students === stats.responses
+  const formula = !stats.responses
+    ? "No responses allocated to you on this assessment yet"
+    : stats.questions * stats.students === stats.responses
     ? `${stats.questions} question${stats.questions !== 1 ? "s" : ""} × ${stats.students} allocated student${stats.students !== 1 ? "s" : ""} = ${stats.responses} responses`
     : `${stats.responses} responses across ${stats.questions} question${stats.questions !== 1 ? "s" : ""} and ${stats.students} allocated student${stats.students !== 1 ? "s" : ""}`;
 
