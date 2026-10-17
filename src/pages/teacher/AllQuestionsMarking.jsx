@@ -1,7 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import API, { BASE_URL } from "../../api";
+import MusicMarkingPanel from "../../components/music/MusicMarkingPanel";
+import { hasDrawing } from "../../utils/musicAnswer";
 import { sanitizeHtml } from "../../utils/safeHtml";
+import {
+  PENDING_FLUSH_MS, isAutoWrongId, readPending, queuePending, clearPendingBefore, flushPending, flushPendingOnExit,
+  applyPendingToRow, needsAutoWrong, buildAutoWrong, stripAutoWrongHtml,
+} from "../../utils/markingSync";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 import {
   ClipboardCheck,
@@ -73,7 +79,7 @@ function writeLocalMarkingCache(assessmentId, snapshot) {
   try {
     localStorage.setItem(SESSION_CACHE_PREFIX + assessmentId, JSON.stringify(snapshot));
   } catch {
-    /* storage full/unavailable/private-mode — the 60s server push still covers it */
+    /* storage full/unavailable/private-mode — the 30s server push still covers it */
   }
 }
 function clearLocalMarkingCache(assessmentId) {
@@ -217,12 +223,17 @@ function injectMarkingStyles() {
     @media (max-width: 560px) { .mkp-stats-row { grid-template-columns: 1fr 1fr; } .mkp-stats-row > :last-child { grid-column: span 2; } }
 
     .mkp-essay-readonly { user-select: text; caret-color: transparent; outline: none; }
+    .mkp-essay-readonly img[data-music-sheet] { display: none; } /* drawn sheets are marked in the Mark-the-drawing panel */
     .mkp-essay-readonly:focus { outline: none; }
     .mkp-essay-readonly table { border-collapse: collapse; margin: 8px 0; max-width: 100%; }
     .mkp-essay-readonly th, .mkp-essay-readonly td { border: 1px solid var(--border); padding: 6px 10px; vertical-align: top; min-width: 48px; }
     .mkp-essay-readonly th { background: var(--card); font-weight: 700; }
-    .hl-mark { color: inherit; background: rgba(239,68,68,.20); border-bottom: 2px solid #ef4444; border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
-    .hl-mark:hover { background: rgba(239,68,68,.35); }
+    /* right = green, wrong = red + struck through, so a ✗ is visible on the answer itself */
+    .hl-mark { color: inherit; background: rgba(34,197,94,.20); border-bottom: 2px solid #22c55e; border-radius: 3px; padding: 1px 3px; cursor: pointer; position: relative; animation: mkp-pop .45s ease; transition: background .15s ease; }
+    .hl-mark:hover { background: rgba(34,197,94,.35); }
+    .hl-mark[data-status="wrong"] { background: rgba(239,68,68,.20); border-bottom-color: #ef4444; text-decoration: line-through; text-decoration-color: #ef4444; text-decoration-thickness: 1.5px; }
+    .hl-mark[data-status="wrong"]:hover { background: rgba(239,68,68,.35); }
+    .hl-mark[data-status="wrong"] .hl-status { text-decoration: none; }
     .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; cursor: pointer; vertical-align: middle; color: #fff; user-select: none; }
     .hl-status[data-status="correct"] { background: var(--success, #22c55e); }
     .hl-status[data-status="wrong"] { background: #ef4444; }
@@ -746,7 +757,17 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
     if (maxMarks != null) next = Math.min(next, Math.max(0, maxMarks - others));
     const container = containerRef.current;
     const el = container && container.querySelector(`[data-hid="${hlId}"]`);
-    if (el) el.dataset.mark = String(next);
+    if (el) {
+      el.dataset.mark = String(next);
+      if (next > 0) el.dataset.fullmark = String(next);
+      // a point worth 0 is a wrong point — show it as one on the answer too
+      el.dataset.status = next > 0 ? "correct" : "wrong";
+      const badge = el.querySelector(".hl-status");
+      if (badge) {
+        badge.dataset.status = el.dataset.status;
+        badge.textContent = next > 0 ? "✓" : "✗";
+      }
+    }
     onAdjust(hlId, next, container ? container.innerHTML : "");
   };
 
@@ -757,7 +778,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       <div style={s.essayHeaderRow}>
         <div style={s.essayHint}>
           <Pencil size={13} color="var(--primary)" />
-          Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong, or tap the highlight itself to remove it.
+          Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong (it turns red with a ✗). An answer you move on from with no highlights is marked wrong automatically.
         </div>
         {maxMarks != null && (
           <div style={s.markMeter}>
@@ -825,9 +846,10 @@ export default function Marking() {
   const [remarks, setRemarks]       = useState({});
   const [highlights, setHighlights] = useState({});
   const [essayHTML, setEssayHTML]   = useState({});
+  // music paper: marker's red-pen overlays per answer id (array, one PNG per drawing sheet)
+  const [musicAnn, setMusicAnn]       = useState({});
   const [dismissed, setDismissed]   = useState(new Set());
   const [flags, setFlags]           = useState({});
-  const markingBusyRef = useRef(false);
 
   const [submissions, setSubmissions] = useState([]);
   // Auto-graded MCQ marks — kept out of the essay `queue` (nothing for a
@@ -855,7 +877,7 @@ export default function Marking() {
   // sessionLoadedRef guards the local-cache/dirty-tracking effect below so
   // it doesn't fire while the initial load/restore is still assembling
   // state. sessionDirtyRef flips true whenever working state changes and
-  // is cleared once a server push succeeds — the 60s interval only pushes
+  // is cleared once a server push succeeds — the 30s interval only pushes
   // when there's something new to send. latestStateRef always holds the
   // freshest working state so the interval (set up once) and the
   // unload/visibility flush can read current values without resetting on
@@ -888,6 +910,10 @@ export default function Marking() {
       try {
         setLoading(true);
         setError(null);
+
+        // Marks cached locally but never confirmed by the database (the tab
+        // was closed or the connection dropped mid-session) are sent first.
+        try { await flushPending(assessmentId); } catch { /* kept in the cache; overlaid below */ }
 
         const res = await API.get(`/e-assessments/marking/all/${assessmentId}`);
         const data = Array.isArray(res.data) ? res.data : [];
@@ -947,12 +973,15 @@ export default function Marking() {
               // highlights instead of plain text
               highlights: a.highlights,
               highlighted_html: a.highlighted_html,
+              music_annotations: a.music_annotations,
+              model_answer_sheet: a.question?.model_answer_sheet || a.model_answer_sheet || null,
               _submission_id: sub.submission?.id,
               _student_id: sub.submission?.student_id,
             }))
         );
 
-        const interleaved = interleave(groups);
+        const stillPending = readPending(assessmentId);
+        const interleaved = interleave(groups).map((it) => applyPendingToRow(it, stillPending));
         if (!isMounted) return;
 
         const initialHTML = {};
@@ -995,7 +1024,7 @@ export default function Marking() {
         // ── Resume from a cached working draft ──────────────────────────
         // Two sources: this browser's local cache (instant, survives an
         // accidental refresh even offline) and the server-side draft the
-        // 60s autosave pushes (see saveMarkingSession) — which is what
+        // 30s autosave pushes (see saveMarkingSession) — which is what
         // makes logging in on another device pick up where this one left
         // off. Whichever was saved more recently wins; either can be
         // missing (first time marking this batch, or never got past the
@@ -1042,6 +1071,11 @@ export default function Marking() {
           restored = true;
         }
 
+        const initialAnn = {};
+        for (const item of interleaved) {
+          if (Array.isArray(item.music_annotations) && item.music_annotations.some(Boolean)) initialAnn[item.id] = item.music_annotations;
+        }
+        setMusicAnn(initialAnn);
         setEssayHTML(initialHTML);
         setScores(initialScores);
         setHighlights(initialHighlights);
@@ -1133,7 +1167,7 @@ export default function Marking() {
 
   /* ── MARKING SESSION CACHE — write-through + periodic server autosave ──
      Local cache is debounced and written on every meaningful change, so a
-     refresh or brief connectivity blip never loses work. The 60s interval
+     refresh or brief connectivity blip never loses work. The 30s interval
      is what actually reaches the server (and therefore other devices) —
      it's set up once (stable deps) and reads the always-current
      latestStateRef so it isn't reset by every keystroke. */
@@ -1171,13 +1205,13 @@ export default function Marking() {
     }
   }, [assessmentId]);
 
-  // Autosave every 60s, but only when there's something new since the last
+  // Autosave every 30s, but only when there's something new since the last
   // successful push.
   useEffect(() => {
     if (!assessmentId) return;
     const interval = setInterval(() => {
       if (sessionDirtyRef.current) pushSessionSnapshot();
-    }, 60000);
+    }, PENDING_FLUSH_MS);
     return () => clearInterval(interval);
   }, [assessmentId, pushSessionSnapshot]);
 
@@ -1301,39 +1335,93 @@ export default function Marking() {
     showToast("This question's full marks are already awarded", "info");
   }, [showToast]);
 
-  /* ── MARK & ADVANCE ── */
-  // Every question is committed to the database the moment the teacher
-  // marks it, so leaving at any point never loses finished work — on return
-  // the queue is rebuilt from the DB and only unmarked questions are left.
-  const commitAnswer = useCallback(async (q) => {
-    const id = q.id;
-    await API.post("/e-assessments/save-marking", {
-      scores: { [id]: Number(scores[id]) || 0 },
-      remarks: { [id]: remarks[id] || "" },
-      highlights: { [id]: highlights[id] || [] },
-      essayHTML: { [id]: essayHTML[id] || "" },
-    });
-  }, [scores, remarks, highlights, essayHTML]);
-
-  const markAndAdvance = useCallback(async () => {
-    if (!current || markingBusyRef.current) return;
-    markingBusyRef.current = true;
+  /* ── MARK & ADVANCE ──
+     Instant: the marked question is written to the local cache (see
+     utils/markingSync) and the teacher moves straight on. The cache is sent
+     to the database in one batch every 30s, and once more on the way out
+     of the page. An answer left with no highlights and no score is
+     marked wrong — wrapped in a red ✗ — so it visibly reads as wrong. */
+  const syncFailToastRef = useRef(0);
+  const flushNow = useCallback(async () => {
     try {
-      await commitAnswer(current);
-      setDismissed((prev) => new Set(prev).add(current.id));
-      setSaved(true);
-      if (remaining.length <= 1) {
+      await flushPending(assessmentId);
+      return true;
+    } catch (err) {
+      console.error("MARK SYNC ERROR:", err);
+      const now = Date.now();
+      if (now - syncFailToastRef.current > 60000) {
+        syncFailToastRef.current = now;
+        showToast("Can't reach the server right now — your marks are safe on this device and will sync automatically", "error");
+      }
+      return false;
+    }
+  }, [assessmentId, showToast]);
+
+  const markAndAdvance = useCallback(() => {
+    if (!current) return;
+    const id = current.id;
+    const score = Number(scores[id]) || 0;
+    let list = highlights[id] || [];
+    let html = essayHTML[id] || "";
+    if (needsAutoWrong(list, score)) {
+      const wrong = buildAutoWrong(id, html);
+      if (wrong) {
+        list = [wrong.highlight];
+        html = wrong.html;
+        setHighlights((prev) => ({ ...prev, [id]: list }));
+        setEssayHTML((prev) => ({ ...prev, [id]: html }));
+      }
+    }
+    setScores((prev) => ({ ...prev, [id]: score }));
+    queuePending(assessmentId, id, {
+      score, remark: remarks[id] || "", highlights: list, essayHTML: html,
+      ...(hasDrawing(current.essay_answer) ? { musicAnn: musicAnn[id] || [] } : {}),
+    });
+    setDismissed((prev) => new Set(prev).add(id));
+    setSaved(true);
+    if (remaining.length <= 1) {
+      // last question — push everything now, then the working draft is obsolete
+      flushNow().then((ok) => {
+        if (!ok) return;
         sessionDirtyRef.current = false;
         clearLocalMarkingCache(assessmentId);
         API.delete(`/e-assessments/marking-session/${assessmentId}`).catch(() => {});
-      }
-    } catch (err) {
-      console.error("AUTO-SAVE ERROR:", err);
-      showToast(err?.response?.data?.message || "Couldn't save this question — check your connection and try again", "error");
-    } finally {
-      markingBusyRef.current = false;
+      });
     }
-  }, [current, commitAnswer, showToast, remaining.length]);
+  }, [current, scores, remarks, highlights, essayHTML, musicAnn, assessmentId, remaining.length, flushNow]);
+
+  // Every 30s send whatever is cached to the database; on exit (tab close,
+  // backgrounding, leaving the page) flush once more. The cache itself is
+  // already on disk, so nothing is lost even if that last request can't finish.
+  useEffect(() => {
+    if (!assessmentId) return undefined;
+    const timer = setInterval(() => {
+      if (Object.keys(readPending(assessmentId)).length) flushNow();
+    }, PENDING_FLUSH_MS);
+    const onExit = () => flushPendingOnExit(assessmentId);
+    const onVisibility = () => { if (document.visibilityState === "hidden") onExit(); };
+    window.addEventListener("pagehide", onExit);
+    window.addEventListener("beforeunload", onExit);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("pagehide", onExit);
+      window.removeEventListener("beforeunload", onExit);
+      document.removeEventListener("visibilitychange", onVisibility);
+      flushPending(assessmentId).catch(() => {}); // leaving via in-app navigation
+    };
+  }, [assessmentId, flushNow]);
+
+  // Reopening an answer lifts the automatic whole-answer ✗ so the teacher can
+  // highlight the real points; marking it again re-applies it if nothing is credited.
+  const clearAutoWrong = useCallback((answerId) => {
+    setHighlights((prev) => {
+      const l = prev[answerId];
+      if (!l || !l.some((h) => isAutoWrongId(h.id))) return prev;
+      return { ...prev, [answerId]: l.filter((h) => !isAutoWrongId(h.id)) };
+    });
+    setEssayHTML((prev) => (prev[answerId] ? { ...prev, [answerId]: stripAutoWrongHtml(prev[answerId]) } : prev));
+  }, []);
 
   const handleScoreChange = (answerId, value, maxMarks) => {
     const num = value === "" ? "" : Math.min(Number(value), maxMarks ?? Infinity);
@@ -1352,6 +1440,7 @@ export default function Marking() {
 
   const reopenAnswer = useCallback((answer) => {
     setDismissed((prev) => { const next = new Set(prev); next.delete(answer.id); return next; });
+    clearAutoWrong(answer.id);
     setAllDone(false);
     setPendingJump(answer.id);
   }, []);
@@ -1365,6 +1454,7 @@ export default function Marking() {
       next.delete(answer.id);
       return next;
     });
+    clearAutoWrong(answer.id);
     setAllDone(false);
     setPendingJump(answer.id);
     setActiveTab("Live Marking");
@@ -1398,6 +1488,7 @@ export default function Marking() {
 
   /* ── SAVE ── */
   const saveMarking = async () => {
+    const saveStartedAt = Date.now();
     try {
       setSaving(true);
       const submissionId = submissions?.[0]?.submission_id;
@@ -1435,8 +1526,11 @@ export default function Marking() {
         // alongside `highlights` so a reopened answer shows the actual
         // highlighted text, not just its score
         essayHTML: essayHTML || {},
+        musicAnnotations: musicAnn || {},
       };
       await API.post("/e-assessments/save-marking/bulk", payload);
+      // everything cached up to the moment this save started is now in the database
+      clearPendingBefore(assessmentId, saveStartedAt);
 
       setSaved(true);
       showToast("Marks saved", "success");
@@ -1654,6 +1748,17 @@ export default function Marking() {
                 onReason={handleEssayReason}
                 onLimitReached={handleLimitReached}
               />
+
+              {/* Music paper: the drawing is marked here with a red pen, not in the text viewer above */}
+              {hasDrawing(current.essay_answer) && (
+                <MusicMarkingPanel
+                  key={current.id}
+                  answerHtml={current.essay_answer}
+                  modelHtml={current.model_answer_sheet}
+                  overlays={musicAnn[current.id] || []}
+                  onChange={(next) => setMusicAnn((prev) => ({ ...prev, [current.id]: next }))}
+                />
+              )}
 
               <FieldLabel>
                 Override score{current.max_marks != null ? ` (max ${current.max_marks})` : ""}

@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 import { fmtDateTime } from "../components/mainExams/shared";
+import MarkingLeaderboard from "../components/eassessment/MarkingLeaderboard";
+import { downloadTablesPdf } from "../utils/pdfExport";
 import EvidenceGallery from "../components/eassessment/EvidenceGallery";
 import { getGradeForScore, getPassMark, DEFAULT_GRADING_SYSTEM } from "../utils/grading";
 import { fmt2 } from "../utils/format";
@@ -244,7 +246,7 @@ const fmtDate = (d) =>
 const TABS = [
   { label: "Assessments",     icon: IconClipboardList },
   { label: "Submissions",     icon: IconFileText },
-  { label: "Remark Requests", icon: IconMessage },
+  { label: "Marking", icon: IconMessage },
   { label: "Released Marks",  icon: IconAward },
   { label: "Device Locks",    icon: IconLockKeyhole },
   { label: "Local Sync",      icon: IconServer },
@@ -296,6 +298,7 @@ export default function AdminEAssessments() {
   const [assignOpen,   setAssignOpen]   = useState(false);
   const [selected,     setSelected]     = useState(null);
   const [remarkModal,  setRemarkModal]  = useState(null);
+  const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "remarks"
   const [releaseModal, setReleaseModal] = useState(null);
   const [unsubmitted,    setUnsubmitted]    = useState([]);   // sat the exam, nothing submitted
   const [resitModal,     setResitModal]     = useState(null); // { student_id, e_assessment_id, student_name, assessment_title, hasPrevious }
@@ -373,13 +376,16 @@ export default function AdminEAssessments() {
   // Device Locks tab: refresh quietly so a fresh lock (and its reason) shows up without a manual reload.
   useEffect(() => {
     if (activeTab !== 4) return;
+    let busy = false; // never start a poll while the previous one is still running
     const iv = setInterval(async () => {
-      if (typeof document !== "undefined" && document.hidden) return; // don't poll a background tab
+      if (busy || (typeof document !== "undefined" && document.hidden)) return;
+      busy = true;
       try {
         const r = await API.get("/e-assessments/admin/exam-sessions");
         setExamSessions(extract(r));
       } catch { /* try again next tick */ }
-    }, 10000);
+      finally { busy = false; }
+    }, 20000);
     return () => clearInterval(iv);
   }, [activeTab]);
 
@@ -1681,19 +1687,39 @@ export default function AdminEAssessments() {
         <>
           <div style={sx.tabTopRow}>
             <div>
-              <h2 style={sx.tabTitle}>Remark Requests</h2>
-              <p style={sx.tabSub}>Review and action student remark requests</p>
+              <h2 style={sx.tabTitle}>Marking</h2>
+              <p style={sx.tabSub}>Teacher marking progress, speed ranking and student remark requests</p>
             </div>
-            <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
-              remarkRequests.map((r) => ({
-                student: r.student_name, assessment: r.assessment_title,
-                subject: r.subject_name, score: r.score, status: r.remark_status,
-                reason: r.remark_reason, submitted: r.submitted_at,
-              })), "remark-requests.csv"
-            )}>Export CSV</ActionButton>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {[["leaderboard", "Leaderboard & Load"], ["remarks", `Remark Requests${pendingRemarks ? ` (${pendingRemarks})` : ""}`]].map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setMarkingView(k)}
+                style={{ padding: "8px 14px", borderRadius: 99, cursor: "pointer", fontWeight: 600, fontSize: 13,
+                  border: `1px solid ${C.border}`, background: markingView === k ? C.accent : C.card, color: markingView === k ? "#fff" : C.textPri }}>{label}</button>
+            ))}
           </div>
 
-          {remarkRequests.length === 0 ? (
+          {markingView === "leaderboard" && <MarkingLeaderboard />}
+
+          {markingView === "remarks" && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(
+                remarkRequests.map((r) => ({
+                  student: r.student_name, assessment: r.assessment_title,
+                  subject: r.subject_name, score: r.score, status: r.remark_status,
+                  reason: r.remark_reason, submitted: r.submitted_at,
+                })), "remark-requests.csv"
+              )}>Export CSV</ActionButton>
+              <ActionButton icon={<IconDownload size={14} />} onClick={() => downloadTablesPdf({
+                title: "Remark Requests", subtitle: `${remarkRequests.length} request(s)`, filename: "remark-requests",
+                sections: [{ head: ["Student", "Assessment", "Subject", "Assigned to", "Score", "Status", "Reason", "Submitted"],
+                  body: remarkRequests.map((r) => [r.student_name || `#${r.student_id}`, r.assessment_title || "", r.subject_name || "",
+                    r.teacher_name || "Unassigned", r.score ?? "—", r.remark_status || "pending", r.remark_reason || "", fmtDate(r.submitted_at)]) }],
+              })}>Download PDF</ActionButton>
+            </div>
+          )}
+
+          {markingView !== "remarks" ? null : remarkRequests.length === 0 ? (
             <EmptyState icon={<IconCheckCircle size={26} />} text="No remark requests at this time." />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1769,6 +1795,13 @@ export default function AdminEAssessments() {
                 };
               }), "released-marks.csv"
             )}>Export CSV</ActionButton>
+            <ActionButton icon={<IconDownload size={14} />} onClick={() => downloadTablesPdf({
+              title: "Released Marks", subtitle: `${releasedMarks.length} record(s)`, filename: "released-marks",
+              sections: [{ head: ["Student", "Assessment", "Subject", "Score", "Total", "%", "Grade", "Released"],
+                body: releasedMarks.map((m) => { const info = markInfo(m, gradingSystem);
+                  return [m.student_name || "", m.assessment_title || "", m.subject_name || "", m.score ?? "—", info.total ?? "",
+                    info.pct != null ? fmt2(info.pct) : "", info.g?.grade ?? "", fmtDate(m.released_at)]; }) }],
+            })}>Download PDF</ActionButton>
           </div>
 
           {releasedMarks.length > 0 && <GradeDistribution marks={releasedMarks} gradingSystem={gradingSystem} />}

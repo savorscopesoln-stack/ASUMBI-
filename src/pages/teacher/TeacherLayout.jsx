@@ -4,7 +4,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { usePortalPageAccess } from "../../hooks/usePortalPageAccess";
 import {
   LayoutDashboard, UserRound, Bell, BarChart3, FileText, MonitorCheck,
-  PenSquare, CalendarCheck, GraduationCap, ClipboardCheck, Wrench,
+  PenSquare, CalendarCheck, GraduationCap, ClipboardCheck, Wrench, Trophy,
   ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut, Sun, Moon,
 } from "lucide-react";
 import useUnreadNotifications from "../../hooks/useUnreadNotifications";
@@ -134,6 +134,7 @@ export const NAV_GROUPS = [
       { name: "Assessments",   path: "/teacher/assessments",   Icon: ClipboardCheck },
       { name: "E-Assessments", path: "/teacher/e-assessments", Icon: MonitorCheck },
       { name: "Practicum",     path: "/teacher/practicum",     Icon: Wrench },
+      { name: "Marking Board", path: "/teacher/marking-leaderboard", Icon: Trophy },
     ],
   },
   {

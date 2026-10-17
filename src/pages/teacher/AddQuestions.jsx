@@ -18,6 +18,8 @@ import {
   Download,
 } from "lucide-react";
 import API, { resolveFileUrl } from "../../api";
+import ModelAnswerPad from "../../components/music/ModelAnswerPad";
+import { splitAnswer } from "../../utils/musicAnswer";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app (StudentProfile etc.); a no-op if already mounted
@@ -152,6 +154,10 @@ export default function AddQuestions() {
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [assessment, setAssessment] = useState(null);
+  // music paper: the setter's model-answer drawing for the question being added/edited
+  const [modelSheets, setModelSheets] = useState([]);   // [{png,tpl}]
+  const [modelTouched, setModelTouched] = useState(false); // only saved when the setter changed it
+  const [modelKey, setModelKey] = useState(0);            // remounts the pad when switching question
   const [musicBusy, setMusicBusy] = useState(false);
   const [musicNote, setMusicNote] = useState("");
 
@@ -242,6 +248,7 @@ export default function AddQuestions() {
       { label: "C", text: "" }, { label: "D", text: "" },
     ]);
     setCorrectAnswer(""); setEssayAnswer(""); setEditingId(null);
+    setModelSheets([]); setModelTouched(false); setModelKey((k) => k + 1);
     setPendingImageFiles([]); setExistingImages([]);
     if (imageInputRef.current) imageInputRef.current.value = "";
   };
@@ -331,6 +338,10 @@ const submitQuestion = async () => {
         await uploadImagesFor(editingId, pendingImageFiles);
       }
 
+      if (modelTouched && questionType === "essay") {
+        await API.put(`/e-assessments/questions/${editingId}/model-sheet`, { sheets: modelSheets });
+      }
+
       alert("Question updated successfully");
     } else {
       const createRes = await API.post(
@@ -340,6 +351,10 @@ const submitQuestion = async () => {
       const newQuestionId = createRes?.data?.question_id;
       if (newQuestionId && pendingImageFiles.length) {
         await uploadImagesFor(newQuestionId, pendingImageFiles);
+      }
+
+      if (modelTouched && questionType === "essay" && newQuestionId) {
+        await API.put(`/e-assessments/questions/${newQuestionId}/model-sheet`, { sheets: modelSheets });
       }
 
       alert("Question added successfully");
@@ -389,6 +404,9 @@ const submitQuestion = async () => {
 
   // Essay marking guide
   setEssayAnswer(q.marking_guide || "");
+  setModelSheets(splitAnswer(q.model_answer_sheet).sheets);
+  setModelTouched(false);
+  setModelKey((k) => k + 1);
 
   setPendingImageFiles([]);
   setExistingImages(Array.isArray(q.images) ? q.images : []);
@@ -904,6 +922,14 @@ const submitQuestion = async () => {
       }}
       rows={5}
     />
+
+    {assessment?.music_paper && (
+      <ModelAnswerPad
+        key={modelKey}
+        initialSheets={modelSheets}
+        onChange={(sheets) => { setModelSheets(sheets); setModelTouched(true); }}
+      />
+    )}
   </div>
 )}
 

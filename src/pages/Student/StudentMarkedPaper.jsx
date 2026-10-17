@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { round2, fmt2 } from "../../utils/format";
 import { sanitizeHtml, answerToSafeHtml } from "../../utils/safeHtml";
+import { hasDrawing, withMusicOverlays } from "../../utils/musicAnswer";
 
 /* ─── shared design-token stylesheet, plus a couple of things unique
    to this "physical exam script" page: a handwriting face for the
@@ -424,13 +425,18 @@ function QuestionCard({ q, index }) {
 function EssayAnswer({ q }) {
   const highlights = Array.isArray(q.highlights) ? q.highlights : [];
   const hasMarkedHtml = highlights.length > 0 && !!q.highlighted_html;
-  const answered = !!(q.essay_answer && String(q.essay_answer).replace(/<[^>]*>/g, "").trim()) || /<table/i.test(q.essay_answer || "");
+  const answered = !!(q.essay_answer && String(q.essay_answer).replace(/<[^>]*>/g, "").trim()) || /<table/i.test(q.essay_answer || "") || hasDrawing(q.essay_answer);
 
   // The saved marked-up HTML already has the ✓/✗ highlights baked in; fall back
   // to the plain answer for work marked by an override score / the AI flow.
-  const answerHtml = hasMarkedHtml
-    ? sanitizeHtml(q.highlighted_html, { stripTitles: true })
-    : answerToSafeHtml(q.essay_answer);
+  // Music paper: lay the marker's red-pen overlay over each of the student's drawings.
+  const answerHtml = withMusicOverlays(
+    hasMarkedHtml
+      ? sanitizeHtml(q.highlighted_html, { stripTitles: true })
+      : answerToSafeHtml(q.essay_answer),
+    q.music_annotations,
+  );
+  const modelHtml = q.model_answer_sheet ? answerToSafeHtml(q.model_answer_sheet) : "";
 
   const earned = highlights.filter((h) => h.status === "correct").length;
   const remarksHtml = q.remarks ? answerToSafeHtml(q.remarks) : "";
@@ -443,6 +449,13 @@ function EssayAnswer({ q }) {
         <div className="mp-answer" style={D.essayText} dangerouslySetInnerHTML={{ __html: answerHtml }} />
       ) : (
         <div style={D.essayText}><em style={{ color: "var(--text-muted)" }}>Not answered</em></div>
+      )}
+
+      {modelHtml && (
+        <div style={{ marginTop: 12 }}>
+          <div style={D.essayLabel}>Model answer</div>
+          <div className="mp-answer" style={D.essayText} dangerouslySetInnerHTML={{ __html: modelHtml }} />
+        </div>
       )}
 
       {highlights.length > 0 && (
