@@ -2776,6 +2776,7 @@ function MarkPill({ sub }) {
 const PLATFORM_LABEL = {
   android: "Android", ios: "iPhone", ipados: "iPad", chromeos: "Chromebook",
   linux: "Linux", windows: "Windows", mac: "Mac", unknown: "Unknown",
+  noseb: "Normal browser (no SEB)",
 };
 const deviceModel = (ua = "") => {
   const a = /Android [\d.]+; ([^)]+?)(?: Build|\))/i.exec(ua);
@@ -2859,12 +2860,13 @@ function BlockedDevicesPanel({ rows, saving, onAllow, onRevoke }) {
             <option value="chromeos">Chromebook</option>
             <option value="linux">Linux</option>
             <option value="unknown">Unknown</option>
+            <option value="noseb">Not in SEB</option>
           </select>
         </div>
       </div>
 
       {shown.length === 0 ? (
-        <EmptyState icon={<Smartphone size={26} />} text={rows.length === 0 ? "No phone or tablet has been turned away yet." : "Nothing matches these filters."} />
+        <EmptyState icon={<Smartphone size={26} />} text={rows.length === 0 ? "No device has been turned away yet (phones, tablets or browsers without SEB)." : "Nothing matches these filters."} />
       ) : (
         <div className="dash-card" style={sx.tableWrap}>
           <table style={sx.table}>
@@ -2882,7 +2884,9 @@ function BlockedDevicesPanel({ rows, saving, onAllow, onRevoke }) {
                     </Td>
                     <Td style={{ color: C.textSec, fontSize: 13 }}>
                       {d.assessment_title || "—"}
-                      {!d.desktop_only && <div style={{ color: C.textMuted, fontSize: 11 }}>Desktop-only is off now</div>}
+                      {d.platform === "noseb"
+                        ? (!d.require_seb && <div style={{ color: C.textMuted, fontSize: 11 }}>SEB is not required now</div>)
+                        : (!d.desktop_only && <div style={{ color: C.textMuted, fontSize: 11 }}>Desktop-only is off now</div>)}
                     </Td>
                     <Td style={{ maxWidth: 230 }}>
                       <Chip icon={<Smartphone size={11} />} text={PLATFORM_LABEL[d.platform] || d.platform || "Unknown"} tone="warning" />

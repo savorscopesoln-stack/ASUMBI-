@@ -1037,6 +1037,12 @@ export default function TakeEAssessment() {
         const r = await API.get(`/e-assessments/public/${id}/seb-info`);
         if (cancelled) return;
         if (r.data?.require_seb) {
+          // "Continue in this browser" was pressed on this device for this exam:
+          // go to the sign-in form. The server still decides (an admin must have
+          // allowed this device under Device Locks), it is not a bypass.
+          let continued = false;
+          try { continued = sessionStorage.getItem(`doravo_seb_continue_${id}`) === "1"; } catch { /* ignore */ }
+          if (continued) { setSebGate("ok"); return; }
           setSebGate("needed");
           if (!sebLaunchedRef.current) {
             sebLaunchedRef.current = true;
@@ -1442,7 +1448,11 @@ export default function TakeEAssessment() {
       localStorage.setItem("user", JSON.stringify(res.data.user));
       await bootStart();
     } catch (err) {
-      setExamLoginError(err?.response?.data?.message || "Login failed. Check your username and exam password.");
+      if (err?.response?.data?.code === "SEB_REQUIRED") {
+        setExamLoginError("This exam needs Safe Exam Browser. If you can't use it, tell your invigilator: they can allow this browser for you. Then press Continue to Exam again.");
+      } else {
+        setExamLoginError(err?.response?.data?.message || "Login failed. Check your username and exam password.");
+      }
     } finally {
       setExamLoggingIn(false);
     }
@@ -2814,6 +2824,16 @@ export default function TakeEAssessment() {
           <a href={sebLaunchUrl(id)} style={{ display: "block", textAlign: "center", padding: "11px 16px", borderRadius: 8, background: "var(--info)", color: "#fff", fontWeight: 700, textDecoration: "none" }}>Open in Safe Exam Browser</a>
           <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: "14px 0 0", textAlign: "center" }}>
             Nothing opened? Make sure Safe Exam Browser is installed, or <a href={sebConfigHttpUrl(id)} style={{ color: "var(--info)" }}>download the exam file</a> and double-click it.
+          </p>
+          <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: "10px 0 0", textAlign: "center" }}>
+            Your invigilator allowed you to use this browser?{" "}
+            <button
+              type="button"
+              onClick={() => { try { sessionStorage.setItem(`doravo_seb_continue_${id}`, "1"); } catch { /* ignore */ } setSebGate("ok"); }}
+              style={{ background: "none", border: "none", padding: 0, color: "var(--info)", fontWeight: 700, cursor: "pointer", font: "inherit" }}
+            >
+              Continue in this browser
+            </button>
           </p>
         </div>
       </div>
