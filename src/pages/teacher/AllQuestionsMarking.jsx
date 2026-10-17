@@ -9,6 +9,7 @@ import {
   applyPendingToRow, needsAutoWrong, buildAutoWrong, stripAutoWrongHtml,
 } from "../../utils/markingSync";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
+import AllocationStatsPanel from "../../components/eassessment/AllocationStatsPanel";
 import {
   ClipboardCheck,
   AlertTriangle,
@@ -1670,6 +1671,8 @@ export default function Marking() {
           </div>
         </div>
       </div>
+
+      <AllocationStatsPanel assessmentId={assessmentId} queue={queue} markedCount={queue.length - remaining.length} />
 
       <StudentRail stats={studentStats} currentSubmissionId={current?._submission_id} onJump={jumpToStudent} />
 
