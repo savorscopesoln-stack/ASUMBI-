@@ -611,6 +611,126 @@ const injectLandingStyles = () => {
       .doravo-landing .foot-brand p, .doravo-landing .foot-col a{ font-size:17px; }
       .doravo-landing .foot-bottom{ font-size:15.5px; }
     }
+
+    /* =========================================================
+       CORPORATE THEME
+       Clean white / cool-grey surfaces, charcoal text, deep maroon
+       as the single brand accent, gold used sparingly. Placed last
+       so it overrides the earlier warm cream palette.
+    ========================================================= */
+    .doravo-landing{
+      --maroon:#7A1B36;
+      --maroon-deep:#4A0E22;
+      --maroon-ink:#161A26;      /* headings: charcoal navy */
+      --ink:#1E2433;             /* body text */
+      --muted:#4A5266;           /* secondary text, solid (no opacity) */
+      --paper:#F4F6F9;           /* alternate section surface */
+      --paper-dim:#E4E8EF;
+      --white:#FFFFFF;
+      --brass:#8C6B2A;
+      --line:rgba(22,26,38,0.12);
+      --line-on-dark:rgba(255,255,255,0.2);
+      background:#FFFFFF;
+      color:var(--ink);
+    }
+
+    /* header: white bar with a thin brand rule on top */
+    .doravo-landing header{
+      background:rgba(255,255,255,0.96) !important;
+      border-top:3px solid var(--maroon);
+      border-bottom:1px solid var(--line);
+      box-shadow:0 1px 0 rgba(22,26,38,0.03), 0 8px 24px -18px rgba(22,26,38,0.25);
+    }
+    .doravo-landing .navlinks a{ color:#2A3042; opacity:1; font-weight:500; }
+    .doravo-landing .navlinks a:hover{ color:var(--maroon); }
+    .doravo-landing .mobile-menu{ background:#FFFFFF; }
+
+    /* secondary text: solid colour instead of faded opacity */
+    .doravo-landing .hero .lede,
+    .doravo-landing .hero-note,
+    .doravo-landing .hero-contact,
+    .doravo-landing .trust-bar .trust-label,
+    .doravo-landing .sec-head p,
+    .doravo-landing .ps-card.problem p,
+    .doravo-landing .feature-card p,
+    .doravo-landing .role-card p,
+    .doravo-landing .institution-copy p,
+    .doravo-landing .spot-step p,
+    .doravo-landing .trust-card p,
+    .doravo-landing .trust-note,
+    .doravo-landing .how-card p,
+    .doravo-landing .faq-a p,
+    .doravo-landing .mock-caption,
+    .doravo-landing .mock-head .tag,
+    .doravo-landing .mock-slot span,
+    .doravo-landing .foot-brand p,
+    .doravo-landing .foot-col a,
+    .doravo-landing .foot-col h5,
+    .doravo-landing .foot-bottom{ color:var(--muted); opacity:1; }
+    .doravo-landing .ps-card.problem h3{ color:var(--maroon); opacity:1; }
+    .doravo-landing .hero-contact a{ color:var(--maroon); }
+    .doravo-landing .foot-col a:hover{ color:var(--maroon); }
+
+    /* section rhythm: white and cool grey alternate, one dark band */
+    .doravo-landing .divider{ display:none; }
+    .doravo-landing .hero{ background:linear-gradient(180deg, #FFFFFF 0%, #F4F6F9 100%); }
+    .doravo-landing .trust-bar{ background:#FFFFFF; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .doravo-landing .trust-items span{ color:var(--maroon-ink); }
+    .doravo-landing main > section:nth-of-type(3){ background:#FFFFFF; }   /* problem / solution */
+    .doravo-landing #features{ background:var(--paper); }
+    .doravo-landing .spot{ background:#FFFFFF; border-top:none; border-bottom:none; }
+    .doravo-landing #about{ background:#FFFFFF; }
+    .doravo-landing main > section:nth-of-type(7){ background:var(--paper); } /* roles */
+    .doravo-landing #trust{ background:var(--paper); }
+    .doravo-landing #how-it-works{ background:#FFFFFF; }
+    .doravo-landing #faq{ background:var(--paper); }
+    .doravo-landing #contact{ background:#FFFFFF; }
+    .doravo-landing footer{ background:var(--paper); border-top:1px solid var(--line); }
+
+    /* dark band: deep maroon with a soft depth gradient */
+    .doravo-landing .tabs-section{ background:linear-gradient(135deg, #4A0E22 0%, #2A0813 100%); }
+    .doravo-landing .tabs-section h2,
+    .doravo-landing .tab-copy h3{ color:#FFFFFF; }
+    .doravo-landing .tabs-section .sec-head p{ color:#E9DDE2; opacity:1; }
+    .doravo-landing .tab-copy p{ color:#E9DDE2; opacity:1; }
+    .doravo-landing .tab-copy li{ color:#F3EAEE; opacity:1; }
+    .doravo-landing .tab-btn{ color:#F3EAEE; opacity:0.85; }
+    .doravo-landing .tab-btn.active{ background:#FFFFFF; color:var(--maroon); opacity:1; }
+
+    /* cards and surfaces */
+    .doravo-landing .product-frame{ box-shadow:0 30px 70px -36px rgba(22,26,38,0.45); border-color:var(--line); }
+    .doravo-landing .ps-card.problem{ background:var(--paper); border:1px solid var(--line); }
+    .doravo-landing .ps-card.solution{ background:linear-gradient(135deg, #7A1B36 0%, #4A0E22 100%); }
+    .doravo-landing .ps-card.solution p{ color:#FFFFFF; opacity:0.95; }
+    .doravo-landing .feature-grid{ border-color:var(--line); }
+    .doravo-landing .feature-card{ background:#FFFFFF; }
+    .doravo-landing .feature-card:hover{ background:#FBFCFD; }
+    .doravo-landing .role-card{
+      background:#FFFFFF; border:1px solid var(--line); border-top:3px solid var(--maroon);
+      box-shadow:0 12px 28px -22px rgba(22,26,38,0.35);
+    }
+    .doravo-landing .trust-card{ box-shadow:0 12px 28px -22px rgba(22,26,38,0.35); }
+    .doravo-landing .how-card{ background:var(--paper); }
+    .doravo-landing .how-num{ background:#FFFFFF; color:var(--maroon); }
+    .doravo-landing .mock{ background:#FFFFFF; box-shadow:0 30px 60px -36px rgba(22,26,38,0.4); }
+    .doravo-landing .mock-slot{ background:repeating-linear-gradient(135deg, #EEF1F5, #EEF1F5 8px, #F8F9FB 8px, #F8F9FB 16px); }
+    .doravo-landing .spot-switch{ background:var(--paper); }
+    .doravo-landing .spot-visual .pv-cap{ color:var(--muted); opacity:1; }
+
+    /* headings and accents */
+    .doravo-landing .sec-head h2::before{ background:var(--maroon); }
+    .doravo-landing .tabs-section .sec-head h2::before{ background:#C9A25A; }
+    .doravo-landing .eyebrow{ color:var(--maroon); }
+    .doravo-landing .eyebrow::before{ background:var(--maroon); }
+    .doravo-landing .faq-item{ border-bottom-color:var(--line); }
+    .doravo-landing .faq-q{ color:var(--maroon-ink); }
+    .doravo-landing .btn-ghost{ border-color:var(--maroon-ink); color:var(--maroon-ink); }
+    .doravo-landing .btn-ghost:hover{ background:var(--maroon-ink); color:#FFFFFF; }
+
+    /* call-to-action band */
+    .doravo-landing .cta-band{ background:linear-gradient(120deg, #7A1B36 0%, #4A0E22 100%); box-shadow:0 30px 60px -36px rgba(74,14,34,0.6); }
+    .doravo-landing .cta-band p{ color:#F3EAEE; opacity:1; }
+    .doravo-landing .cta-band .cta-alt{ color:#F3EAEE; }
   `;
   document.head.appendChild(el);
 };
