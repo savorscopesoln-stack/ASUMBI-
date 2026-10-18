@@ -2,10 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import ChatAssistant, { WaIcon } from "../components/ChatAssistant";
 import { SITE, waLink } from "../config/site";
-<<<<<<< HEAD
 import Preview from "../components/LandingPreviews";
-=======
->>>>>>> e4c18da28bfb2fd7fa63621cc12a9fc611ebda86
 
 /* =========================================================
    LANDING
