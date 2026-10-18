@@ -816,6 +816,21 @@ export default function AdminEAssessments() {
     }
   };
 
+  // Typing helps in the student's essay box (auto capital letters / auto full
+  // stop on Enter). Both are ON unless the column says otherwise (null/undefined = on).
+  const toggleWritingAid = async (a, field) => {
+    const next = a[field] === false || a[field] === 0 ? true : false;
+    const label = field === "auto_capitalize" ? "Auto capital letters" : "Auto full stop";
+    setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, [field]: next } : x)));
+    try {
+      await API.put(`/e-assessments/${a.id}/writing-aids`, { [field]: next });
+      showToast(`${label} ${next ? "ON" : "OFF"}`);
+    } catch (err) {
+      setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, [field]: !next } : x)));
+      showToast(err?.response?.data?.message || `Failed to change "${label}"`, "error");
+    }
+  };
+
   // Bulk version of Activate / Start / Stop — runs the same per-item logic
   // as startAssessment/stopAssessment above, but across every selected
   // assessment in one go, with a single summary toast at the end instead
@@ -1524,6 +1539,7 @@ export default function AdminEAssessments() {
                   onToggleDesktop={() => toggleDesktopOnly(a)}
                   onToggleMusic={() => toggleMusicPaper(a)}
                   onToggleArt={() => toggleArtPaper(a)}
+                  onToggleWritingAid={(field) => toggleWritingAid(a, field)}
                   onToggleSecurity={(key) => toggleSecurity(a, key)}
                   onSaveSeb={(payload) => saveSeb(a, payload)}
                   onUploadSebConfig={(file) => uploadSebConfig(a, file)}
@@ -2512,7 +2528,7 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleMusic, onToggleArt, onToggleSecurity, onSaveSeb, onUploadSebConfig, onRemoveSebConfig, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleMusic, onToggleArt, onToggleWritingAid, onToggleSecurity, onSaveSeb, onUploadSebConfig, onRemoveSebConfig, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
   const [sebKeysDraft, setSebKeysDraft] = React.useState(a.seb_keys || "");
   const [sebSaving, setSebSaving] = React.useState(false);
   const sebKeysDirty = (sebKeysDraft || "").trim() !== (a.seb_keys || "").trim();
@@ -2790,6 +2806,32 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onTo
           <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
         </button>
       </div>
+
+      {[
+        ["auto_capitalize", "Auto capital letters", "Each sentence the student types starts with a capital letter automatically.", "Students type capitals themselves."],
+        ["auto_fullstop", "Auto full stop on Enter", "Pressing Enter at the end of an unfinished line adds the full stop.", "Students add their own full stops."],
+      ].map(([field, title, onText, offText]) => {
+        const on = !(a[field] === false || a[field] === 0);
+        return (
+          <div key={field} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${on ? C.accent : C.border}` }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri }}>{title}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4 }}>{on ? onText : `Off — ${offText.charAt(0).toLowerCase()}${offText.slice(1)}`}</div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={on}
+              aria-label={`${title} in the student's essay box`}
+              title={on ? `Turn off: ${title.toLowerCase()}` : `Turn on: ${title.toLowerCase()}`}
+              onClick={() => onToggleWritingAid(field)}
+              style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: "none", padding: 2, cursor: "pointer", background: on ? C.accent : C.border, display: "flex", alignItems: "center", justifyContent: on ? "flex-end" : "flex-start", transition: "background .15s" }}
+            >
+              <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
+            </button>
+          </div>
+        );
+      })}
 
       <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
         <MiniBtn tone="success" grow icon={<IconCheck size={12} />} onClick={onStart} disabled={isActive} title={isActive ? "Already started" : "Approve (if needed) and open this assessment to students"}>Start</MiniBtn>

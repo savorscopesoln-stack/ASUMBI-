@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { ThemeProvider } from "./context/ThemeContext";
 import "./mobile-fixes.css";
+import "./ruled-paper.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

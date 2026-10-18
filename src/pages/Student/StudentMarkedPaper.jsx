@@ -458,7 +458,7 @@ function EssayAnswer({ q }) {
     <div style={D.essayWrap}>
       <div style={D.essayLabel}>Your Answer</div>
       {answered ? (
-        <div className="mp-answer" style={D.essayText} dangerouslySetInnerHTML={{ __html: answerHtml }} />
+        <div className="mp-answer ruled-paper" dangerouslySetInnerHTML={{ __html: answerHtml }} />
       ) : (
         <div style={D.essayText}><em style={{ color: "var(--text-muted)" }}>Not answered</em></div>
       )}

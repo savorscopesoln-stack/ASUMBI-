@@ -4,6 +4,7 @@ import API, { BASE_URL } from "../../api";
 import MusicMarkingPanel from "../../components/music/MusicMarkingPanel";
 import { hasDrawing } from "../../utils/musicAnswer";
 import { sanitizeHtml } from "../../utils/safeHtml";
+import RuledSheetFrame from "../../components/RuledSheetFrame";
 import {
   PENDING_FLUSH_MS, isAutoWrongId, readPending, queuePending, clearPendingBefore, flushPending, flushPendingOnExit,
   applyPendingToRow, needsAutoWrong, buildAutoWrong, stripAutoWrongHtml, applyAutoWrong,
@@ -791,17 +792,22 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         )}
       </div>
 
-      <div
-        key={answerId}
-        ref={containerRef}
-        className="mkp-essay-readonly"
-        contentEditable={false}
-        suppressContentEditableWarning
-        onMouseUp={handleMouseUp}
-        onClick={handleContainerClick}
-        style={s.essayText}
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
-      />
+      {/* Same ruled exercise-book paper the student typed on — read-only, highlight-only. */}
+      <RuledSheetFrame html={html}>
+        <div
+          key={answerId}
+          ref={containerRef}
+          className="mkp-essay-readonly ruled-paper ruled-paper--readonly"
+          contentEditable={false}
+          suppressContentEditableWarning
+          role="document"
+          aria-readonly="true"
+          aria-label="Student's answer (read only)"
+          onMouseUp={handleMouseUp}
+          onClick={handleContainerClick}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
+        />
+      </RuledSheetFrame>
 
       {highlights.length > 0 && (
         <div style={s.hlList}>

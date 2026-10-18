@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { handleBeforeInput, handleAfterInput, handleEnterKey, fixWordBeforeCaret, setParagraphSeparator } from "../../utils/ruledTyping";
 import { useParams, useNavigate } from "react-router-dom";
 import API, { resolveFileUrl, BASE_URL } from "../../api";
 import { useTheme } from "../../context/ThemeContext";
@@ -584,7 +585,13 @@ const hasUsableSession = (assessmentId) => {
    seeded into the DOM imperatively, once per question (the effect
    below, keyed on `id`), and never touched again except by the
    student's own typing or a toolbar command — never by a JSX prop. */
-function EssayEditor({ id, initialValue, onChange }) {
+function EssayEditor({ id, initialValue, onChange, autoCapitalize = true, autoFullstop = true }) {
+  // The paper's two typing-help switches, read through refs so the one-time native
+  // listener below always sees the current setting.
+  const capsRef = useRef(autoCapitalize);
+  capsRef.current = autoCapitalize;
+  const stopRef = useRef(autoFullstop);
+  stopRef.current = autoFullstop;
   const contentRef = useRef(null);
   const toolbarRef = useRef(null);
   const [activeCmds, setActiveCmds] = useState({});
@@ -796,6 +803,8 @@ function EssayEditor({ id, initialValue, onChange }) {
   // never trapped in it). Escape is deliberately NOT used: in fullscreen the
   // browser takes Escape to exit fullscreen, which the exam counts as a violation.
   const onEditorKeyDown = (e) => {
+    // Ruled-paper typing help: Enter ends the line with a full stop and starts a new one.
+    if (handleEnterKey(e, contentRef.current, { capitals: capsRef.current, fullstop: stopRef.current })) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       const cell = currentCell();
       if (cell) {
@@ -839,6 +848,16 @@ function EssayEditor({ id, initialValue, onChange }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Auto-capital letter at the start of every sentence. Must be a NATIVE
+  // listener: React's onBeforeInput is a polyfill without inputType/isComposing.
+  useEffect(() => {
+    const node = contentRef.current;
+    if (!node) return undefined;
+    const onBefore = (e) => { if (capsRef.current) handleBeforeInput(e, node); };
+    node.addEventListener("beforeinput", onBefore);
+    return () => node.removeEventListener("beforeinput", onBefore);
+  }, []);
 
   const updateToolbarState = () => {
     const next = {};
@@ -982,7 +1001,7 @@ function EssayEditor({ id, initialValue, onChange }) {
       <div
         ref={contentRef}
         id={`essay-${id}`}
-        className="essay-content"
+        className="essay-content ruled-paper"
         contentEditable
         suppressContentEditableWarning
         role="textbox"
@@ -993,9 +1012,15 @@ function EssayEditor({ id, initialValue, onChange }) {
         onKeyDown={onEditorKeyDown}
         style={S.essayContent}
         data-placeholder="Type your answer here…"
-        onInput={scheduleSave}
+        autoCapitalize={autoCapitalize ? "sentences" : "off"}
+        onInput={(e) => { if (capsRef.current) handleAfterInput(e.nativeEvent, contentRef.current); scheduleSave(); }}
         onCompositionStart={() => { composingRef.current = true; }}
-        onCompositionEnd={() => { composingRef.current = false; scheduleSave(); }}
+        onCompositionEnd={() => {
+          composingRef.current = false;
+          // phone keyboards deliver words as compositions: capitalise a sentence-opening word once it is committed
+          setTimeout(() => { if (capsRef.current && contentRef.current && !composingRef.current) fixWordBeforeCaret(contentRef.current, 0, false); }, 0);
+          scheduleSave();
+        }}
         onBlur={flushSave}
         onKeyUp={(e) => {
           // Only caret-movement keys can change which formats are active;
@@ -1003,9 +1028,10 @@ function EssayEditor({ id, initialValue, onChange }) {
           if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(e.key)) updateToolbarState();
         }}
         onMouseUp={updateToolbarState}
-        onFocus={updateToolbarState}
+        onFocus={() => { setParagraphSeparator(); updateToolbarState(); }}
       />
       <div id={`essay-status-${id}`} style={S.essayStatus} aria-live="off">
+        {autoFullstop && <span style={{ marginRight: "auto", fontWeight: 500 }}>Tip: press Enter at the end of a sentence — the full stop is added for you.</span>}
         <span>Words: {wordCount}</span>
         <span>Characters: {charCount}</span>
       </div>
@@ -3566,7 +3592,7 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
                     qid={q.id}
                     value={answers[q.id] || ""}
                     onChange={(val) => saveAnswer(q.id, val)}
-                    renderText={(p) => <EssayEditor {...p} />}
+                    renderText={(p) => <EssayEditor {...p} autoCapitalize={assessment?.auto_capitalize !== false} autoFullstop={assessment?.auto_fullstop !== false} />}
                   />
                 ) : q.question_type === "essay" ? (
                   <EssayEditor
@@ -3574,6 +3600,8 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
                     id={q.id}
                     initialValue={answers[q.id] || ""}
                     onChange={(html) => saveAnswer(q.id, html)}
+                    autoCapitalize={assessment?.auto_capitalize !== false}
+                    autoFullstop={assessment?.auto_fullstop !== false}
                   />
                 ) : (
                   <div role="radiogroup" aria-labelledby="exam-question" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3817,9 +3845,10 @@ const S = {
     background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "inherit",
   },
   essayTableHint: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", margin: "0 4px" },
+  // Look (ruled lines, margin, font size, line height) comes from the shared
+  // .ruled-paper class in src/ruled-paper.css — only scrolling is set here.
   essayContent: {
-    minHeight: 120, maxHeight: 420, overflowY: "auto", padding: "12px 14px",
-    fontSize: 14, lineHeight: 1.6, outline: "none", color: "var(--text)",
+    maxHeight: 520, overflowY: "auto", outline: "none",
   },
   essayStatus: {
     display: "flex", justifyContent: "flex-end", gap: 10, padding: "5px 12px",
