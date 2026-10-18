@@ -432,6 +432,140 @@ const injectLandingStyles = () => {
     .doravo-landing .how-card:hover .how-num{ background:var(--brass); color:var(--white); }
     .doravo-landing .how-card{ border-radius:6px; }
     .doravo-landing .why-item svg{ color:var(--brass); }
+
+    /* ---------- bigger type (all screens) ---------- */
+    .doravo-landing{ font-size:17px; line-height:1.65; }
+    .doravo-landing .brand span{ font-size:21px; }
+    .doravo-landing .brand img{ height:36px; }
+    .doravo-landing .navlinks{ gap:34px; }
+    .doravo-landing .navlinks a{ font-size:16px; }
+    .doravo-landing .navcta{ font-size:15px; padding:11px 22px; }
+    .doravo-landing .navlogin{ font-size:15.5px; padding:10px 22px; }
+    .doravo-landing .mobile-menu a{ font-size:17px; }
+    .doravo-landing .eyebrow{ font-size:13.5px; }
+    .doravo-landing .hero h1{ font-size:clamp(36px, 4.6vw, 58px); max-width:18ch; line-height:1.08; }
+    .doravo-landing .hero .lede{ font-size:19px; max-width:52ch; }
+    .doravo-landing .btn-primary, .doravo-landing .btn-ghost, .doravo-landing .btn-wa{ font-size:16.5px; padding:15px 28px; }
+    .doravo-landing .hero-contact, .doravo-landing .hero-note{ font-size:15px; }
+    .doravo-landing .trust-bar .trust-label{ font-size:15px; }
+    .doravo-landing .trust-items span{ font-size:16px; }
+    .doravo-landing .sec-head{ max-width:720px; }
+    .doravo-landing .sec-head h2{ font-size:clamp(30px, 3.3vw, 42px); line-height:1.15; }
+    .doravo-landing .sec-head p{ font-size:18px; }
+    .doravo-landing .ps-card h3{ font-size:14px; }
+    .doravo-landing .ps-card p{ font-size:17.5px; }
+    .doravo-landing .feature-card{ padding:30px 26px; }
+    .doravo-landing .feature-card h4{ font-size:19px; }
+    .doravo-landing .feature-card p{ font-size:15.5px; }
+    .doravo-landing .feature-card .fprob{ font-size:13.5px; }
+    .doravo-landing .feature-card .fi{ width:40px; height:40px; }
+    .doravo-landing .feature-card svg{ width:20px; height:20px; }
+    .doravo-landing .tab-btn{ font-size:15.5px; padding:10px 20px; }
+    .doravo-landing .tab-copy h3{ font-size:28px; }
+    .doravo-landing .tab-copy p{ font-size:17.5px; }
+    .doravo-landing .tab-copy li{ font-size:16.5px; }
+    .doravo-landing .role-card{ padding:28px 24px; }
+    .doravo-landing .role-card .role-tag{ font-size:13px; }
+    .doravo-landing .role-card p{ font-size:16.5px; }
+    .doravo-landing .institution-copy h2{ font-size:clamp(30px, 3.3vw, 42px); }
+    .doravo-landing .institution-copy p{ font-size:18px; }
+    .doravo-landing .mock-head .tag, .doravo-landing .mock-slot span{ font-size:13.5px; }
+    .doravo-landing .mock-caption{ font-size:14.5px; }
+    .doravo-landing .spot-step h4{ font-size:20px; }
+    .doravo-landing .spot-step p{ font-size:16.5px; }
+    .doravo-landing .spot-switch button{ font-size:14.5px; }
+    .doravo-landing .trust-card h4{ font-size:19px; }
+    .doravo-landing .trust-card p{ font-size:16px; }
+    .doravo-landing .trust-note{ font-size:15px; }
+    .doravo-landing .how-card h4{ font-size:20px; }
+    .doravo-landing .how-card p{ font-size:16.5px; }
+    .doravo-landing .faq-q{ font-size:20px; }
+    .doravo-landing .faq-a p{ font-size:17px; }
+    .doravo-landing .faq-item.open .faq-a{ max-height:400px; }
+    .doravo-landing .cta-band h2{ font-size:clamp(28px, 3.3vw, 42px); max-width:24ch; }
+    .doravo-landing .cta-band p{ font-size:17px; max-width:46ch; }
+    .doravo-landing .cta-band .cta-alt{ font-size:15px; }
+    .doravo-landing .foot-brand p{ font-size:15px; max-width:36ch; }
+    .doravo-landing .foot-col h5{ font-size:13.5px; }
+    .doravo-landing .foot-col a{ font-size:15.5px; }
+    .doravo-landing .foot-bottom{ font-size:14px; }
+    .doravo-landing .dv-msg{ font-size:15px; }
+    .doravo-landing .dv-chips button{ font-size:13.5px; }
+
+    /* ---------- laptops / desktops: wider layout, no more narrow centre column ---------- */
+    @media (min-width:1280px){
+      .doravo-landing .wrap{ max-width:1480px; padding:0 clamp(40px, 4vw, 80px); }
+      .doravo-landing{ font-size:18px; }
+      .doravo-landing section{ padding:96px 0; }
+      .doravo-landing .hero{ padding:112px 0 88px; }
+      .doravo-landing .hero-grid{ gap:84px; }
+      .doravo-landing .hero h1{ font-size:clamp(52px, 4.4vw, 68px); }
+      .doravo-landing .hero .lede{ font-size:21px; }
+      .doravo-landing .sec-head{ max-width:820px; margin-bottom:56px; }
+      .doravo-landing .sec-head h2{ font-size:clamp(38px, 3.2vw, 48px); }
+      .doravo-landing .sec-head p{ font-size:20px; }
+      .doravo-landing .navlinks a{ font-size:17px; }
+      .doravo-landing .nav{ padding:18px 0; }
+      .doravo-landing .btn-primary, .doravo-landing .btn-ghost, .doravo-landing .btn-wa{ font-size:17.5px; padding:17px 32px; }
+      .doravo-landing .ps-card{ padding:40px 38px; }
+      .doravo-landing .ps-card p{ font-size:19px; }
+      .doravo-landing .feature-card{ padding:36px 30px; }
+      .doravo-landing .feature-card h4{ font-size:21px; }
+      .doravo-landing .feature-card p{ font-size:16.5px; }
+      .doravo-landing .tab-copy h3{ font-size:32px; }
+      .doravo-landing .tab-copy p{ font-size:19px; }
+      .doravo-landing .tab-copy li{ font-size:17.5px; }
+      .doravo-landing .tab-panel, .doravo-landing .spot-grid, .doravo-landing .institution-section{ gap:72px; }
+      .doravo-landing .role-card p{ font-size:17.5px; }
+      .doravo-landing .spot-step h4, .doravo-landing .how-card h4{ font-size:22px; }
+      .doravo-landing .spot-step p, .doravo-landing .how-card p{ font-size:17.5px; }
+      .doravo-landing .trust-card h4{ font-size:21px; }
+      .doravo-landing .trust-card p{ font-size:17px; }
+      .doravo-landing .institution-copy p{ font-size:19.5px; }
+      .doravo-landing .faq-list{ max-width:980px; }
+      .doravo-landing .faq-q{ font-size:22px; padding:24px 0; }
+      .doravo-landing .faq-a p{ font-size:18.5px; }
+      .doravo-landing .cta-band{ padding:72px 72px; }
+      .doravo-landing .cta-band p{ font-size:19px; }
+      .doravo-landing .foot-col a{ font-size:16px; }
+    }
+
+    /* ---------- large monitors / TVs ---------- */
+    @media (min-width:1700px){
+      .doravo-landing .wrap{ max-width:1760px; }
+      .doravo-landing{ font-size:20px; }
+      .doravo-landing section{ padding:120px 0; }
+      .doravo-landing .hero{ padding:136px 0 104px; }
+      .doravo-landing .hero h1{ font-size:clamp(64px, 4vw, 80px); }
+      .doravo-landing .hero .lede{ font-size:24px; }
+      .doravo-landing .sec-head{ max-width:940px; }
+      .doravo-landing .sec-head h2{ font-size:clamp(46px, 2.8vw, 56px); }
+      .doravo-landing .sec-head p{ font-size:22px; }
+      .doravo-landing .brand span{ font-size:24px; }
+      .doravo-landing .brand img{ height:42px; }
+      .doravo-landing .navlinks a{ font-size:18.5px; }
+      .doravo-landing .navcta, .doravo-landing .navlogin{ font-size:17px; }
+      .doravo-landing .btn-primary, .doravo-landing .btn-ghost, .doravo-landing .btn-wa{ font-size:19px; padding:19px 36px; }
+      .doravo-landing .ps-card p{ font-size:21px; }
+      .doravo-landing .feature-card h4{ font-size:23px; }
+      .doravo-landing .feature-card p{ font-size:18px; }
+      .doravo-landing .feature-card .fprob{ font-size:15px; }
+      .doravo-landing .tab-btn{ font-size:17.5px; }
+      .doravo-landing .tab-copy h3{ font-size:36px; }
+      .doravo-landing .tab-copy p{ font-size:21px; }
+      .doravo-landing .tab-copy li{ font-size:19px; }
+      .doravo-landing .role-card p{ font-size:19px; }
+      .doravo-landing .spot-step h4, .doravo-landing .how-card h4, .doravo-landing .trust-card h4{ font-size:24px; }
+      .doravo-landing .spot-step p, .doravo-landing .how-card p, .doravo-landing .trust-card p{ font-size:19px; }
+      .doravo-landing .institution-copy p{ font-size:21px; }
+      .doravo-landing .faq-list{ max-width:1100px; }
+      .doravo-landing .faq-q{ font-size:24px; }
+      .doravo-landing .faq-a p{ font-size:20px; }
+      .doravo-landing .cta-band h2{ font-size:clamp(40px, 2.8vw, 52px); }
+      .doravo-landing .cta-band p{ font-size:21px; }
+      .doravo-landing .foot-brand p, .doravo-landing .foot-col a{ font-size:17px; }
+      .doravo-landing .foot-bottom{ font-size:15.5px; }
+    }
   `;
   document.head.appendChild(el);
 };
