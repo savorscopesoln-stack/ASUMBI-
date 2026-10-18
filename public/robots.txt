@@ -1,0 +1,19 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /admin
+Disallow: /teacher
+Disallow: /student
+Disallow: /take-assessment
+Disallow: /api
+
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://www.doravocore.co.ke/sitemap.xml

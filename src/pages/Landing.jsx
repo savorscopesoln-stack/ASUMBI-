@@ -1,5 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import ChatAssistant, { WaIcon } from "../components/ChatAssistant";
+import { SITE, waLink } from "../config/site";
+import Preview from "../components/LandingPreviews";
 
 /* =========================================================
    LANDING
@@ -39,8 +42,8 @@ const injectLandingStyles = () => {
       --maroon-deep:#3E0F1E;
       --maroon-ink:#2A0A15;
       --ink:#221A16;
-      --paper:#EFE9DC;
-      --paper-dim:#E3DAC6;
+      --paper:#FAF8F4;
+      --paper-dim:#EFE9DC;
       --white:#FFFDF8;
       --brass:#9C7A3C;
       --line: rgba(34,26,22,0.14);
@@ -67,8 +70,7 @@ const injectLandingStyles = () => {
     .doravo-landing a{ color:inherit; }
     .doravo-landing img{ display:block; max-width:100%; }
     .doravo-landing button{ font-family:inherit; }
-    .doravo-landing .wrap{ width:99%; max-width:1800px; margin:0 auto; padding:0; }
-    @media (max-width:640px){ .doravo-landing .wrap{ width:97%; } }
+    .doravo-landing .wrap{ width:100%; max-width:1280px; margin:0 auto; padding:0 clamp(20px, 4vw, 56px); }
     .doravo-landing :focus-visible{ outline:2px solid var(--maroon); outline-offset:3px; }
 
     /* ---------- header ---------- */
@@ -306,6 +308,130 @@ const injectLandingStyles = () => {
     .doravo-landing .foot-col a{ display:block; text-decoration:none; font-size:14px; opacity:0.8; margin-bottom:10px; background:none; border:none; padding:0; cursor:pointer; text-align:left; }
     .doravo-landing .foot-col a:hover{ opacity:1; text-decoration:underline; }
     .doravo-landing .foot-bottom{ margin-top:42px; padding-top:22px; border-top:1px solid var(--line); font-size:13px; opacity:0.55; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+
+    /* ---------- WhatsApp buttons (primary demo action) ---------- */
+    .doravo-landing .btn-wa{ display:inline-flex; align-items:center; gap:9px; background:#25D366; color:#06260F; border:1px solid #25D366; text-decoration:none; padding:13px 24px; border-radius:3px; font-weight:700; font-size:15px; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s cubic-bezier(0.16,1,0.3,1), background 0.25s; box-shadow:0 10px 26px -12px rgba(37,211,102,0.7); }
+    .doravo-landing .btn-wa:hover{ background:#1fbd5a; border-color:#1fbd5a; transform:translateY(-2px); }
+    .doravo-landing .btn-wa.pulse{ animation:dvPulse 2.6s 3 1.2s; }
+    .doravo-landing .navcta.wa{ display:inline-flex; align-items:center; gap:7px; background:#25D366; color:#06260F; }
+    .doravo-landing .navcta.wa:hover{ background:#1fbd5a; }
+    @keyframes dvPulse{ 0%{ box-shadow:0 0 0 0 rgba(37,211,102,0.5); } 70%{ box-shadow:0 0 0 16px rgba(37,211,102,0); } 100%{ box-shadow:0 0 0 0 rgba(37,211,102,0); } }
+    .doravo-landing .cta-band .btn-wa{ background:#25D366; color:#06260F; border-color:#25D366; }
+    .doravo-landing .cta-band .cta-alt{ margin-top:0; font-size:13.5px; color:var(--paper); opacity:0.85; flex-basis:100%; max-width:none; }
+    .doravo-landing .cta-band .cta-alt a{ color:var(--white); }
+    .doravo-landing .hero-contact{ margin-top:16px; font-size:13.5px; opacity:0.7; }
+    .doravo-landing .hero-contact a{ color:var(--maroon); font-weight:600; }
+
+    /* ---------- hero motion ---------- */
+    .doravo-landing .hero{ position:relative; overflow:hidden; }
+    .doravo-landing .product-frame{ transition:transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);  }
+    .doravo-landing .feature-card{ transition:background 0.3s cubic-bezier(0.16,1,0.3,1), transform 0.3s cubic-bezier(0.16,1,0.3,1); }
+    .doravo-landing .feature-card:hover{ transform:translateY(-3px); }
+    @media (prefers-reduced-motion: reduce){
+      .doravo-landing .btn-wa.pulse{ animation:none; }
+    }
+
+    /* ---------- how it works ---------- */
+    .doravo-landing .how-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+    @media (max-width:800px){ .doravo-landing .how-grid{ grid-template-columns:1fr; } }
+    .doravo-landing .how-card{ background:var(--white); border:1px solid var(--line); border-radius:8px; padding:28px 24px; transition:transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s; }
+    .doravo-landing .how-card:hover{ transform:translateY(-3px); border-color:var(--maroon); }
+    .doravo-landing .how-num{ width:38px; height:38px; border-radius:50%; background:var(--maroon); color:var(--white); display:flex; align-items:center; justify-content:center; font-weight:700; margin-bottom:14px; }
+    .doravo-landing .how-card h4{ font-size:17px; margin-bottom:6px; }
+    .doravo-landing .how-card p{ font-size:14.5px; opacity:0.8; }
+
+    /* ---------- FAQ ---------- */
+    .doravo-landing .faq-list{ max-width:820px; margin:0 auto; }
+    .doravo-landing .faq-item{ border-bottom:1px solid var(--line); }
+    .doravo-landing .faq-q{ width:100%; display:flex; justify-content:space-between; align-items:center; gap:16px; padding:20px 0; background:none; border:none; cursor:pointer; text-align:left; font-family:'Fraunces', serif; font-size:18px; color:var(--maroon-ink); }
+    .doravo-landing .faq-q span{ font-family:'Manrope',sans-serif; font-size:22px; color:var(--maroon); transition:transform 0.25s; }
+    .doravo-landing .faq-item.open .faq-q span{ transform:rotate(45deg); }
+    .doravo-landing .faq-a{ overflow:hidden; max-height:0; transition:max-height 0.35s cubic-bezier(0.16,1,0.3,1); }
+    .doravo-landing .faq-item.open .faq-a{ max-height:300px; }
+    .doravo-landing .faq-a p{ padding:0 0 20px; font-size:15.5px; opacity:0.85; max-width:70ch; }
+
+    /* ---------- floating WhatsApp + chat assistant ---------- */
+    .doravo-landing .dv-wa-float{ position:fixed; left:18px; bottom:18px; z-index:60; width:56px; height:56px; border-radius:50%; background:#25D366; color:#06260F; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 26px rgba(37,211,102,0.5); transition:transform 0.25s; }
+    .doravo-landing .dv-wa-float:hover{ transform:scale(1.07); }
+    .doravo-landing .dv-wa-float svg{ width:28px; height:28px; }
+    .doravo-landing .dv-chat-fab{ position:fixed; right:18px; bottom:18px; z-index:60; width:56px; height:56px; border-radius:50%; border:none; cursor:pointer; background:var(--maroon); color:var(--white); font-size:28px; line-height:1; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 26px rgba(122,27,54,0.45); transition:transform 0.25s, background 0.25s; }
+    .doravo-landing .dv-chat-fab:hover{ background:var(--maroon-deep); transform:scale(1.07); }
+    .doravo-landing .dv-chat{ position:fixed; right:18px; bottom:86px; z-index:61; width:min(370px, calc(100vw - 36px)); height:min(520px, calc(100vh - 120px)); display:flex; flex-direction:column; background:var(--white); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 26px 60px -20px rgba(42,10,21,0.45); animation:dvChatIn 0.3s cubic-bezier(0.16,1,0.3,1); }
+    @keyframes dvChatIn{ from{ opacity:0; transform:translateY(12px) scale(0.98); } to{ opacity:1; transform:none; } }
+    .doravo-landing .dv-chat-head{ display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:var(--maroon); color:var(--white); font-family:'Fraunces',serif; }
+    .doravo-landing .dv-chat-head button{ background:none; border:none; color:var(--white); font-size:24px; cursor:pointer; line-height:1; }
+    .doravo-landing .dv-chat-body{ flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; background:var(--paper); }
+    .doravo-landing .dv-msg{ max-width:86%; padding:10px 13px; border-radius:10px; font-size:14px; line-height:1.5; }
+    .doravo-landing .dv-msg.bot{ background:var(--white); border:1px solid var(--line); align-self:flex-start; }
+    .doravo-landing .dv-msg.me{ background:var(--maroon); color:var(--white); align-self:flex-end; }
+    .doravo-landing .dv-chips{ display:flex; flex-wrap:wrap; gap:8px; }
+    .doravo-landing .dv-chips button{ background:var(--white); border:1px solid var(--maroon); color:var(--maroon); border-radius:999px; padding:6px 12px; font-size:12.5px; font-weight:600; cursor:pointer; transition:background 0.2s, color 0.2s; }
+    .doravo-landing .dv-chips button:hover{ background:var(--maroon); color:var(--white); }
+    .doravo-landing .dv-chat-wa{ display:flex; align-items:center; justify-content:center; gap:8px; padding:11px; background:#25D366; color:#06260F; font-weight:700; font-size:13.5px; text-decoration:none; }
+    .doravo-landing .dv-chat-input{ display:flex; gap:8px; padding:10px; border-top:1px solid var(--line); background:var(--white); }
+    .doravo-landing .dv-chat-input input{ flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font:inherit; font-size:14px; background:var(--white); color:var(--ink); }
+    .doravo-landing .dv-chat-input button{ padding:0 16px; border:none; border-radius:6px; background:var(--maroon); color:var(--white); font-weight:600; cursor:pointer; }
+    @media (max-width:560px){ .doravo-landing .dv-chat{ right:10px; bottom:80px; width:calc(100vw - 20px); } }
+
+    /* ---------- polish: white + maroon + gold, subtle motion ---------- */
+    .doravo-landing .eyebrow{ color:var(--brass); text-transform:uppercase; letter-spacing:0.12em; font-size:12px; display:flex; align-items:center; gap:10px; }
+    .doravo-landing .eyebrow::before{ content:""; width:26px; height:1px; background:var(--brass); }
+    .doravo-landing .sec-head h2::before{ content:""; display:block; width:34px; height:2px; background:var(--brass); margin-bottom:16px; }
+    .doravo-landing .sec-head.center h2::before{ margin-left:auto; margin-right:auto; }
+    .doravo-landing .tabs-section .sec-head h2::before, .doravo-landing .spot .sec-head h2::before{ background:var(--brass); }
+    .doravo-landing .hero{ background:linear-gradient(180deg, var(--white) 0%, var(--paper) 100%); }
+    .doravo-landing header{ background:rgba(255,255,255,0.94) !important; }
+    .doravo-landing .hero-visual{ min-width:0; }
+    .doravo-landing .hero h1 em{ font-style:normal; color:var(--maroon); }
+    .doravo-landing .trust-items span{ font-weight:600; }
+    @media (max-width:900px){ .doravo-landing .brand span{ display:none; } }
+    @media (max-width:560px){ .doravo-landing .navlogin .label-full{ display:inline !important; } .doravo-landing .navcta.wa{ padding:9px 12px; } }
+
+    .doravo-landing [data-rv]{ opacity:0; transform:translateY(18px); transition:opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+    .doravo-landing [data-rv].rv-in{ opacity:1; transform:none; }
+    @media (prefers-reduced-motion: reduce){ .doravo-landing [data-rv]{ opacity:1; transform:none; transition:none; } }
+
+    .doravo-landing .feature-card{ position:relative; }
+    .doravo-landing .feature-card::after{ content:""; position:absolute; left:0; top:0; height:2px; width:0; background:var(--brass); transition:width 0.4s cubic-bezier(0.16,1,0.3,1); }
+    .doravo-landing .feature-card:hover::after{ width:100%; }
+    .doravo-landing .feature-card .fprob{ font-size:12px; font-weight:700; letter-spacing:0.02em; color:var(--brass); opacity:1; line-height:1.4; }
+
+    .doravo-landing .tab-visual{ background:none; padding:0; box-shadow:none; min-width:0; }
+    .doravo-landing .tabs-section .pv-cap, .doravo-landing .spot .pv-cap{ color:var(--paper); opacity:0.7; }
+    .doravo-landing .tab-btn{ position:relative; overflow:hidden; }
+    .doravo-landing .tab-btn.active.auto::after{ content:""; position:absolute; left:0; bottom:0; height:2px; width:100%; background:var(--brass); transform-origin:left; animation:dvTabBar 8s linear both; }
+    @keyframes dvTabBar{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+    @media (prefers-reduced-motion: reduce){ .doravo-landing .tab-btn.active.auto::after{ animation:none; transform:scaleX(1); } }
+
+    /* e-assessment spotlight */
+    .doravo-landing .spot{ background:var(--white); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .doravo-landing .spot-grid{ display:grid; grid-template-columns:0.95fr 1.05fr; gap:56px; align-items:start; }
+    @media (max-width:920px){ .doravo-landing .spot-grid{ grid-template-columns:1fr; gap:36px; } }
+    .doravo-landing .spot-steps{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+    .doravo-landing .spot-step{ display:flex; gap:16px; padding:18px 0; border-top:1px solid var(--line); }
+    .doravo-landing .spot-step:first-child{ border-top:none; padding-top:0; }
+    .doravo-landing .spot-n{ flex:none; width:30px; height:30px; border-radius:50%; border:1px solid var(--brass); color:var(--brass); font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; transition:background 0.3s, color 0.3s; }
+    .doravo-landing .spot-step:hover .spot-n{ background:var(--brass); color:var(--white); }
+    .doravo-landing .spot-step h4{ font-size:17px; margin-bottom:3px; color:var(--maroon-ink); }
+    .doravo-landing .spot-step p{ font-size:14.5px; opacity:0.8; }
+    .doravo-landing .spot-switch{ display:inline-flex; border:1px solid var(--line); border-radius:999px; padding:3px; margin-bottom:16px; background:var(--paper); }
+    .doravo-landing .spot-switch button{ border:none; background:none; padding:7px 16px; border-radius:999px; font-weight:600; font-size:13px; cursor:pointer; color:var(--ink); transition:background 0.25s, color 0.25s; }
+    .doravo-landing .spot-switch button.on{ background:var(--maroon); color:var(--white); }
+    .doravo-landing .spot-visual{ position:sticky; top:96px; min-width:0; }
+    .doravo-landing .spot .pv-cap{ color:var(--ink); opacity:0.58; }
+
+    /* role + trust cards */
+    .doravo-landing .role-grid{ grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); }
+    .doravo-landing .role-card .role-tag{ color:var(--brass); letter-spacing:0.04em; text-transform:uppercase; }
+    .doravo-landing .trust-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:20px; }
+    .doravo-landing .trust-card{ background:var(--white); border:1px solid var(--line); border-top:2px solid var(--maroon); border-radius:6px; padding:24px 22px; }
+    .doravo-landing .trust-card h4{ font-size:16px; margin-bottom:6px; }
+    .doravo-landing .trust-card p{ font-size:14px; opacity:0.8; }
+    .doravo-landing .trust-note{ margin-top:22px; font-size:13.5px; opacity:0.65; max-width:70ch; }
+    .doravo-landing .how-num{ background:var(--white); color:var(--maroon); border:1px solid var(--brass); }
+    .doravo-landing .how-card:hover .how-num{ background:var(--brass); color:var(--white); }
+    .doravo-landing .how-card{ border-radius:6px; }
+    .doravo-landing .why-item svg{ color:var(--brass); }
   `;
   document.head.appendChild(el);
 };
@@ -328,9 +454,9 @@ const injectLandingStyles = () => {
      registered domain — replace with the actual support/sales
      address once Doravo's official domain is finalized.
 --------------------------------------------------------- */
-const SITE_URL =
-  typeof window !== "undefined" ? window.location.origin : ""; // TODO: replace with e.g. "https://www.doravo.com" before launch
-const CONTACT_EMAIL = "hello@doravo.core"; // TODO: replace with a real, registered domain before launch
+const SITE_URL = SITE.url; // canonical production domain (see src/config/site.js)
+const CONTACT_EMAIL = SITE.email;
+const WA_URL = waLink();
 
 /* ---------------------------------------------------------
    SIGN IN DESTINATION
@@ -383,9 +509,46 @@ const SignInLink = ({ className, onClick, children }) => {
    JSON-LD structured data. Only known, real values are used —
    no ratings, review counts or user totals are fabricated.
 --------------------------------------------------------- */
-const PAGE_TITLE = "Doravo Core | School Management & Education Management Platform";
+const PAGE_TITLE = "Doravo Core | School Management & E-Exams Platform by Doravo";
 const PAGE_DESCRIPTION =
-  "Doravo Core is an education management platform helping institutions manage students, staff, assessments, attendance and everyday school operations.";
+  "Doravo Core by Doravo is a school management platform for students, staff, online assessments and e-exams, attendance, fees and everyday school operations. Request a demo on WhatsApp.";
+
+/* FAQ — used for the on-page accordion. The same questions and answers
+   are also in index.html's FAQPage structured data so search engines and
+   AI answer engines can read them without running JavaScript. Keep the
+   two in sync when editing. */
+const FAQS = [
+  {
+    q: "What is Doravo Core?",
+    a: "Doravo Core is an education management platform by Doravo. It brings student and staff management, assessments and e-exams, attendance, fees, communication and everyday school operations into one platform.",
+  },
+  {
+    q: "How do I request a demo of Doravo Core?",
+    a: `Message Doravo on WhatsApp at ${SITE.whatsappDisplay} or email ${SITE.email}. We'll arrange a walkthrough for your school.`,
+  },
+  {
+    q: "Can Doravo Core run online exams?",
+    a: "Yes. You can create, sit and mark assessments online, including timed e-exams on dedicated exam devices, with results tied back to each student's record.",
+  },
+  {
+    q: "Does Doravo Core handle school fees?",
+    a: "Yes. Billing, payments and balances are tracked against your school's own fee structure and terms. Invoices can be downloaded and receipts are issued once a payment is confirmed.",
+  },
+  {
+    q: "Can each school keep its own branding?",
+    a: "Yes. Your logo, colours and report cards appear across your login screen, portals and printed documents. School groups get a dedicated workspace per campus.",
+  },
+  {
+    q: "Who makes Doravo Core?",
+    a: "Doravo Core is built and operated by Doravo.",
+  },
+];
+
+const HOW_STEPS = [
+  { n: "1", title: "Message us on WhatsApp", copy: "Tell us a little about your school and what you'd like to manage." },
+  { n: "2", title: "See a live demo", copy: "We walk you through assessments, attendance, fees and the portals your team will use." },
+  { n: "3", title: "Go live with your own branding", copy: "We set up your school with your logo and colours and help your staff get started." },
+];
 
 const setMetaTag = (attr, key, content) => {
   let tag = document.querySelector(`meta[${attr}="${key}"]`);
@@ -434,21 +597,41 @@ const injectSEO = () => {
         {
           "@type": "Organization",
           name: "Doravo",
+          alternateName: ["Doravo Core", "DoravoCore"],
           slogan: "Moving Education Forward",
           url: SITE_URL,
           logo: `${SITE_URL}/assets/doravo-core-lockup.png`,
+          email: SITE.email,
+          telephone: `+${SITE.whatsapp}`,
+          contactPoint: {
+            "@type": "ContactPoint",
+            contactType: "sales",
+            telephone: `+${SITE.whatsapp}`,
+            email: SITE.email,
+            availableLanguage: ["English", "Swahili"],
+          },
         },
         {
           "@type": "SoftwareApplication",
           name: "Doravo Core",
+          alternateName: "DoravoCore",
           applicationCategory: "EducationApplication",
           operatingSystem: "Web",
           description: PAGE_DESCRIPTION,
+          url: SITE_URL,
         },
         {
           "@type": "WebSite",
           name: "Doravo Core",
           url: SITE_URL,
+        },
+        {
+          "@type": "FAQPage",
+          mainEntity: FAQS.map((f) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
         },
       ],
     });
@@ -483,6 +666,7 @@ const useReveal = () => {
 const FEATURES = [
   {
     title: "Student Management",
+    problem: "Records scattered across files and spreadsheets",
     desc: "Enrolment, class placement, academic history and everyday student records, kept in one place.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="3.4" /><path d="M5 20c0-4 3.1-6.5 7-6.5S19 16 19 20" /></svg>
@@ -490,6 +674,7 @@ const FEATURES = [
   },
   {
     title: "Staff & Teacher Management",
+    problem: "Staff details and assignments that live in one person's head",
     desc: "Organize staff records, teaching assignments and day-to-day administrative workflows.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="9" cy="8" r="3" /><circle cx="17" cy="9" r="2.4" /><path d="M3 20c0-3.3 2.6-5.5 6-5.5s6 2.2 6 5.5M14 20c.3-2.6 1.9-4.3 4.3-4.3 1.6 0 2.9.8 3.7 2" /></svg>
@@ -497,6 +682,7 @@ const FEATURES = [
   },
   {
     title: "Assessments & E-Exams",
+    problem: "Paper exams that take weeks to set, sit and mark",
     desc: "Create, sit and mark assessments online, including timed e-exams on dedicated exam devices.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M5 4h11l3 3v13H5z" /><path d="M9 9h7M9 13h7M9 17h4" /></svg>
@@ -504,6 +690,7 @@ const FEATURES = [
   },
   {
     title: "Attendance",
+    problem: "Registers on paper that nobody can roll up",
     desc: "Daily registers taken by class or subject, rolling up into per-student and school-wide records.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="4" y="5" width="16" height="15" rx="1.5" /><path d="M4 9h16M9 3v4M15 3v4" /></svg>
@@ -511,6 +698,7 @@ const FEATURES = [
   },
   {
     title: "Fees",
+    problem: "Chasing balances with no clear picture of who has paid",
     desc: "Billing, payments and balances tracked against your school's own fee structure and terms.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 7h16v11H4z" /><path d="M4 10h16M8 14h3" /></svg>
@@ -518,6 +706,7 @@ const FEATURES = [
   },
   {
     title: "Communication",
+    problem: "Notices that don't reach the right people",
     desc: "Keep administrators, teachers, students and parents connected through centralized notifications.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3v3M6 8c0-2 2.7-4 6-4s6 2 6 4c0 5 2 6 2 8H4c0-2 2-3 2-8z" /><path d="M10 19a2 2 0 004 0" /></svg>
@@ -525,6 +714,7 @@ const FEATURES = [
   },
   {
     title: "Reports & Analytics",
+    problem: "Reports compiled by hand at the end of term",
     desc: "Turn day-to-day academic and operational activity into information you can act on.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 20V10M11 20V4M18 20v-7" /><path d="M2 20h20" /></svg>
@@ -532,6 +722,7 @@ const FEATURES = [
   },
   {
     title: "School Administration",
+    problem: "Gate, kitchen and leave-out processes held on paper",
     desc: "Gate and visitor logs, kitchen and meal cards, leave-out requests and other everyday operations in one workspace.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3l8 4v5c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V7z" /></svg>
@@ -562,6 +753,13 @@ const TABS = [
     bullets: ["Class and subject-level registers", "Per-student attendance history", "No manual reconciliation"],
   },
   {
+    id: "fees",
+    label: "Fees",
+    title: "Fee balances you can see at a glance",
+    desc: "Billing, payments and balances follow your school's own fee structure and terms, so the picture is always current.",
+    bullets: ["Your own fee structure and terms", "Payments and balances in one place", "A statement for every student"],
+  },
+  {
     id: "teachers",
     label: "Teachers",
     title: "A dashboard built around teaching, not admin",
@@ -584,29 +782,47 @@ const TABS = [
   },
 ];
 
+const TAB_PREVIEW = {
+  students: "students",
+  assessments: "exam",
+  attendance: "attendance",
+  fees: "fees",
+  teachers: "marking",
+  reports: "reports",
+  admin: "admin",
+};
+
+const SPOT_STEPS = [
+  { title: "Set the assessment", copy: "Teachers build the questions and schedule the assessment from their own portal." },
+  { title: "Students sit it on one device", copy: "Each student gets an exam token that locks to the first device that opens it. The exam is timed and answers are saved as they work." },
+  { title: "Evidence is kept for markers", copy: "Camera photos taken during the exam, and screen captures where the student shares their screen, are available to markers." },
+  { title: "Marking is shared out and tracked", copy: "Responses are allocated across teachers with live progress. Optional AI-assisted suggestions are there for the teacher to accept or change." },
+  { title: "Results flow to the record", copy: "Marks are tied back to each student's record and carry through to report cards." },
+];
+
+const TRUST = [
+  { title: "Role-based access", copy: "Administrators, teachers, students and parents each see only the portal built for them." },
+  { title: "Fingerprint or face sign-in", copy: "Passkey sign-in is supported on devices that offer it, alongside the usual password." },
+  { title: "One device per exam", copy: "An exam token binds to the first device that opens it, so a second device cannot take the same sitting." },
+  { title: "Your own workspace", copy: "Each school has its own workspace, so one school's login has no reach into another's records." },
+];
+
 const ROLES = [
-  { tag: "For Administrators", copy: "Keep school operations organized from one central platform, instead of stitched-together spreadsheets and processes." },
-  { tag: "For Teachers", copy: "Spend less time on administrative processes and more time on teaching, with classes, assessments and attendance in one portal." },
-  { tag: "For Students", copy: "Access academic information and everyday school services from a single portal built for them." },
-  { tag: "For School Groups", copy: "Bring academic and administrative operations together across every campus, without losing each school's own identity." },
+  { tag: "School administrators", copy: "Run students, staff and daily operations from one place, instead of stitched-together spreadsheets." },
+  { tag: "Teachers", copy: "Classes, attendance, assessments and marking tools in one portal, branded to your school." },
+  { tag: "Examinations officers", copy: "Schedule and oversee assessments and main examinations, and follow marking progress as it happens." },
+  { tag: "Finance staff", copy: "Track fees, payments and balances against your school's own fee structure." },
+  { tag: "Students", copy: "Sit assessments, see results and reach everyday school services from a single portal." },
 ];
 
-const WHY = [
-  { title: "One connected platform", copy: "Students, staff, assessments, attendance and communication live in one place instead of several disconnected tools." },
-  { title: "Centralized records", copy: "Information stays together and feeds report cards, transcripts and reporting without manual re-entry." },
-  { title: "Role-based access", copy: "Administrators, teachers, students and parents each see a portal built around what they actually need to do." },
-  { title: "Digital assessment capability", copy: "Assessments and timed e-exams run on the same platform as the records they update." },
-  { title: "Your own branding", copy: "Your logo, colours and report cards look like yours — not shared with any other school on the platform." },
-  { title: "Room to grow", copy: "Start with a single school and add campuses later without starting over on a new system." },
-];
 
-const CheckIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 13l4 4L19 7" /></svg>
-);
 
 export default function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(TABS[0].id);
+  const [openFaq, setOpenFaq] = useState(0);
+  const [spotView, setSpotView] = useState("exam");
+  const [autoTabs, setAutoTabs] = useState(true);
 
   useEffect(() => {
     injectLandingStyles();
@@ -619,7 +835,42 @@ export default function Landing() {
   const tabsRef = useReveal();
   const rolesRef = useReveal();
   const institutionRef = useReveal();
-  const whyRef = useReveal();
+  const howRef = useReveal();
+  const spotRef = useReveal();
+  const trustRef = useReveal();
+  const faqRef = useReveal();
+
+  // Staggered scroll reveal for cards (set before paint so there is no flash).
+  useLayoutEffect(() => {
+    const root = document.querySelector(".doravo-landing");
+    if (!root) return undefined;
+    const targets = root.querySelectorAll(".feature-card, .role-card, .how-card, .trust-card, .spot-step, .hero-visual");
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add("rv-in"); io.unobserve(e.target); }
+      }),
+      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+    );
+    targets.forEach((el, i) => {
+      el.setAttribute("data-rv", "");
+      el.style.transitionDelay = `${(i % 4) * 80}ms`;
+      io.observe(el);
+    });
+    return () => io.disconnect();
+  }, []);
+
+  // Product tabs advance on their own until the visitor takes control.
+  useEffect(() => {
+    if (!autoTabs) return undefined;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
+    const t = setTimeout(() => {
+      setActiveTab((cur) => {
+        const i = TABS.findIndex((x) => x.id === cur);
+        return TABS[(i + 1) % TABS.length].id;
+      });
+    }, 8000);
+    return () => clearTimeout(t);
+  }, [autoTabs, activeTab]);
 
   const activeTabData = TABS.find((t) => t.id === activeTab) || TABS[0];
 
@@ -634,9 +885,9 @@ export default function Landing() {
             <span>Doravo Core</span>
           </a>
           <nav className="navlinks">
-            <a href="#platform">Platform</a>
             <a href="#features">Features</a>
             <a href="#solutions">Solutions</a>
+            <a href="#how-it-works">How it works</a>
             <a href="#about">About</a>
             <a href="#contact">Contact</a>
           </nav>
@@ -647,7 +898,9 @@ export default function Landing() {
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </SignInLink>
-            <a className="navcta" href="#contact">Request a Demo</a>
+            <a className="navcta wa" href={WA_URL} target="_blank" rel="noopener noreferrer">
+              <WaIcon /> Request a Demo
+            </a>
             <button
               className="hamburger"
               aria-label={mobileOpen ? "Close menu" : "Open menu"}
@@ -661,14 +914,16 @@ export default function Landing() {
           </div>
         </div>
         <nav className={`mobile-menu wrap ${mobileOpen ? "open" : ""}`}>
-          <a href="#platform" onClick={closeMobile}>Platform</a>
           <a href="#features" onClick={closeMobile}>Features</a>
           <a href="#solutions" onClick={closeMobile}>Solutions</a>
+          <a href="#how-it-works" onClick={closeMobile}>How it works</a>
           <a href="#about" onClick={closeMobile}>About</a>
           <a href="#contact" onClick={closeMobile}>Contact</a>
           <div className="mobile-ctas">
             <SignInLink className="btn-ghost" onClick={closeMobile}>Sign In</SignInLink>
-            <a className="btn-primary" href="#contact" onClick={closeMobile}>Request a Demo</a>
+            <a className="btn-wa" href={WA_URL} target="_blank" rel="noopener noreferrer" onClick={closeMobile}>
+              <WaIcon /> Request a Demo
+            </a>
           </div>
         </nav>
       </header>
@@ -685,44 +940,25 @@ export default function Landing() {
         <section className="hero">
           <div className="wrap hero-grid" ref={heroRef}>
             <div>
-              <p className="eyebrow">Education management, reimagined</p>
-              <h1>One connected platform for running your school.</h1>
+              <p className="eyebrow">School management &amp; e-examinations</p>
+              <h1>Run your school and your exams from <em>one platform.</em></h1>
               <p className="lede">
-                Doravo Core brings student management, staff, assessments, attendance,
-                communication and everyday school operations together in one modern platform —
-                for a single school today, and ready for more campuses whenever you need them.
+                Doravo Core brings students, staff, attendance, fees and school operations together with
+                online assessments and e-exams, so your team stops juggling spreadsheets and paper.
               </p>
               <div className="hero-ctas">
-                <a className="btn-primary" href="#contact">Request a Demo</a>
+                <a className="btn-wa pulse" href={WA_URL} target="_blank" rel="noopener noreferrer">
+                  <WaIcon /> Request a Demo on WhatsApp
+                </a>
                 <a className="btn-ghost" href="#platform">Explore the Platform</a>
               </div>
+              <p className="hero-contact">
+                Or email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+              </p>
               <p className="hero-note">Built around the everyday work of running a modern school.</p>
             </div>
-            {/* TODO (audit P0): replace this illustrative mockup with a real
-                screenshot of the Doravo dashboard once one is available —
-                a real screenshot reads as "an actual system" rather than
-                a marketing illustration. Keeping the CSS mockup for now
-                since no product screenshot was supplied to this component. */}
-            <div className="product-frame" aria-hidden="true">
-              <div className="pf-bar">
-                <span className="pf-dot" /><span className="pf-dot" /><span className="pf-dot" />
-                <span className="pf-title">Doravo Core — Overview</span>
-              </div>
-              <div className="pf-body">
-                <div className="pf-stat-row">
-                  <div className="pf-stat">
-                    <div className="pf-label">Attendance today</div>
-                    <div className="pf-bar-track"><div className="pf-bar-fill" style={{ width: "82%" }} /></div>
-                  </div>
-                  <div className="pf-stat">
-                    <div className="pf-label">Assessments open</div>
-                    <div className="pf-bar-track"><div className="pf-bar-fill" style={{ width: "48%" }} /></div>
-                  </div>
-                </div>
-                <div className="pf-row"><span className="pf-avatar" /><span className="pf-line" style={{ maxWidth: "70%" }} /><span className="pf-tag">Graded</span></div>
-                <div className="pf-row"><span className="pf-avatar" /><span className="pf-line" style={{ maxWidth: "55%" }} /><span className="pf-tag">Pending</span></div>
-                <div className="pf-row"><span className="pf-avatar" /><span className="pf-line" style={{ maxWidth: "62%" }} /><span className="pf-tag">Enrolled</span></div>
-              </div>
+            <div className="hero-visual">
+              <Preview name="dashboard" />
             </div>
           </div>
         </section>
@@ -730,14 +966,13 @@ export default function Landing() {
         {/* TRUST BAR */}
         <section className="trust-bar" style={{ padding: "34px 0" }} id="platform">
           <div className="wrap">
-            <p className="trust-label">Built for modern schools</p>
+            <p className="trust-label">Built for the people who run a school</p>
             <div className="trust-items">
-              <span>Student Management</span>
-              <span>Staff Management</span>
-              <span>Assessments</span>
-              <span>Attendance</span>
-              <span>Communication</span>
-              <span>Reports &amp; Analytics</span>
+              <span>Principals</span>
+              <span>Registrars</span>
+              <span>Examinations officers</span>
+              <span>Bursars</span>
+              <span>ICT administrators</span>
             </div>
           </div>
         </section>
@@ -796,9 +1031,40 @@ export default function Landing() {
                 <div className="feature-card" key={f.title}>
                   <div className="fi">{f.icon}</div>
                   <h4>{f.title}</h4>
+                  <p className="fprob">{f.problem}</p>
                   <p>{f.desc}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* E-ASSESSMENT SPOTLIGHT — every step below is a feature that exists in the app */}
+        <section className="spot" id="e-assessments">
+          <div className="wrap">
+            <div className="sec-head reveal" ref={spotRef}>
+              <h2>E-assessments, from setting to results.</h2>
+              <p>Run timed online exams without losing control of how they are sat or marked.</p>
+            </div>
+            <div className="spot-grid">
+              <ol className="spot-steps">
+                {SPOT_STEPS.map((st, i) => (
+                  <li className="spot-step" key={st.title}>
+                    <span className="spot-n">{i + 1}</span>
+                    <div>
+                      <h4>{st.title}</h4>
+                      <p>{st.copy}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <div className="spot-visual">
+                <div className="spot-switch" role="tablist" aria-label="Assessment views">
+                  <button type="button" role="tab" aria-selected={spotView === "exam"} className={spotView === "exam" ? "on" : ""} onClick={() => setSpotView("exam")}>Student view</button>
+                  <button type="button" role="tab" aria-selected={spotView === "marking"} className={spotView === "marking" ? "on" : ""} onClick={() => setSpotView("marking")}>Marking view</button>
+                </div>
+                <Preview name={spotView} key={spotView} />
+              </div>
             </div>
           </div>
         </section>
@@ -816,8 +1082,8 @@ export default function Landing() {
                   key={t.id}
                   role="tab"
                   aria-selected={activeTab === t.id}
-                  className={`tab-btn ${activeTab === t.id ? "active" : ""}`}
-                  onClick={() => setActiveTab(t.id)}
+                  className={`tab-btn ${activeTab === t.id ? "active" : ""} ${autoTabs ? "auto" : ""}`}
+                  onClick={() => { setAutoTabs(false); setActiveTab(t.id); }}
                 >
                   {t.label}
                 </button>
@@ -833,22 +1099,8 @@ export default function Landing() {
                   ))}
                 </ul>
               </div>
-              {/* TODO (audit P0): this is the single highest-impact visual
-                  swap the audit identified — replace this per-tab placeholder
-                  with an actual screenshot of that area of Doravo (e.g.
-                  activeTabData.screenshotUrl rendered as an <img>). Structured
-                  so that once screenshots exist, only this block needs to
-                  change; the tab logic/state above doesn't need to move. */}
               <div className="tab-visual">
-                <div className="pf-bar" style={{ background: "transparent", border: "none", padding: "0 0 14px" }}>
-                  <span className="pf-title" style={{ fontSize: 12 }}>{activeTabData.label} — preview</span>
-                </div>
-                <div className="mock-line w80" />
-                <div className="mock-line w60" />
-                <div className="mock-line w40" />
-                <div className="mock-slot" style={{ marginTop: 14 }}>
-                  <span>{activeTabData.label} workspace</span>
-                </div>
+                <Preview name={TAB_PREVIEW[activeTab] || "dashboard"} />
               </div>
             </div>
           </div>
@@ -909,18 +1161,73 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* WHY DORAVO */}
-        <section>
+        {/* TRUST & SECURITY — only capabilities that exist in the app */}
+        <section id="trust">
           <div className="wrap">
-            <div className="sec-head reveal" ref={whyRef}>
-              <h2>Built for connected education management.</h2>
-              <p>What that means in practice, not just in principle.</p>
+            <div className="sec-head reveal" ref={trustRef}>
+              <h2>Built with control in mind.</h2>
+              <p>What the platform does today to keep school and exam data under your control.</p>
             </div>
-            <div className="why-list">
-              {WHY.map((w) => (
-                <div className="why-item" key={w.title}>
-                  <CheckIcon />
-                  <p><strong>{w.title}</strong>{w.copy}</p>
+            <div className="trust-grid">
+              {TRUST.map((t) => (
+                <div className="trust-card" key={t.title}>
+                  <h4>{t.title}</h4>
+                  <p>{t.copy}</p>
+                </div>
+              ))}
+            </div>
+            <p className="trust-note">
+              We only describe capabilities the platform has today and do not list certifications we have not earned.
+              Ask us about hosting and data handling during your demo.
+            </p>
+          </div>
+        </section>
+
+        <hr className="divider" />
+
+        {/* HOW IT WORKS */}
+        <section id="how-it-works">
+          <div className="wrap">
+            <div className="sec-head reveal" ref={howRef}>
+              <h2>From first message to live school.</h2>
+              <p>Getting started with Doravo Core takes three simple steps.</p>
+            </div>
+            <div className="how-grid">
+              {HOW_STEPS.map((s) => (
+                <div className="how-card" key={s.n}>
+                  <div className="how-num">{s.n}</div>
+                  <h4>{s.title}</h4>
+                  <p>{s.copy}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <hr className="divider" />
+
+        {/* FAQ — mirrored in index.html's FAQPage structured data */}
+        <section id="faq">
+          <div className="wrap">
+            <div className="sec-head reveal" ref={faqRef}>
+              <h2>Frequently asked questions.</h2>
+              <p>Quick answers about Doravo Core.</p>
+            </div>
+            <div className="faq-list">
+              {FAQS.map((f, i) => (
+                <div className={`faq-item ${openFaq === i ? "open" : ""}`} key={f.q}>
+                  <button
+                    type="button"
+                    className="faq-q"
+                    aria-expanded={openFaq === i}
+                    onClick={() => setOpenFaq(openFaq === i ? -1 : i)}
+                  >
+                    {f.q}
+                    <span aria-hidden="true">+</span>
+                  </button>
+                  <div className="faq-a" role="region">
+                    <p>{f.a}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -936,9 +1243,13 @@ export default function Landing() {
                 <p>See how Doravo Core can bring your school's academic and administrative operations together.</p>
               </div>
               <div className="cta-buttons">
-                <a className="btn-primary" href={`mailto:${CONTACT_EMAIL}`}>Request a Demo</a>
-                <a className="btn-ghost" href={`mailto:${CONTACT_EMAIL}`}>Contact Doravo</a>
+                <a className="btn-wa pulse" href={WA_URL} target="_blank" rel="noopener noreferrer">
+                  <WaIcon /> Request a Demo on WhatsApp
+                </a>
               </div>
+              <p className="cta-alt">
+                Prefer email? <a href={`mailto:${CONTACT_EMAIL}?subject=Doravo%20Core%20demo%20request`}>{CONTACT_EMAIL}</a>
+              </p>
             </div>
           </div>
         </section>
@@ -961,7 +1272,10 @@ export default function Landing() {
               <div className="foot-col">
                 <h5>Company</h5>
                 <a href="#about">About</a>
+                <a href="#faq">FAQ</a>
                 <a href="#contact">Contact</a>
+                <a href={WA_URL} target="_blank" rel="noopener noreferrer">WhatsApp {SITE.whatsappDisplay}</a>
+                <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
               </div>
               <div className="foot-col">
                 <h5>Account</h5>
@@ -975,6 +1289,17 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+
+      <a
+        className="dv-wa-float"
+        href={WA_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Request a demo on WhatsApp"
+      >
+        <WaIcon />
+      </a>
+      <ChatAssistant />
     </div>
   );
 }
