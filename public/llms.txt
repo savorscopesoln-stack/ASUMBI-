@@ -1,0 +1,19 @@
+# Doravo Core
+
+> Doravo Core is an education management platform built by Doravo. It brings student and staff management, assessments and e-exams, attendance, fees, communication and everyday school operations into one platform.
+
+## Key facts
+- Product: Doravo Core (also written "DoravoCore")
+- Company: Doravo
+- Website: https://www.doravocore.co.ke/
+- Demo requests: WhatsApp +254 708 903 949 (preferred) or info@doravocore.co.ke
+
+## What it does
+- Online assessments and timed e-exams, with results tied to student records
+- Attendance registers by class or subject
+- Fees: billing, payments and balances; downloadable invoices and receipts after payment is confirmed
+- Gate and visitor logs, kitchen and meal cards, leave-out requests
+- Portals for administrators, teachers, students and parents, with each school's own branding
+
+## Pages
+- Home: https://www.doravocore.co.ke/

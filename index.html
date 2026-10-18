@@ -7,7 +7,115 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>Doravo Core</title>
+    <title>Doravo Core | School Management &amp; E-Exams Platform by Doravo</title>
+    <meta
+      name="description"
+      content="Doravo Core by Doravo is a school management platform for students, staff, online assessments and e-exams, attendance, fees and everyday school operations. Request a demo on WhatsApp."
+    />
+    <meta
+      name="keywords"
+      content="Doravo, Doravo Core, DoravoCore, school management system Kenya, e-exams, online assessments, school fees management, education management platform"
+    />
+    <meta name="author" content="Doravo" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+    <link rel="canonical" href="https://www.doravocore.co.ke/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Doravo Core" />
+    <meta property="og:title" content="Doravo Core | School Management &amp; E-Exams Platform by Doravo" />
+    <meta
+      property="og:description"
+      content="One connected platform for students, staff, e-exams, attendance, fees and school operations. Request a demo on WhatsApp."
+    />
+    <meta property="og:url" content="https://www.doravocore.co.ke/" />
+    <meta property="og:image" content="https://www.doravocore.co.ke/assets/doravo-core-lockup.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Doravo Core by Doravo" />
+    <meta
+      name="twitter:description"
+      content="School management and e-exams platform. Request a demo on WhatsApp."
+    />
+    <meta name="twitter:image" content="https://www.doravocore.co.ke/assets/doravo-core-lockup.png" />
+    <link rel="apple-touch-icon" href="/assets/doravo-icon.png" />
+
+    <!-- STRUCTURED DATA (SEO + AEO). id matches Landing.jsx so it is only injected once.
+         Keep the FAQ text in sync with FAQS in src/pages/Landing.jsx. -->
+    <script type="application/ld+json" id="landing-jsonld">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://www.doravocore.co.ke/#org",
+            "name": "Doravo",
+            "alternateName": ["Doravo Core", "DoravoCore"],
+            "slogan": "Moving Education Forward",
+            "url": "https://www.doravocore.co.ke/",
+            "logo": "https://www.doravocore.co.ke/assets/doravo-core-lockup.png",
+            "email": "info@doravocore.co.ke",
+            "telephone": "+254708903949",
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "contactType": "sales",
+              "telephone": "+254708903949",
+              "email": "info@doravocore.co.ke",
+              "availableLanguage": ["English", "Swahili"]
+            }
+          },
+          {
+            "@type": "WebSite",
+            "name": "Doravo Core",
+            "url": "https://www.doravocore.co.ke/",
+            "publisher": { "@id": "https://www.doravocore.co.ke/#org" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Doravo Core",
+            "alternateName": "DoravoCore",
+            "applicationCategory": "EducationApplication",
+            "operatingSystem": "Web",
+            "description": "Doravo Core by Doravo is a school management platform for students, staff, online assessments and e-exams, attendance, fees and everyday school operations.",
+            "url": "https://www.doravocore.co.ke/",
+            "publisher": { "@id": "https://www.doravocore.co.ke/#org" }
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is Doravo Core?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Doravo Core is an education management platform by Doravo. It brings student and staff management, assessments and e-exams, attendance, fees, communication and everyday school operations into one platform." }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I request a demo of Doravo Core?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Message Doravo on WhatsApp at +254 708 903 949 or email info@doravocore.co.ke. We'll arrange a walkthrough for your school." }
+              },
+              {
+                "@type": "Question",
+                "name": "Can Doravo Core run online exams?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Yes. You can create, sit and mark assessments online, including timed e-exams on dedicated exam devices, with results tied back to each student's record." }
+              },
+              {
+                "@type": "Question",
+                "name": "Does Doravo Core handle school fees?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Yes. Billing, payments and balances are tracked against your school's own fee structure and terms. Invoices can be downloaded and receipts are issued once a payment is confirmed." }
+              },
+              {
+                "@type": "Question",
+                "name": "Can each school keep its own branding?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Yes. Your logo, colours and report cards appear across your login screen, portals and printed documents. School groups get a dedicated workspace per campus." }
+              },
+              {
+                "@type": "Question",
+                "name": "Who makes Doravo Core?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Doravo Core is built and operated by Doravo." }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
 
     <!-- =======================
          THEME COLOR (mobile UI)
@@ -87,7 +195,18 @@
 
   <body>
     <!-- optional loading splash -->
-    <div id="root"></div>
+    <div id="root">
+      <!-- Plain-text fallback for crawlers and AI engines that don't run JavaScript.
+           React replaces this as soon as the app loads. -->
+      <noscript>
+        <h1>Doravo Core by Doravo: School Management &amp; E-Exams Platform</h1>
+        <p>
+          Doravo Core is an education management platform by Doravo for student and staff
+          management, online assessments and e-exams, attendance, fees and everyday school operations.
+        </p>
+        <p>Request a demo on WhatsApp: +254 708 903 949, or email info@doravocore.co.ke.</p>
+      </noscript>
+    </div>
 
     <script type="module" src="/src/main.jsx"></script>
   </body>

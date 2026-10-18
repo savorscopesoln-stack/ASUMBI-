@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import ChatAssistant, { WaIcon } from "../components/ChatAssistant";
+import { SITE, waLink } from "../config/site";
 
 /* =========================================================
    LANDING
@@ -306,6 +308,76 @@ const injectLandingStyles = () => {
     .doravo-landing .foot-col a{ display:block; text-decoration:none; font-size:14px; opacity:0.8; margin-bottom:10px; background:none; border:none; padding:0; cursor:pointer; text-align:left; }
     .doravo-landing .foot-col a:hover{ opacity:1; text-decoration:underline; }
     .doravo-landing .foot-bottom{ margin-top:42px; padding-top:22px; border-top:1px solid var(--line); font-size:13px; opacity:0.55; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+
+    /* ---------- WhatsApp buttons (primary demo action) ---------- */
+    .doravo-landing .btn-wa{ display:inline-flex; align-items:center; gap:9px; background:#25D366; color:#06260F; border:1px solid #25D366; text-decoration:none; padding:13px 24px; border-radius:3px; font-weight:700; font-size:15px; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s cubic-bezier(0.16,1,0.3,1), background 0.25s; box-shadow:0 10px 26px -12px rgba(37,211,102,0.7); }
+    .doravo-landing .btn-wa:hover{ background:#1fbd5a; border-color:#1fbd5a; transform:translateY(-2px); }
+    .doravo-landing .btn-wa.pulse{ animation:dvPulse 2.6s infinite; }
+    .doravo-landing .navcta.wa{ display:inline-flex; align-items:center; gap:7px; background:#25D366; color:#06260F; }
+    .doravo-landing .navcta.wa:hover{ background:#1fbd5a; }
+    @keyframes dvPulse{ 0%{ box-shadow:0 0 0 0 rgba(37,211,102,0.5); } 70%{ box-shadow:0 0 0 16px rgba(37,211,102,0); } 100%{ box-shadow:0 0 0 0 rgba(37,211,102,0); } }
+    .doravo-landing .cta-band .btn-wa{ background:#25D366; color:#06260F; border-color:#25D366; }
+    .doravo-landing .cta-band .cta-alt{ margin-top:12px; font-size:13.5px; color:var(--paper); opacity:0.85; width:100%; }
+    .doravo-landing .cta-band .cta-alt a{ color:var(--white); }
+    .doravo-landing .hero-contact{ margin-top:16px; font-size:13.5px; opacity:0.7; }
+    .doravo-landing .hero-contact a{ color:var(--maroon); font-weight:600; }
+
+    /* ---------- hero motion ---------- */
+    .doravo-landing .hero{ position:relative; overflow:hidden; }
+    .doravo-landing .hero::before{ content:""; position:absolute; width:520px; height:520px; right:-160px; top:-180px; border-radius:50%; background:radial-gradient(circle, rgba(122,27,54,0.16), rgba(122,27,54,0) 70%); animation:dvDrift 12s ease-in-out infinite; pointer-events:none; }
+    @keyframes dvDrift{ 50%{ transform:translate(-30px,28px); } }
+    .doravo-landing .product-frame{ transition:transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1); animation:dvFloat 7s ease-in-out infinite; }
+    .doravo-landing .product-frame:hover{ transform:translateY(-6px) rotate(-0.6deg); }
+    @keyframes dvFloat{ 50%{ transform:translateY(-8px); } }
+    .doravo-landing .pf-bar-fill{ animation:dvGrow 1.6s cubic-bezier(0.16,1,0.3,1) both; transform-origin:left; }
+    @keyframes dvGrow{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+    .doravo-landing .feature-card{ transition:background 0.3s cubic-bezier(0.16,1,0.3,1), transform 0.3s cubic-bezier(0.16,1,0.3,1); }
+    .doravo-landing .feature-card:hover{ transform:translateY(-3px); }
+    @media (prefers-reduced-motion: reduce){
+      .doravo-landing .hero::before, .doravo-landing .product-frame, .doravo-landing .pf-bar-fill, .doravo-landing .btn-wa.pulse{ animation:none; }
+    }
+
+    /* ---------- how it works ---------- */
+    .doravo-landing .how-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+    @media (max-width:800px){ .doravo-landing .how-grid{ grid-template-columns:1fr; } }
+    .doravo-landing .how-card{ background:var(--white); border:1px solid var(--line); border-radius:8px; padding:28px 24px; transition:transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s; }
+    .doravo-landing .how-card:hover{ transform:translateY(-3px); border-color:var(--maroon); }
+    .doravo-landing .how-num{ width:38px; height:38px; border-radius:50%; background:var(--maroon); color:var(--white); display:flex; align-items:center; justify-content:center; font-weight:700; margin-bottom:14px; }
+    .doravo-landing .how-card h4{ font-size:17px; margin-bottom:6px; }
+    .doravo-landing .how-card p{ font-size:14.5px; opacity:0.8; }
+
+    /* ---------- FAQ ---------- */
+    .doravo-landing .faq-list{ max-width:820px; margin:0 auto; }
+    .doravo-landing .faq-item{ border-bottom:1px solid var(--line); }
+    .doravo-landing .faq-q{ width:100%; display:flex; justify-content:space-between; align-items:center; gap:16px; padding:20px 0; background:none; border:none; cursor:pointer; text-align:left; font-family:'Fraunces', serif; font-size:18px; color:var(--maroon-ink); }
+    .doravo-landing .faq-q span{ font-family:'Manrope',sans-serif; font-size:22px; color:var(--maroon); transition:transform 0.25s; }
+    .doravo-landing .faq-item.open .faq-q span{ transform:rotate(45deg); }
+    .doravo-landing .faq-a{ overflow:hidden; max-height:0; transition:max-height 0.35s cubic-bezier(0.16,1,0.3,1); }
+    .doravo-landing .faq-item.open .faq-a{ max-height:300px; }
+    .doravo-landing .faq-a p{ padding:0 0 20px; font-size:15.5px; opacity:0.85; max-width:70ch; }
+
+    /* ---------- floating WhatsApp + chat assistant ---------- */
+    .doravo-landing .dv-wa-float{ position:fixed; left:18px; bottom:18px; z-index:60; width:56px; height:56px; border-radius:50%; background:#25D366; color:#06260F; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 26px rgba(37,211,102,0.5); transition:transform 0.25s; }
+    .doravo-landing .dv-wa-float:hover{ transform:scale(1.07); }
+    .doravo-landing .dv-wa-float svg{ width:28px; height:28px; }
+    .doravo-landing .dv-chat-fab{ position:fixed; right:18px; bottom:18px; z-index:60; width:56px; height:56px; border-radius:50%; border:none; cursor:pointer; background:var(--maroon); color:var(--white); font-size:28px; line-height:1; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 26px rgba(122,27,54,0.45); transition:transform 0.25s, background 0.25s; }
+    .doravo-landing .dv-chat-fab:hover{ background:var(--maroon-deep); transform:scale(1.07); }
+    .doravo-landing .dv-chat{ position:fixed; right:18px; bottom:86px; z-index:61; width:min(370px, calc(100vw - 36px)); height:min(520px, calc(100vh - 120px)); display:flex; flex-direction:column; background:var(--white); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 26px 60px -20px rgba(42,10,21,0.45); animation:dvChatIn 0.3s cubic-bezier(0.16,1,0.3,1); }
+    @keyframes dvChatIn{ from{ opacity:0; transform:translateY(12px) scale(0.98); } to{ opacity:1; transform:none; } }
+    .doravo-landing .dv-chat-head{ display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:var(--maroon); color:var(--white); font-family:'Fraunces',serif; }
+    .doravo-landing .dv-chat-head button{ background:none; border:none; color:var(--white); font-size:24px; cursor:pointer; line-height:1; }
+    .doravo-landing .dv-chat-body{ flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; background:var(--paper); }
+    .doravo-landing .dv-msg{ max-width:86%; padding:10px 13px; border-radius:10px; font-size:14px; line-height:1.5; }
+    .doravo-landing .dv-msg.bot{ background:var(--white); border:1px solid var(--line); align-self:flex-start; }
+    .doravo-landing .dv-msg.me{ background:var(--maroon); color:var(--white); align-self:flex-end; }
+    .doravo-landing .dv-chips{ display:flex; flex-wrap:wrap; gap:8px; }
+    .doravo-landing .dv-chips button{ background:var(--white); border:1px solid var(--maroon); color:var(--maroon); border-radius:999px; padding:6px 12px; font-size:12.5px; font-weight:600; cursor:pointer; transition:background 0.2s, color 0.2s; }
+    .doravo-landing .dv-chips button:hover{ background:var(--maroon); color:var(--white); }
+    .doravo-landing .dv-chat-wa{ display:flex; align-items:center; justify-content:center; gap:8px; padding:11px; background:#25D366; color:#06260F; font-weight:700; font-size:13.5px; text-decoration:none; }
+    .doravo-landing .dv-chat-input{ display:flex; gap:8px; padding:10px; border-top:1px solid var(--line); background:var(--white); }
+    .doravo-landing .dv-chat-input input{ flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font:inherit; font-size:14px; background:var(--white); color:var(--ink); }
+    .doravo-landing .dv-chat-input button{ padding:0 16px; border:none; border-radius:6px; background:var(--maroon); color:var(--white); font-weight:600; cursor:pointer; }
+    @media (max-width:560px){ .doravo-landing .dv-chat{ right:10px; bottom:80px; width:calc(100vw - 20px); } }
   `;
   document.head.appendChild(el);
 };
@@ -328,9 +400,9 @@ const injectLandingStyles = () => {
      registered domain — replace with the actual support/sales
      address once Doravo's official domain is finalized.
 --------------------------------------------------------- */
-const SITE_URL =
-  typeof window !== "undefined" ? window.location.origin : ""; // TODO: replace with e.g. "https://www.doravo.com" before launch
-const CONTACT_EMAIL = "hello@doravo.core"; // TODO: replace with a real, registered domain before launch
+const SITE_URL = SITE.url; // canonical production domain (see src/config/site.js)
+const CONTACT_EMAIL = SITE.email;
+const WA_URL = waLink();
 
 /* ---------------------------------------------------------
    SIGN IN DESTINATION
@@ -383,9 +455,46 @@ const SignInLink = ({ className, onClick, children }) => {
    JSON-LD structured data. Only known, real values are used —
    no ratings, review counts or user totals are fabricated.
 --------------------------------------------------------- */
-const PAGE_TITLE = "Doravo Core | School Management & Education Management Platform";
+const PAGE_TITLE = "Doravo Core | School Management & E-Exams Platform by Doravo";
 const PAGE_DESCRIPTION =
-  "Doravo Core is an education management platform helping institutions manage students, staff, assessments, attendance and everyday school operations.";
+  "Doravo Core by Doravo is a school management platform for students, staff, online assessments and e-exams, attendance, fees and everyday school operations. Request a demo on WhatsApp.";
+
+/* FAQ — used for the on-page accordion. The same questions and answers
+   are also in index.html's FAQPage structured data so search engines and
+   AI answer engines can read them without running JavaScript. Keep the
+   two in sync when editing. */
+const FAQS = [
+  {
+    q: "What is Doravo Core?",
+    a: "Doravo Core is an education management platform by Doravo. It brings student and staff management, assessments and e-exams, attendance, fees, communication and everyday school operations into one platform.",
+  },
+  {
+    q: "How do I request a demo of Doravo Core?",
+    a: `Message Doravo on WhatsApp at ${SITE.whatsappDisplay} or email ${SITE.email}. We'll arrange a walkthrough for your school.`,
+  },
+  {
+    q: "Can Doravo Core run online exams?",
+    a: "Yes. You can create, sit and mark assessments online, including timed e-exams on dedicated exam devices, with results tied back to each student's record.",
+  },
+  {
+    q: "Does Doravo Core handle school fees?",
+    a: "Yes. Billing, payments and balances are tracked against your school's own fee structure and terms. Invoices can be downloaded and receipts are issued once a payment is confirmed.",
+  },
+  {
+    q: "Can each school keep its own branding?",
+    a: "Yes. Your logo, colours and report cards appear across your login screen, portals and printed documents. School groups get a dedicated workspace per campus.",
+  },
+  {
+    q: "Who makes Doravo Core?",
+    a: "Doravo Core is built and operated by Doravo.",
+  },
+];
+
+const HOW_STEPS = [
+  { n: "1", title: "Message us on WhatsApp", copy: "Tell us a little about your school and what you'd like to manage." },
+  { n: "2", title: "See a live demo", copy: "We walk you through assessments, attendance, fees and the portals your team will use." },
+  { n: "3", title: "Go live with your own branding", copy: "We set up your school with your logo and colours and help your staff get started." },
+];
 
 const setMetaTag = (attr, key, content) => {
   let tag = document.querySelector(`meta[${attr}="${key}"]`);
@@ -434,21 +543,41 @@ const injectSEO = () => {
         {
           "@type": "Organization",
           name: "Doravo",
+          alternateName: ["Doravo Core", "DoravoCore"],
           slogan: "Moving Education Forward",
           url: SITE_URL,
           logo: `${SITE_URL}/assets/doravo-core-lockup.png`,
+          email: SITE.email,
+          telephone: `+${SITE.whatsapp}`,
+          contactPoint: {
+            "@type": "ContactPoint",
+            contactType: "sales",
+            telephone: `+${SITE.whatsapp}`,
+            email: SITE.email,
+            availableLanguage: ["English", "Swahili"],
+          },
         },
         {
           "@type": "SoftwareApplication",
           name: "Doravo Core",
+          alternateName: "DoravoCore",
           applicationCategory: "EducationApplication",
           operatingSystem: "Web",
           description: PAGE_DESCRIPTION,
+          url: SITE_URL,
         },
         {
           "@type": "WebSite",
           name: "Doravo Core",
           url: SITE_URL,
+        },
+        {
+          "@type": "FAQPage",
+          mainEntity: FAQS.map((f) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
         },
       ],
     });
@@ -607,6 +736,7 @@ const CheckIcon = () => (
 export default function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(TABS[0].id);
+  const [openFaq, setOpenFaq] = useState(0);
 
   useEffect(() => {
     injectLandingStyles();
@@ -620,6 +750,8 @@ export default function Landing() {
   const rolesRef = useReveal();
   const institutionRef = useReveal();
   const whyRef = useReveal();
+  const howRef = useReveal();
+  const faqRef = useReveal();
 
   const activeTabData = TABS.find((t) => t.id === activeTab) || TABS[0];
 
@@ -647,7 +779,9 @@ export default function Landing() {
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </SignInLink>
-            <a className="navcta" href="#contact">Request a Demo</a>
+            <a className="navcta wa" href={WA_URL} target="_blank" rel="noopener noreferrer">
+              <WaIcon /> Request a Demo
+            </a>
             <button
               className="hamburger"
               aria-label={mobileOpen ? "Close menu" : "Open menu"}
@@ -668,7 +802,9 @@ export default function Landing() {
           <a href="#contact" onClick={closeMobile}>Contact</a>
           <div className="mobile-ctas">
             <SignInLink className="btn-ghost" onClick={closeMobile}>Sign In</SignInLink>
-            <a className="btn-primary" href="#contact" onClick={closeMobile}>Request a Demo</a>
+            <a className="btn-wa" href={WA_URL} target="_blank" rel="noopener noreferrer" onClick={closeMobile}>
+              <WaIcon /> Request a Demo
+            </a>
           </div>
         </nav>
       </header>
@@ -693,9 +829,14 @@ export default function Landing() {
                 for a single school today, and ready for more campuses whenever you need them.
               </p>
               <div className="hero-ctas">
-                <a className="btn-primary" href="#contact">Request a Demo</a>
+                <a className="btn-wa pulse" href={WA_URL} target="_blank" rel="noopener noreferrer">
+                  <WaIcon /> Request a Demo on WhatsApp
+                </a>
                 <a className="btn-ghost" href="#platform">Explore the Platform</a>
               </div>
+              <p className="hero-contact">
+                Or email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+              </p>
               <p className="hero-note">Built around the everyday work of running a modern school.</p>
             </div>
             {/* TODO (audit P0): replace this illustrative mockup with a real
@@ -927,6 +1068,55 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* HOW IT WORKS */}
+        <section id="how-it-works">
+          <div className="wrap">
+            <div className="sec-head reveal" ref={howRef}>
+              <h2>From first message to live school.</h2>
+              <p>Getting started with Doravo Core takes three simple steps.</p>
+            </div>
+            <div className="how-grid">
+              {HOW_STEPS.map((s) => (
+                <div className="how-card" key={s.n}>
+                  <div className="how-num">{s.n}</div>
+                  <h4>{s.title}</h4>
+                  <p>{s.copy}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <hr className="divider" />
+
+        {/* FAQ — mirrored in index.html's FAQPage structured data */}
+        <section id="faq">
+          <div className="wrap">
+            <div className="sec-head reveal" ref={faqRef}>
+              <h2>Frequently asked questions.</h2>
+              <p>Quick answers about Doravo Core.</p>
+            </div>
+            <div className="faq-list">
+              {FAQS.map((f, i) => (
+                <div className={`faq-item ${openFaq === i ? "open" : ""}`} key={f.q}>
+                  <button
+                    type="button"
+                    className="faq-q"
+                    aria-expanded={openFaq === i}
+                    onClick={() => setOpenFaq(openFaq === i ? -1 : i)}
+                  >
+                    {f.q}
+                    <span aria-hidden="true">+</span>
+                  </button>
+                  <div className="faq-a" role="region">
+                    <p>{f.a}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* CTA */}
         <section id="contact">
           <div className="wrap">
@@ -936,9 +1126,13 @@ export default function Landing() {
                 <p>See how Doravo Core can bring your school's academic and administrative operations together.</p>
               </div>
               <div className="cta-buttons">
-                <a className="btn-primary" href={`mailto:${CONTACT_EMAIL}`}>Request a Demo</a>
-                <a className="btn-ghost" href={`mailto:${CONTACT_EMAIL}`}>Contact Doravo</a>
+                <a className="btn-wa pulse" href={WA_URL} target="_blank" rel="noopener noreferrer">
+                  <WaIcon /> Request a Demo on WhatsApp
+                </a>
               </div>
+              <p className="cta-alt">
+                Prefer email? <a href={`mailto:${CONTACT_EMAIL}?subject=Doravo%20Core%20demo%20request`}>{CONTACT_EMAIL}</a>
+              </p>
             </div>
           </div>
         </section>
@@ -961,7 +1155,10 @@ export default function Landing() {
               <div className="foot-col">
                 <h5>Company</h5>
                 <a href="#about">About</a>
+                <a href="#faq">FAQ</a>
                 <a href="#contact">Contact</a>
+                <a href={WA_URL} target="_blank" rel="noopener noreferrer">WhatsApp {SITE.whatsappDisplay}</a>
+                <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
               </div>
               <div className="foot-col">
                 <h5>Account</h5>
@@ -975,6 +1172,17 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+
+      <a
+        className="dv-wa-float"
+        href={WA_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Request a demo on WhatsApp"
+      >
+        <WaIcon />
+      </a>
+      <ChatAssistant />
     </div>
   );
 }
