@@ -731,6 +731,101 @@ const injectLandingStyles = () => {
     .doravo-landing .cta-band{ background:linear-gradient(120deg, #7A1B36 0%, #4A0E22 100%); box-shadow:0 30px 60px -36px rgba(74,14,34,0.6); }
     .doravo-landing .cta-band p{ color:#F3EAEE; opacity:1; }
     .doravo-landing .cta-band .cta-alt{ color:#F3EAEE; }
+
+    /* =========================================================
+       HEADER: left menu button, high-visibility Sign In, side drawer
+    ========================================================= */
+    .doravo-landing .nav{ gap:16px; }
+    .doravo-landing .nav-left{ display:flex; align-items:center; gap:14px; min-width:0; }
+    .doravo-landing .menu-btn{
+      display:inline-flex; align-items:center; gap:9px; height:46px; padding:0 16px;
+      background:#FFFFFF; color:var(--maroon-ink); font-size:15.5px; font-weight:700;
+      border:1.5px solid rgba(22,26,38,0.3); border-radius:8px; cursor:pointer;
+      transition:border-color 0.2s, color 0.2s, background 0.2s;
+    }
+    .doravo-landing .menu-btn svg{ width:22px; height:22px; flex:none; }
+    .doravo-landing .menu-btn:hover{ border-color:var(--maroon); color:var(--maroon); background:#FBF6F8; }
+
+    /* Sign In: solid brand button, large target, strong contrast (white on #7A1B36 is about 9:1) */
+    .doravo-landing .navlogin{
+      display:inline-flex; align-items:center; justify-content:center; gap:9px;
+      min-height:46px; padding:10px 24px;
+      background:var(--maroon); color:#FFFFFF;
+      border:2px solid var(--maroon); border-radius:8px;
+      font-size:16px; font-weight:700; letter-spacing:0.01em; white-space:nowrap;
+      box-shadow:0 8px 18px -10px rgba(122,27,54,0.7);
+      animation:none;
+      transition:background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+    }
+    .doravo-landing .navlogin svg{ width:19px; height:19px; flex:none; transform:none; }
+    .doravo-landing .navlogin .label-full{ display:inline !important; }
+    .doravo-landing .navlogin:hover{
+      background:var(--maroon-deep); border-color:var(--maroon-deep); color:#FFFFFF;
+      transform:translateY(-1px); box-shadow:0 10px 20px -10px rgba(74,14,34,0.8);
+    }
+    .doravo-landing .navlogin:hover svg{ transform:none; }
+    .doravo-landing .navlogin:focus-visible,
+    .doravo-landing .menu-btn:focus-visible{ outline:3px solid #1E2433; outline-offset:3px; }
+    .doravo-landing .navcta.wa{ min-height:46px; align-items:center; border-radius:8px; font-size:15px; }
+
+    @media (max-width:1100px){ .doravo-landing .navlinks{ display:none; } }
+    @media (max-width:560px){
+      .doravo-landing .menu-label{ display:none; }
+      .doravo-landing .menu-btn{ width:46px; padding:0; justify-content:center; }
+      .doravo-landing .navcta.wa{ display:none; }
+      .doravo-landing .nav{ gap:10px; }
+      .doravo-landing .nav-left{ gap:10px; }
+      .doravo-landing .navlogin{ padding:10px 18px; }
+    }
+
+    /* side drawer */
+    .doravo-landing .dv-overlay{
+      position:fixed; inset:0; z-index:70; background:rgba(15,18,30,0.55);
+      opacity:0; visibility:hidden; transition:opacity 0.25s, visibility 0s 0.25s;
+    }
+    .doravo-landing .dv-overlay.open{ opacity:1; visibility:visible; transition:opacity 0.25s; }
+    .doravo-landing .dv-drawer{
+      position:fixed; top:0; left:0; bottom:0; z-index:71; width:min(400px, 90vw);
+      display:flex; flex-direction:column; background:#FFFFFF;
+      border-top:3px solid var(--maroon);
+      box-shadow:24px 0 60px -20px rgba(15,18,30,0.45);
+      transform:translateX(-100%); visibility:hidden;
+      transition:transform 0.3s cubic-bezier(0.16,1,0.3,1), visibility 0s 0.3s;
+    }
+    .doravo-landing .dv-drawer.open{ transform:none; visibility:visible; transition:transform 0.3s cubic-bezier(0.16,1,0.3,1); }
+    .doravo-landing .dv-drawer-head{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--line); }
+    .doravo-landing .dv-drawer-head .brand span{ display:inline; }
+    .doravo-landing .dv-drawer-close{
+      width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center;
+      background:#FFFFFF; color:var(--maroon-ink); border:1.5px solid rgba(22,26,38,0.3); border-radius:8px; cursor:pointer;
+    }
+    .doravo-landing .dv-drawer-close svg{ width:22px; height:22px; }
+    .doravo-landing .dv-drawer-close:hover{ border-color:var(--maroon); color:var(--maroon); }
+    .doravo-landing .dv-drawer-body{ flex:1; overflow-y:auto; padding:8px 20px 20px; }
+    .doravo-landing .dv-drawer-group{ padding-top:18px; }
+    .doravo-landing .dv-drawer-title{
+      font-family:'Manrope',sans-serif; font-size:12.5px; font-weight:700; letter-spacing:0.1em;
+      text-transform:uppercase; color:var(--muted); margin:0 0 6px;
+    }
+    .doravo-landing .dv-drawer-group a{
+      display:flex; align-items:center; justify-content:space-between; padding:13px 4px;
+      font-size:17.5px; font-weight:600; color:var(--maroon-ink); text-decoration:none;
+      border-bottom:1px solid var(--line);
+    }
+    .doravo-landing .dv-drawer-group a::after{ content:"\\203A"; color:var(--maroon); font-size:22px; line-height:1; }
+    .doravo-landing .dv-drawer-group a:hover{ color:var(--maroon); background:var(--paper); }
+    .doravo-landing .dv-drawer-foot{ padding:18px 20px 22px; border-top:1px solid var(--line); background:var(--paper); display:flex; flex-direction:column; gap:12px; }
+    .doravo-landing .dv-drawer-signin{
+      display:flex; align-items:center; justify-content:center; min-height:50px;
+      background:var(--maroon); color:#FFFFFF; font-size:17px; font-weight:700;
+      border-radius:8px; text-decoration:none; border:2px solid var(--maroon);
+    }
+    .doravo-landing .dv-drawer-signin:hover{ background:var(--maroon-deep); border-color:var(--maroon-deep); }
+    .doravo-landing .dv-drawer-demo{ justify-content:center; width:100%; border-radius:8px; }
+    .doravo-landing .dv-drawer-mail{ text-align:center; font-size:14.5px; color:var(--muted); text-decoration:underline; }
+    @media (prefers-reduced-motion: reduce){
+      .doravo-landing .dv-overlay, .doravo-landing .dv-drawer{ transition:none !important; }
+    }
   `;
   document.head.appendChild(el);
 };
@@ -1114,8 +1209,39 @@ const ROLES = [
   { tag: "Students", copy: "Sit assessments, see results and reach everyday school services from a single portal." },
 ];
 
+const MENU_GROUPS = [
+  {
+    title: "Platform",
+    links: [
+      ["Why Doravo Core", "#platform"],
+      ["Features", "#features"],
+      ["E-assessments", "#e-assessments"],
+      ["Solutions", "#solutions"],
+    ],
+  },
+  {
+    title: "For your school",
+    links: [
+      ["Who it's for", "#roles"],
+      ["Your own space", "#about"],
+      ["Security & control", "#trust"],
+    ],
+  },
+  {
+    title: "Get started",
+    links: [
+      ["How it works", "#how-it-works"],
+      ["FAQ", "#faq"],
+      ["Contact", "#contact"],
+    ],
+  },
+];
+
 export default function Landing() {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef(null);
+  const closeBtnRef = useRef(null);
+  const drawerRef = useRef(null);
   const [activeTab, setActiveTab] = useState(TABS[0].id);
   const [openFaq, setOpenFaq] = useState(0);
   const [spotView, setSpotView] = useState("exam");
@@ -1171,17 +1297,66 @@ export default function Landing() {
 
   const activeTabData = TABS.find((t) => t.id === activeTab) || TABS[0];
 
-  const closeMobile = () => setMobileOpen(false);
+  const closeMenu = () => setMenuOpen(false);
+  const closeMenuAndRefocus = () => {
+    setMenuOpen(false);
+    menuBtnRef.current?.focus();
+  };
+
+  // Side menu: lock page scroll, move focus in, trap Tab, close on Escape.
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusTimer = setTimeout(() => closeBtnRef.current?.focus(), 50);
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        menuBtnRef.current?.focus();
+        return;
+      }
+      if (e.key === "Tab" && drawerRef.current) {
+        const f = drawerRef.current.querySelectorAll("a[href], button:not([disabled])");
+        if (!f.length) return;
+        const first = f[0];
+        const last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      clearTimeout(focusTimer);
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   return (
     <div className="doravo-landing">
       <header>
         <div className="wrap nav">
-          <a className="brand" href="#top">
-            <img src="/assets/doravo-icon.png" alt="Doravo mark" />
-            <span>Doravo Core</span>
-          </a>
-          <nav className="navlinks">
+          <div className="nav-left">
+            <button
+              ref={menuBtnRef}
+              type="button"
+              className="menu-btn"
+              aria-label="Open menu"
+              aria-expanded={menuOpen}
+              aria-controls="site-menu"
+              onClick={() => setMenuOpen(true)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+              <span className="menu-label">Menu</span>
+            </button>
+            <a className="brand" href="#top">
+              <img src="/assets/doravo-icon.png" alt="Doravo mark" />
+              <span>Doravo Core</span>
+            </a>
+          </div>
+          <nav className="navlinks" aria-label="Primary">
             <a href="#features">Features</a>
             <a href="#solutions">Solutions</a>
             <a href="#how-it-works">How it works</a>
@@ -1190,40 +1365,60 @@ export default function Landing() {
           </nav>
           <div className="nav-right">
             <SignInLink className="navlogin">
-              <span className="label-full">Sign In</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 12h14M13 6l6 6-6 6" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M5 20c0-3.9 3.1-6 7-6s7 2.1 7 6" />
               </svg>
+              <span className="label-full">Sign In</span>
             </SignInLink>
             <a className="navcta wa" href={WA_URL} target="_blank" rel="noopener noreferrer">
               <WaIcon /> Request a Demo
             </a>
-            <button
-              className="hamburger"
-              aria-label={mobileOpen ? "Close menu" : "Open menu"}
-              aria-expanded={mobileOpen}
-              onClick={() => setMobileOpen((o) => !o)}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                {mobileOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
-              </svg>
-            </button>
           </div>
         </div>
-        <nav className={`mobile-menu wrap ${mobileOpen ? "open" : ""}`}>
-          <a href="#features" onClick={closeMobile}>Features</a>
-          <a href="#solutions" onClick={closeMobile}>Solutions</a>
-          <a href="#how-it-works" onClick={closeMobile}>How it works</a>
-          <a href="#about" onClick={closeMobile}>About</a>
-          <a href="#contact" onClick={closeMobile}>Contact</a>
-          <div className="mobile-ctas">
-            <SignInLink className="btn-ghost" onClick={closeMobile}>Sign In</SignInLink>
-            <a className="btn-wa" href={WA_URL} target="_blank" rel="noopener noreferrer" onClick={closeMobile}>
-              <WaIcon /> Request a Demo
-            </a>
-          </div>
-        </nav>
       </header>
+
+      {/* SIDE MENU — rendered outside <header> because the header's backdrop-filter
+          would otherwise become the containing block for this fixed panel. */}
+      <div className={`dv-overlay ${menuOpen ? "open" : ""}`} onClick={closeMenuAndRefocus} aria-hidden="true" />
+      <aside
+        id="site-menu"
+        ref={drawerRef}
+        className={`dv-drawer ${menuOpen ? "open" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Site menu"
+        aria-hidden={!menuOpen}
+      >
+        <div className="dv-drawer-head">
+          <a className="brand" href="#top" onClick={closeMenu}>
+            <img src="/assets/doravo-icon.png" alt="" />
+            <span>Doravo Core</span>
+          </a>
+          <button ref={closeBtnRef} type="button" className="dv-drawer-close" aria-label="Close menu" onClick={closeMenuAndRefocus}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+        <nav className="dv-drawer-body" aria-label="Site menu">
+          {MENU_GROUPS.map((g) => (
+            <div className="dv-drawer-group" key={g.title}>
+              <h2 className="dv-drawer-title">{g.title}</h2>
+              {g.links.map(([label, href]) => (
+                <a key={href} href={href} onClick={closeMenu}>{label}</a>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="dv-drawer-foot">
+          <SignInLink className="dv-drawer-signin" onClick={closeMenu}>Sign In</SignInLink>
+          <a className="btn-wa dv-drawer-demo" href={WA_URL} target="_blank" rel="noopener noreferrer" onClick={closeMenu}>
+            <WaIcon /> Request a Demo
+          </a>
+          <a className="dv-drawer-mail" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        </div>
+      </aside>
 
       <main id="top">
         {/* HERO
@@ -1404,7 +1599,7 @@ export default function Landing() {
         </section>
 
         {/* ROLE-BASED VALUE */}
-        <section>
+        <section id="roles">
           <div className="wrap">
             <div className="sec-head reveal" ref={rolesRef}>
               <h2>Built for everyone at your school.</h2>
