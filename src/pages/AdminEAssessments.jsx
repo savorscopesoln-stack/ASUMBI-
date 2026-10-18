@@ -1050,12 +1050,14 @@ export default function AdminEAssessments() {
 
   const deleteAssessments = async (ids = []) => {
     if (!ids.length) { showToast("Select at least one assessment", "error"); return; }
-    if (!window.confirm(`Delete ${ids.length} assessment(s)? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete ${ids.length} assessment(s)? This also removes their questions, student answers and marks, and cannot be undone. A paper scheduled in a Main Examination can only be deleted after its results are published.`)) return;
     try {
       setSaving(true);
-      await API.delete("/e-assessments/admin/delete-assessments", { data: { ids } });
+      const res = await API.delete("/e-assessments/admin/delete-assessments", { data: { ids } });
       setSelAssessments([]);
-      showToast(`${ids.length} assessment(s) deleted`);
+      // The server says exactly what was deleted, what was refused (and why), and how many
+      // Main Examination slots lost their paper.
+      showToast(res.data?.message || `${ids.length} assessment(s) deleted`, res.data?.failed?.length ? "error" : undefined);
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Delete failed", "error");
