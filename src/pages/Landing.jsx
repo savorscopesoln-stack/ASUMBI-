@@ -312,45 +312,23 @@ const injectLandingStyles = () => {
     /* ---------- WhatsApp buttons (primary demo action) ---------- */
     .doravo-landing .btn-wa{ display:inline-flex; align-items:center; gap:9px; background:#25D366; color:#06260F; border:1px solid #25D366; text-decoration:none; padding:13px 24px; border-radius:3px; font-weight:700; font-size:15px; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s cubic-bezier(0.16,1,0.3,1), background 0.25s; box-shadow:0 10px 26px -12px rgba(37,211,102,0.7); }
     .doravo-landing .btn-wa:hover{ background:#1fbd5a; border-color:#1fbd5a; transform:translateY(-2px); }
-<<<<<<< HEAD
     .doravo-landing .btn-wa.pulse{ animation:dvPulse 2.6s 3 1.2s; }
-=======
-    .doravo-landing .btn-wa.pulse{ animation:dvPulse 2.6s infinite; }
->>>>>>> e4c18da28bfb2fd7fa63621cc12a9fc611ebda86
     .doravo-landing .navcta.wa{ display:inline-flex; align-items:center; gap:7px; background:#25D366; color:#06260F; }
     .doravo-landing .navcta.wa:hover{ background:#1fbd5a; }
     @keyframes dvPulse{ 0%{ box-shadow:0 0 0 0 rgba(37,211,102,0.5); } 70%{ box-shadow:0 0 0 16px rgba(37,211,102,0); } 100%{ box-shadow:0 0 0 0 rgba(37,211,102,0); } }
     .doravo-landing .cta-band .btn-wa{ background:#25D366; color:#06260F; border-color:#25D366; }
-<<<<<<< HEAD
     .doravo-landing .cta-band .cta-alt{ margin-top:0; font-size:13.5px; color:var(--paper); opacity:0.85; flex-basis:100%; max-width:none; }
-=======
-    .doravo-landing .cta-band .cta-alt{ margin-top:12px; font-size:13.5px; color:var(--paper); opacity:0.85; width:100%; }
->>>>>>> e4c18da28bfb2fd7fa63621cc12a9fc611ebda86
     .doravo-landing .cta-band .cta-alt a{ color:var(--white); }
     .doravo-landing .hero-contact{ margin-top:16px; font-size:13.5px; opacity:0.7; }
     .doravo-landing .hero-contact a{ color:var(--maroon); font-weight:600; }
 
     /* ---------- hero motion ---------- */
     .doravo-landing .hero{ position:relative; overflow:hidden; }
-<<<<<<< HEAD
     .doravo-landing .product-frame{ transition:transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);  }
     .doravo-landing .feature-card{ transition:background 0.3s cubic-bezier(0.16,1,0.3,1), transform 0.3s cubic-bezier(0.16,1,0.3,1); }
     .doravo-landing .feature-card:hover{ transform:translateY(-3px); }
     @media (prefers-reduced-motion: reduce){
       .doravo-landing .btn-wa.pulse{ animation:none; }
-=======
-    .doravo-landing .hero::before{ content:""; position:absolute; width:520px; height:520px; right:-160px; top:-180px; border-radius:50%; background:radial-gradient(circle, rgba(122,27,54,0.16), rgba(122,27,54,0) 70%); animation:dvDrift 12s ease-in-out infinite; pointer-events:none; }
-    @keyframes dvDrift{ 50%{ transform:translate(-30px,28px); } }
-    .doravo-landing .product-frame{ transition:transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1); animation:dvFloat 7s ease-in-out infinite; }
-    .doravo-landing .product-frame:hover{ transform:translateY(-6px) rotate(-0.6deg); }
-    @keyframes dvFloat{ 50%{ transform:translateY(-8px); } }
-    .doravo-landing .pf-bar-fill{ animation:dvGrow 1.6s cubic-bezier(0.16,1,0.3,1) both; transform-origin:left; }
-    @keyframes dvGrow{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
-    .doravo-landing .feature-card{ transition:background 0.3s cubic-bezier(0.16,1,0.3,1), transform 0.3s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .feature-card:hover{ transform:translateY(-3px); }
-    @media (prefers-reduced-motion: reduce){
-      .doravo-landing .hero::before, .doravo-landing .product-frame, .doravo-landing .pf-bar-fill, .doravo-landing .btn-wa.pulse{ animation:none; }
->>>>>>> e4c18da28bfb2fd7fa63621cc12a9fc611ebda86
     }
 
     /* ---------- how it works ---------- */
@@ -394,7 +372,6 @@ const injectLandingStyles = () => {
     .doravo-landing .dv-chat-input input{ flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font:inherit; font-size:14px; background:var(--white); color:var(--ink); }
     .doravo-landing .dv-chat-input button{ padding:0 16px; border:none; border-radius:6px; background:var(--maroon); color:var(--white); font-weight:600; cursor:pointer; }
     @media (max-width:560px){ .doravo-landing .dv-chat{ right:10px; bottom:80px; width:calc(100vw - 20px); } }
-<<<<<<< HEAD
 
     /* ---------- polish: white + maroon + gold, subtle motion ---------- */
     .doravo-landing .eyebrow{ color:var(--brass); text-transform:uppercase; letter-spacing:0.12em; font-size:12px; display:flex; align-items:center; gap:10px; }
@@ -455,8 +432,6 @@ const injectLandingStyles = () => {
     .doravo-landing .how-card:hover .how-num{ background:var(--brass); color:var(--white); }
     .doravo-landing .how-card{ border-radius:6px; }
     .doravo-landing .why-item svg{ color:var(--brass); }
-=======
->>>>>>> e4c18da28bfb2fd7fa63621cc12a9fc611ebda86
   `;
   document.head.appendChild(el);
 };
@@ -840,17 +815,12 @@ const ROLES = [
   { tag: "Students", copy: "Sit assessments, see results and reach everyday school services from a single portal." },
 ];
 
-
-
 export default function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(TABS[0].id);
   const [openFaq, setOpenFaq] = useState(0);
-<<<<<<< HEAD
   const [spotView, setSpotView] = useState("exam");
   const [autoTabs, setAutoTabs] = useState(true);
-=======
->>>>>>> e4c18da28bfb2fd7fa63621cc12a9fc611ebda86
 
   useEffect(() => {
     injectLandingStyles();
@@ -863,7 +833,6 @@ export default function Landing() {
   const tabsRef = useReveal();
   const rolesRef = useReveal();
   const institutionRef = useReveal();
-<<<<<<< HEAD
   const howRef = useReveal();
   const spotRef = useReveal();
   const trustRef = useReveal();
@@ -900,11 +869,6 @@ export default function Landing() {
     }, 8000);
     return () => clearTimeout(t);
   }, [autoTabs, activeTab]);
-=======
-  const whyRef = useReveal();
-  const howRef = useReveal();
-  const faqRef = useReveal();
->>>>>>> e4c18da28bfb2fd7fa63621cc12a9fc611ebda86
 
   const activeTabData = TABS.find((t) => t.id === activeTab) || TABS[0];
 
@@ -1218,55 +1182,6 @@ export default function Landing() {
         </section>
 
         <hr className="divider" />
-
-        {/* HOW IT WORKS */}
-        <section id="how-it-works">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={howRef}>
-              <h2>From first message to live school.</h2>
-              <p>Getting started with Doravo Core takes three simple steps.</p>
-            </div>
-            <div className="how-grid">
-              {HOW_STEPS.map((s) => (
-                <div className="how-card" key={s.n}>
-                  <div className="how-num">{s.n}</div>
-                  <h4>{s.title}</h4>
-                  <p>{s.copy}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <hr className="divider" />
-
-        {/* FAQ — mirrored in index.html's FAQPage structured data */}
-        <section id="faq">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={faqRef}>
-              <h2>Frequently asked questions.</h2>
-              <p>Quick answers about Doravo Core.</p>
-            </div>
-            <div className="faq-list">
-              {FAQS.map((f, i) => (
-                <div className={`faq-item ${openFaq === i ? "open" : ""}`} key={f.q}>
-                  <button
-                    type="button"
-                    className="faq-q"
-                    aria-expanded={openFaq === i}
-                    onClick={() => setOpenFaq(openFaq === i ? -1 : i)}
-                  >
-                    {f.q}
-                    <span aria-hidden="true">+</span>
-                  </button>
-                  <div className="faq-a" role="region">
-                    <p>{f.a}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
 
         {/* HOW IT WORKS */}
         <section id="how-it-works">
