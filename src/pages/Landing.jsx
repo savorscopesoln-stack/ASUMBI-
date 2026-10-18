@@ -433,64 +433,109 @@ const injectLandingStyles = () => {
     .doravo-landing .how-card{ border-radius:6px; }
     .doravo-landing .why-item svg{ color:var(--brass); }
 
-    /* ---------- bigger type (all screens) ---------- */
-    .doravo-landing{ font-size:17px; line-height:1.65; }
-    .doravo-landing .brand span{ font-size:21px; }
-    .doravo-landing .brand img{ height:36px; }
-    .doravo-landing .navlinks{ gap:34px; }
-    .doravo-landing .navlinks a{ font-size:16px; }
-    .doravo-landing .navcta{ font-size:15px; padding:11px 22px; }
-    .doravo-landing .navlogin{ font-size:15.5px; padding:10px 22px; }
-    .doravo-landing .mobile-menu a{ font-size:17px; }
-    .doravo-landing .eyebrow{ font-size:13.5px; }
-    .doravo-landing .hero h1{ font-size:clamp(36px, 4.6vw, 58px); max-width:18ch; line-height:1.08; }
-    .doravo-landing .hero .lede{ font-size:19px; max-width:52ch; }
-    .doravo-landing .btn-primary, .doravo-landing .btn-ghost, .doravo-landing .btn-wa{ font-size:16.5px; padding:15px 28px; }
-    .doravo-landing .hero-contact, .doravo-landing .hero-note{ font-size:15px; }
-    .doravo-landing .trust-bar .trust-label{ font-size:15px; }
-    .doravo-landing .trust-items span{ font-size:16px; }
-    .doravo-landing .sec-head{ max-width:720px; }
-    .doravo-landing .sec-head h2{ font-size:clamp(30px, 3.3vw, 42px); line-height:1.15; }
-    .doravo-landing .sec-head p{ font-size:18px; }
-    .doravo-landing .ps-card h3{ font-size:14px; }
-    .doravo-landing .ps-card p{ font-size:17.5px; }
-    .doravo-landing .feature-card{ padding:30px 26px; }
-    .doravo-landing .feature-card h4{ font-size:19px; }
-    .doravo-landing .feature-card p{ font-size:15.5px; }
-    .doravo-landing .feature-card .fprob{ font-size:13.5px; }
-    .doravo-landing .feature-card .fi{ width:40px; height:40px; }
-    .doravo-landing .feature-card svg{ width:20px; height:20px; }
-    .doravo-landing .tab-btn{ font-size:15.5px; padding:10px 20px; }
-    .doravo-landing .tab-copy h3{ font-size:28px; }
-    .doravo-landing .tab-copy p{ font-size:17.5px; }
-    .doravo-landing .tab-copy li{ font-size:16.5px; }
-    .doravo-landing .role-card{ padding:28px 24px; }
+    /* ---------- responsive layout + more readable typography ---------- */
+    .doravo-landing{ font-size:17px; }
+    .doravo-landing .wrap{ width:100%; max-width:1480px; padding-left:clamp(24px,4.2vw,76px); padding-right:clamp(24px,4.2vw,76px); }
+    .doravo-landing section{ padding-top:clamp(76px,6vw,100px); padding-bottom:clamp(76px,6vw,100px); }
+    .doravo-landing .hero{ padding-top:clamp(76px,7vw,112px); padding-bottom:clamp(68px,6vw,96px); }
+    .doravo-landing .hero-grid{ grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr); gap:clamp(44px,5vw,88px); }
+    .doravo-landing .hero h1{ font-size:clamp(44px,4.1vw,68px); line-height:1.08; max-width:17ch; }
+    .doravo-landing .hero .lede{ font-size:clamp(18px,1.25vw,21px); line-height:1.75; max-width:52ch; }
+    .doravo-landing .eyebrow{ font-size:14px; }
+    .doravo-landing .hero-note,.doravo-landing .hero-contact{ font-size:15px; }
+    .doravo-landing .btn-primary,.doravo-landing .btn-ghost,.doravo-landing .btn-wa{ font-size:16px; padding:15px 25px; }
+    .doravo-landing .navlinks{ gap:clamp(18px,2vw,32px); }
+    .doravo-landing .navlinks a,.doravo-landing .navlogin{ font-size:15.5px; }
+    .doravo-landing .navcta{ font-size:15px; padding:12px 20px; }
+    .doravo-landing .brand img{ height:38px; }
+    .doravo-landing .brand span{ font-size:22px; }
+    .doravo-landing .sec-head{ max-width:780px; margin-bottom:clamp(36px,4vw,54px); }
+    .doravo-landing .sec-head h2{ font-size:clamp(34px,3.1vw,48px); line-height:1.15; }
+    .doravo-landing .sec-head p{ font-size:clamp(17px,1.15vw,19px); line-height:1.75; }
+    .doravo-landing .ps-grid{ gap:clamp(24px,3vw,44px); }
+    .doravo-landing .ps-card{ padding:clamp(28px,2.5vw,40px); }
+    .doravo-landing .ps-card h3{ font-size:15px; }
+    .doravo-landing .ps-card p,.doravo-landing .institution-copy p{ font-size:17px; line-height:1.8; }
+    .doravo-landing .feature-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .doravo-landing .feature-card{ padding:clamp(24px,2vw,34px); gap:15px; }
+    .doravo-landing .feature-card h4,.doravo-landing .trust-card h4{ font-size:19px; line-height:1.35; }
+    .doravo-landing .feature-card p{ font-size:15.5px; line-height:1.7; }
+    .doravo-landing .feature-card .fprob{ font-size:14px; }
+    .doravo-landing .trust-items span{ font-size:16px; padding:8px 24px; }
+    .doravo-landing .tab-btn{ font-size:15.5px; padding:11px 20px; }
+    .doravo-landing .tab-copy h3{ font-size:clamp(26px,2.2vw,34px); line-height:1.25; }
+    .doravo-landing .tab-copy p{ font-size:17px; line-height:1.8; }
+    .doravo-landing .tab-copy li{ font-size:16px; line-height:1.65; }
+    .doravo-landing .role-grid{ grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:22px; }
+    .doravo-landing .role-card{ padding:30px 26px; }
     .doravo-landing .role-card .role-tag{ font-size:13px; }
-    .doravo-landing .role-card p{ font-size:16.5px; }
-    .doravo-landing .institution-copy h2{ font-size:clamp(30px, 3.3vw, 42px); }
-    .doravo-landing .institution-copy p{ font-size:18px; }
-    .doravo-landing .mock-head .tag, .doravo-landing .mock-slot span{ font-size:13.5px; }
-    .doravo-landing .mock-caption{ font-size:14.5px; }
-    .doravo-landing .spot-step h4{ font-size:20px; }
-    .doravo-landing .spot-step p{ font-size:16.5px; }
-    .doravo-landing .spot-switch button{ font-size:14.5px; }
-    .doravo-landing .trust-card h4{ font-size:19px; }
-    .doravo-landing .trust-card p{ font-size:16px; }
-    .doravo-landing .trust-note{ font-size:15px; }
-    .doravo-landing .how-card h4{ font-size:20px; }
-    .doravo-landing .how-card p{ font-size:16.5px; }
-    .doravo-landing .faq-q{ font-size:20px; }
-    .doravo-landing .faq-a p{ font-size:17px; }
-    .doravo-landing .faq-item.open .faq-a{ max-height:400px; }
-    .doravo-landing .cta-band h2{ font-size:clamp(28px, 3.3vw, 42px); max-width:24ch; }
-    .doravo-landing .cta-band p{ font-size:17px; max-width:46ch; }
+    .doravo-landing .role-card p,.doravo-landing .trust-card p{ font-size:16px; line-height:1.75; }
+    .doravo-landing .spot-grid{ grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr); gap:clamp(34px,4.5vw,72px); align-items:start; }
+    /* Keep the product preview in normal document flow so it cannot sit over
+       the middle of the page while the visitor scrolls. */
+    .doravo-landing .spot-visual{ position:relative; top:auto; min-width:0; }
+    .doravo-landing .spot-step{ gap:18px; padding:22px 0; }
+    .doravo-landing .spot-step h4,.doravo-landing .how-card h4{ font-size:19px; line-height:1.4; }
+    .doravo-landing .spot-step p,.doravo-landing .how-card p,.doravo-landing .why-item p{ font-size:16px; line-height:1.75; }
+    .doravo-landing .spot-n{ width:36px; height:36px; font-size:15px; }
+    .doravo-landing .institution-section{ gap:clamp(36px,5vw,80px); }
+    .doravo-landing .mock{ padding:clamp(24px,2.5vw,38px); }
+    .doravo-landing .mock-caption,.doravo-landing .trust-note{ font-size:15px; line-height:1.7; }
+    .doravo-landing .trust-grid{ grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:22px; }
+    .doravo-landing .trust-card{ padding:28px; }
+    .doravo-landing .how-grid{ gap:26px; }
+    .doravo-landing .how-card{ padding:32px 28px; }
+    .doravo-landing .faq-q{ font-size:21px; line-height:1.5; }
+    .doravo-landing .faq-a p{ font-size:17px; line-height:1.8; }
+    .doravo-landing .cta-band{ padding:clamp(36px,4vw,64px); gap:28px; }
+    .doravo-landing .cta-band h2{ font-size:clamp(32px,3vw,44px); }
+    .doravo-landing .cta-band p{ font-size:17px; line-height:1.75; }
     .doravo-landing .cta-band .cta-alt{ font-size:15px; }
-    .doravo-landing .foot-brand p{ font-size:15px; max-width:36ch; }
-    .doravo-landing .foot-col h5{ font-size:13.5px; }
-    .doravo-landing .foot-col a{ font-size:15.5px; }
+    .doravo-landing .foot-brand p,.doravo-landing .foot-col a{ font-size:15px; line-height:1.7; }
+    .doravo-landing .foot-col h5{ font-size:14px; }
     .doravo-landing .foot-bottom{ font-size:14px; }
-    .doravo-landing .dv-msg{ font-size:15px; }
-    .doravo-landing .dv-chips button{ font-size:13.5px; }
+
+    @media (max-width:1100px){
+      .doravo-landing .wrap{ padding-left:28px; padding-right:28px; }
+      .doravo-landing .hero-grid{ gap:36px; }
+      .doravo-landing .hero h1{ font-size:clamp(40px,5vw,54px); }
+      .doravo-landing .feature-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .doravo-landing .navlinks{ gap:16px; }
+      .doravo-landing .navlinks a{ font-size:14px; }
+    }
+    @media (max-width:860px){
+      .doravo-landing .wrap{ padding-left:24px; padding-right:24px; }
+      .doravo-landing .hero-grid,.doravo-landing .spot-grid,.doravo-landing .institution-section{ grid-template-columns:minmax(0,1fr); }
+      .doravo-landing .hero-grid{ gap:42px; }
+      .doravo-landing .hero h1{ max-width:19ch; }
+      .doravo-landing .spot-grid{ gap:34px; }
+      .doravo-landing .spot-visual{ width:100%; }
+      .doravo-landing .role-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .doravo-landing .cta-band{ align-items:flex-start; flex-direction:column; }
+      .doravo-landing .foot-cols{ gap:32px; }
+    }
+    @media (max-width:560px){
+      .doravo-landing{ font-size:16px; }
+      .doravo-landing .wrap{ padding-left:18px; padding-right:18px; }
+      .doravo-landing section{ padding-top:58px; padding-bottom:58px; }
+      .doravo-landing .hero{ padding-top:54px; padding-bottom:52px; }
+      .doravo-landing .hero h1{ font-size:clamp(36px,10vw,46px); }
+      .doravo-landing .hero .lede{ font-size:17px; }
+      .doravo-landing .hero-ctas,.doravo-landing .cta-band .cta-buttons{ width:100%; }
+      .doravo-landing .hero-ctas > a,.doravo-landing .cta-band .cta-buttons > a{ width:100%; justify-content:center; text-align:center; }
+      .doravo-landing .feature-grid,.doravo-landing .role-grid,.doravo-landing .how-grid{ grid-template-columns:minmax(0,1fr); }
+      .doravo-landing .sec-head h2{ font-size:clamp(30px,8vw,38px); }
+      .doravo-landing .sec-head p{ font-size:16px; }
+      .doravo-landing .trust-items span{ font-size:14px; padding:5px 10px; }
+      .doravo-landing .ps-card{ padding:24px 20px; }
+      .doravo-landing .spot-switch{ max-width:100%; }
+      .doravo-landing .spot-switch button{ padding:8px 12px; font-size:12.5px; }
+      .doravo-landing .cta-band{ padding:28px 22px; }
+      .doravo-landing .foot-grid,.doravo-landing .foot-cols{ flex-direction:column; gap:28px; }
+      .doravo-landing .foot-bottom{ flex-direction:column; }
+      .doravo-landing .dv-wa-float{ left:12px; bottom:12px; width:50px; height:50px; }
+      .doravo-landing .dv-chat-fab{ right:12px; bottom:12px; width:50px; height:50px; }
+    }
 
     /* ---------- laptops / desktops: wider layout, no more narrow centre column ---------- */
     @media (min-width:1280px){
