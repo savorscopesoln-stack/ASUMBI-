@@ -191,12 +191,18 @@ export function buildAutoWrong(answerId, html) {
 
 /* Removes the whole-answer ✗ again (used when a teacher reopens an answer
    to mark it properly), leaving the student's text untouched. */
-export function stripAutoWrongHtml(html) {
+export function stripAutoWrongHtml(html, onlyWholeAnswerId) {
   if (typeof document === "undefined" || !html) return html;
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
-  // a point the teacher flipped to ✓ is theirs now — only strip the ones still wrong
-  const els = tmp.querySelectorAll(`[data-hid^="${AUTO_WRONG_PREFIX}"]:not([data-status="correct"])`);
+  // a point the teacher flipped to ✓ is theirs now — only strip the ones still wrong.
+  // With `onlyWholeAnswerId`, just the whole-answer ✗ wrapper is lifted (the one that
+  // blocks highlighting); the per-point red underlines are kept so a reopened
+  // question still shows which points earned nothing.
+  const sel = onlyWholeAnswerId != null
+    ? `[data-hid="${AUTO_WRONG_PREFIX}${onlyWholeAnswerId}"]:not([data-status="correct"])`
+    : `[data-hid^="${AUTO_WRONG_PREFIX}"]:not([data-status="correct"])`;
+  const els = tmp.querySelectorAll(sel);
   if (!els.length) return html;
   els.forEach((el) => {
     const badge = el.querySelector(":scope > .hl-status");

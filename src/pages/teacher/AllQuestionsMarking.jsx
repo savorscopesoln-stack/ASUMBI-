@@ -1423,11 +1423,11 @@ export default function Marking() {
   const clearAutoWrong = useCallback((answerId) => {
     setHighlights((prev) => {
       const l = prev[answerId];
-      const isAuto = (h) => isAutoWrongId(h.id) && !(Number(h.mark) > 0);
+      const isAuto = (h) => h.id === `wrong_${answerId}` && !(Number(h.mark) > 0);
       if (!l || !l.some(isAuto)) return prev;
       return { ...prev, [answerId]: l.filter((h) => !isAuto(h)) };
     });
-    setEssayHTML((prev) => (prev[answerId] ? { ...prev, [answerId]: stripAutoWrongHtml(prev[answerId]) } : prev));
+    setEssayHTML((prev) => (prev[answerId] ? { ...prev, [answerId]: stripAutoWrongHtml(prev[answerId], answerId) } : prev));
   }, []);
 
   const handleScoreChange = (answerId, value, maxMarks) => {

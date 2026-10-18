@@ -233,3 +233,39 @@ canvas {
   .dash-main { padding-left: 12px !important; padding-right: 12px !important; }
   .dash-page-header { margin-left: -12px !important; margin-right: -12px !important; padding-left: 12px !important; padding-right: 12px !important; }
 }
+
+/* ---- music paper -------------------------------------------------------
+   (These rules used to live only in index.css, which is never imported, so
+   the marker's overlay rendered as a second image BELOW the student's sheet.)
+   A student's drawing sheet is always a white "paper"; when the marker has
+   annotated it, the sheet and the transparent red-pen overlay are stacked
+   on top of each other, exactly the same size. */
+img[data-music-sheet] {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px 0;
+  background: #fff;
+  border: 1px solid var(--border, #e2e5ea);
+  border-radius: 8px;
+}
+.music-sheet-stack {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 10px 0;
+  line-height: 0;
+}
+.music-sheet-stack > img[data-music-sheet] { margin: 0; }
+.music-sheet-stack > img.music-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
