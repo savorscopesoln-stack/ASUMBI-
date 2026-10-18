@@ -1,5 +1,5 @@
 import React, { Suspense, useState } from "react";
-import { Music, Eye, EyeOff } from "lucide-react";
+import { Music, Palette, Eye, EyeOff } from "lucide-react";
 import { splitAnswer } from "../../utils/musicAnswer";
 import { answerToSafeHtml } from "../../utils/safeHtml";
 
@@ -21,6 +21,9 @@ export default function MusicMarkingPanel({ answerHtml, modelHtml, overlays = []
   const { sheets } = splitAnswer(answerHtml);
   const [showModel, setShowModel] = useState(false);
   if (!sheets.length) return null;
+  // art sheets carry a paper id starting with "art-" (see components/art/ArtPad.jsx)
+  const isArt = sheets.some((s) => String(s.tpl || "").startsWith("art-"));
+  const Icon = isArt ? Palette : Music;
   const modelSafe = modelHtml ? answerToSafeHtml(modelHtml) : "";
 
   const set = (i, png) => {
@@ -31,7 +34,7 @@ export default function MusicMarkingPanel({ answerHtml, modelHtml, overlays = []
   return (
     <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px dashed var(--primary)", background: "var(--primary-tint)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-        <Music size={16} color="var(--primary)" />
+        <Icon size={16} color="var(--primary)" />
         <strong style={{ fontSize: 13.5, color: "var(--text)" }}>Mark the drawing</strong>
         <span style={{ fontSize: 12, color: "var(--text-secondary)", flex: 1, minWidth: 180 }}>
           Your red marks are saved separately — the student's drawing is never changed.
@@ -56,7 +59,7 @@ export default function MusicMarkingPanel({ answerHtml, modelHtml, overlays = []
           <div key={i}>
             {sheets.length > 1 && <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 4 }}>Sheet {i + 1}</div>}
             <Suspense fallback={<div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Loading…</div>}>
-              <MusicMarkPad sheetPng={s.png} overlayPng={overlays[i] || ""} onChange={(png) => set(i, png)} />
+              <MusicMarkPad sheetPng={s.png} overlayPng={overlays[i] || ""} onChange={(png) => set(i, png)} label={isArt ? "Student's drawing sheet" : "Student's music sheet"} />
             </Suspense>
           </div>
         ))}

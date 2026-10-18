@@ -42,7 +42,7 @@ const drawOp = (ctx, op) => {
   ctx.restore();
 };
 
-export default function MusicMarkPad({ sheetPng, overlayPng = "", onChange }) {
+export default function MusicMarkPad({ sheetPng, overlayPng = "", onChange, label = "Student's music sheet" }) {
   const canvasRef = useRef(null);
   const baseRef = useRef(null);       // restored overlay image
   const opsRef = useRef([]);
@@ -145,7 +145,7 @@ export default function MusicMarkPad({ sheetPng, overlayPng = "", onChange }) {
       </div>
       <div style={{ padding: 10, background: "var(--bg)" }}>
         <div style={{ position: "relative", lineHeight: 0, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
-          <img src={sheetPng} alt="Student's music sheet" draggable={false} style={{ width: "100%", height: "auto", display: "block", userSelect: "none" }} />
+          <img src={sheetPng} alt={label} draggable={false} style={{ width: "100%", height: "auto", display: "block", userSelect: "none" }} />
           <canvas
             ref={canvasRef}
             data-testid="mark-canvas"

@@ -160,6 +160,8 @@ export default function AddQuestions() {
   const [modelKey, setModelKey] = useState(0);            // remounts the pad when switching question
   const [musicBusy, setMusicBusy] = useState(false);
   const [musicNote, setMusicNote] = useState("");
+  const [artBusy, setArtBusy] = useState(false);
+  const [artNote, setArtNote] = useState("");
 
   /* ── Images attached to the question currently being drafted ── */
   const [pendingImageFiles, setPendingImageFiles] = useState([]); // File[] not yet uploaded
@@ -191,6 +193,24 @@ export default function AddQuestions() {
       setMusicNote(err?.response?.data?.message || "Couldn't change the music paper setting.");
     } finally {
       setMusicBusy(false);
+    }
+  };
+
+  // "Art & Craft paper" switch: same idea for Art & Craft — students get a
+  // drawing / colouring pad on the essay questions.
+  const toggleArtPaper = async () => {
+    if (!assessment || artBusy) return;
+    const next = !assessment.art_paper;
+    setArtBusy(true);
+    setArtNote("");
+    try {
+      await API.put(`/e-assessments/${id}/art-paper`, { enabled: next });
+      setAssessment((a) => ({ ...a, art_paper: next }));
+      setArtNote(next ? "Drawing tools are ON for students." : "Drawing tools are OFF.");
+    } catch (err) {
+      setArtNote(err?.response?.data?.message || "Couldn't change the art & craft paper setting.");
+    } finally {
+      setArtBusy(false);
     }
   };
 
@@ -561,6 +581,36 @@ const submitQuestion = async () => {
         </div>
       )}
 
+      {assessment && (
+        <div style={{ ...S.banner, justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+          background: assessment.art_paper ? "var(--primary-tint)" : "var(--bg)",
+          border: `1px solid ${assessment.art_paper ? "var(--primary)" : "var(--border)"}`,
+          color: "var(--text)" }}>
+          <span style={{ flex: 1, minWidth: 220 }}>
+            <strong>Art &amp; Craft paper (drawing tools)</strong>{" "}
+            {assessment.art_paper
+              ? "— ON. On essay questions, students get a button that unlocks a drawing pad with brushes, colours, shapes and fill."
+              : /\b(art|arts|craft|crafts|creative arts?)\b/i.test(assessment.subject || "")
+                ? "— this looks like an Art & Craft subject. Turn it on so students can draw and colour their answers."
+                : "— OFF. Turn it on if students must sketch, design or colour their answers."}
+            {artNote && <em style={{ marginLeft: 8, color: "var(--text-secondary)" }}>{artNote}</em>}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!assessment.art_paper}
+            aria-label="Art and Craft paper — unlock drawing tools for students"
+            onClick={toggleArtPaper}
+            disabled={artBusy}
+            style={{ flexShrink: 0, width: 44, height: 24, borderRadius: 12, border: "none", padding: 2, cursor: artBusy ? "wait" : "pointer",
+              background: assessment.art_paper ? "var(--primary)" : "var(--border)",
+              display: "flex", alignItems: "center", justifyContent: assessment.art_paper ? "flex-end" : "flex-start", transition: "background .15s" }}
+          >
+            <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
+          </button>
+        </div>
+      )}
+
       {deadline && (
         <div style={{
           ...S.banner,
@@ -923,9 +973,10 @@ const submitQuestion = async () => {
       rows={5}
     />
 
-    {assessment?.music_paper && (
+    {(assessment?.music_paper || assessment?.art_paper) && (
       <ModelAnswerPad
         key={modelKey}
+        kind={assessment?.art_paper && !assessment?.music_paper ? "art" : "music"}
         initialSheets={modelSheets}
         onChange={(sheets) => { setModelSheets(sheets); setModelTouched(true); }}
       />

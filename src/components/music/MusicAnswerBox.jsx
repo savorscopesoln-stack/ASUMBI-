@@ -1,10 +1,27 @@
 import React, { Suspense, useRef, useState } from "react";
-import { Music, Plus, X } from "lucide-react";
+import { Music, Palette, Plus, X } from "lucide-react";
 import { MAX_SHEETS_PER_QUESTION, joinAnswer, splitAnswer } from "../../utils/musicAnswer";
 
 /* The pad (and its 320 KB music font) only loads when a student on a music
    paper actually unlocks it. */
 const MusicPad = React.lazy(() => import("./MusicPad"));
+const ArtPad = React.lazy(() => import("../art/ArtPad"));
+
+/* One answer box, two kinds of paper. The stored format is identical (typed
+   text + PNG sheets, see utils/musicAnswer.js); only the pad, its wording and
+   the starting paper differ. */
+const KINDS = {
+  music: {
+    Pad: MusicPad, Icon: Music, defaultTpl: "treble", testId: "unlock-music-pad",
+    banner: "This is a music paper.", help: "Need to write staves, notes or rests? Unlock the drawing pad.",
+    sheet: "Music sheet",
+  },
+  art: {
+    Pad: ArtPad, Icon: Palette, defaultTpl: "art-blank", testId: "unlock-art-pad",
+    banner: "This is an Art & Craft paper.", help: "Need to sketch, design or colour something? Unlock the drawing pad.",
+    sheet: "Drawing sheet",
+  },
+};
 
 /* ═══════════════════════════════════════════════════════════
    MUSIC ANSWER BOX
@@ -19,7 +36,9 @@ const MusicPad = React.lazy(() => import("./MusicPad"));
        rests and free drawing. A question that already has a drawing (after a
        refresh / resume) opens straight away.
 ═══════════════════════════════════════════════════════════ */
-export default function MusicAnswerBox({ qid, value, onChange, renderText }) {
+export default function MusicAnswerBox({ qid, value, onChange, renderText, kind = "music" }) {
+  const K = KINDS[kind] || KINDS.music;
+  const { Pad, Icon } = K;
   // Read once per question. `storeRef` holds the latest typed-text HTML and
   // sheets: it is only touched from event handlers, never drives rendering, and
   // exists so each change can rebuild the full answer string.
@@ -40,15 +59,15 @@ export default function MusicAnswerBox({ qid, value, onChange, renderText }) {
 
   const addSheet = () => {
     if (storeRef.current.sheets.length >= MAX_SHEETS_PER_QUESTION) return;
-    storeRef.current.sheets = [...storeRef.current.sheets, { png: "", tpl: "treble" }];
-    setSheets((s) => (s.length < MAX_SHEETS_PER_QUESTION ? [...s, { png: "", tpl: "treble" }] : s));
+    storeRef.current.sheets = [...storeRef.current.sheets, { png: "", tpl: K.defaultTpl }];
+    setSheets((s) => (s.length < MAX_SHEETS_PER_QUESTION ? [...s, { png: "", tpl: K.defaultTpl }] : s));
   };
   const unlock = () => {
     setOpen(true);
     setSheets((s) => {
       if (s.length) return s;
-      storeRef.current.sheets = [{ png: "", tpl: "treble" }];
-      return [{ png: "", tpl: "treble" }];
+      storeRef.current.sheets = [{ png: "", tpl: K.defaultTpl }];
+      return [{ png: "", tpl: K.defaultTpl }];
     });
   };
 
@@ -63,11 +82,11 @@ export default function MusicAnswerBox({ qid, value, onChange, renderText }) {
 
       {!open ? (
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px", borderRadius: 12, border: "1px dashed var(--primary)", background: "var(--primary-tint)" }}>
-          <Music size={20} color="var(--primary)" style={{ flexShrink: 0 }} />
+          <Icon size={20} color="var(--primary)" style={{ flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 200, fontSize: 13.5, color: "var(--text)" }}>
-            <strong>This is a music paper.</strong> Need to write staves, notes or rests? Unlock the drawing pad.
+            <strong>{K.banner}</strong> {K.help}
           </div>
-          <button type="button" onClick={unlock} data-testid="unlock-music-pad"
+          <button type="button" onClick={unlock} data-testid={K.testId}
             style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
             Unlock drawing pad
           </button>
@@ -77,7 +96,7 @@ export default function MusicAnswerBox({ qid, value, onChange, renderText }) {
           {sheets.map((s, i) => (
             <div key={i}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
-                <Music size={15} color="var(--primary)" /> Music sheet {i + 1}
+                <Icon size={15} color="var(--primary)" /> {K.sheet} {i + 1}
                 {i > 0 && i === sheets.length - 1 && (
                   <button type="button" title="Remove this sheet" aria-label="Remove this sheet"
                     onClick={() => { storeRef.current.sheets = storeRef.current.sheets.filter((_, j) => j !== i); setSheets((a) => a.filter((_, j) => j !== i)); commit(); }}
@@ -87,9 +106,9 @@ export default function MusicAnswerBox({ qid, value, onChange, renderText }) {
                 )}
               </div>
               <Suspense fallback={<div style={{ padding: 20, fontSize: 13, color: "var(--text-secondary)" }}>Loading the drawing pad…</div>}>
-                <MusicPad
+                <Pad
                   initialPng={s.png}
-                  initialTemplate={s.tpl || "treble"}
+                  initialTemplate={s.tpl || K.defaultTpl}
                   onChange={(png, tpl) => onSheet(i, png, tpl)}
                 />
               </Suspense>

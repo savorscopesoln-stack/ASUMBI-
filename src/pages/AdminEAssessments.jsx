@@ -802,6 +802,20 @@ export default function AdminEAssessments() {
     }
   };
 
+  // "Art & Craft paper" switch — same as the music one, for papers whose
+  // answers are drawn / coloured.
+  const toggleArtPaper = async (a) => {
+    const next = !a.art_paper;
+    setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, art_paper: next } : x)));
+    try {
+      const res = await API.put(`/e-assessments/${a.id}/art-paper`, { enabled: next });
+      showToast(res.data?.message || (next ? "Art & Craft paper ON" : "Art & Craft paper OFF"));
+    } catch (err) {
+      setList((prev) => prev.map((x) => (x.id === a.id ? { ...x, art_paper: !next } : x)));
+      showToast(err?.response?.data?.message || "Failed to change the art & craft paper setting", "error");
+    }
+  };
+
   // Bulk version of Activate / Start / Stop — runs the same per-item logic
   // as startAssessment/stopAssessment above, but across every selected
   // assessment in one go, with a single summary toast at the end instead
@@ -1509,6 +1523,7 @@ export default function AdminEAssessments() {
                   onAccess={() => openAccess(a)}
                   onToggleDesktop={() => toggleDesktopOnly(a)}
                   onToggleMusic={() => toggleMusicPaper(a)}
+                  onToggleArt={() => toggleArtPaper(a)}
                   onToggleSecurity={(key) => toggleSecurity(a, key)}
                   onSaveSeb={(payload) => saveSeb(a, payload)}
                   onUploadSebConfig={(file) => uploadSebConfig(a, file)}
@@ -2497,7 +2512,7 @@ function ThemeToggle({ theme, onToggle }) {
 /* ═══════════════════════════════════════════════════════════
    ASSESSMENT CARD
 ═══════════════════════════════════════════════════════════ */
-function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleMusic, onToggleSecurity, onSaveSeb, onUploadSebConfig, onRemoveSebConfig, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
+function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onToggleDesktop, onToggleMusic, onToggleArt, onToggleSecurity, onSaveSeb, onUploadSebConfig, onRemoveSebConfig, onStats, onAttendance, attendanceBusy, onEdit, onDelete, onAddQuestions }) {
   const [sebKeysDraft, setSebKeysDraft] = React.useState(a.seb_keys || "");
   const [sebSaving, setSebSaving] = React.useState(false);
   const sebKeysDirty = (sebKeysDraft || "").trim() !== (a.seb_keys || "").trim();
@@ -2747,6 +2762,30 @@ function AssessmentCard({ a, selected, onSelect, onStart, onStop, onAccess, onTo
           title={a.music_paper ? "Turn off the drawing tools" : "Turn on: students can draw staves, notes and rests"}
           onClick={onToggleMusic}
           style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: "none", padding: 2, cursor: "pointer", background: a.music_paper ? C.accent : C.border, display: "flex", alignItems: "center", justifyContent: a.music_paper ? "flex-end" : "flex-start", transition: "background .15s" }}
+        >
+          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
+        </button>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, padding: "10px 14px", background: C.bgAlt, borderRadius: 8, border: `1px solid ${a.art_paper ? C.accent : C.border}` }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.textPri }}>Art &amp; Craft paper (drawing tools)</div>
+          <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4 }}>
+            {a.art_paper
+              ? "Students get a button to unlock the drawing pad (brushes, colours, shapes, fill) on essay questions."
+              : /\b(art|arts|craft|crafts|creative arts?)\b/i.test(a.subject || "")
+                ? "This looks like an Art & Craft subject — turn on so students can draw and colour their answers."
+                : "Off — students answer with the normal text box only."}
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!a.art_paper}
+          aria-label="Art and Craft paper — unlock drawing tools for students"
+          title={a.art_paper ? "Turn off the drawing tools" : "Turn on: students can draw and colour their answers"}
+          onClick={onToggleArt}
+          style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: "none", padding: 2, cursor: "pointer", background: a.art_paper ? C.accent : C.border, display: "flex", alignItems: "center", justifyContent: a.art_paper ? "flex-end" : "flex-start", transition: "background .15s" }}
         >
           <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 1px 2px rgba(0,0,0,.3)" }} />
         </button>

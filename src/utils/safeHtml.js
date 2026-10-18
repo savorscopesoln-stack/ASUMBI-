@@ -61,7 +61,7 @@ const cleanNode = (node, doc, opts) => {
       img.setAttribute("data-music-sheet", "1");
       const tplTok = child.getAttribute("data-tpl") || "";
       if (/^[\w-]{1,24}$/.test(tplTok)) img.setAttribute("data-tpl", tplTok);
-      img.setAttribute("alt", "Music sheet drawn by the student");
+      img.setAttribute("alt", "Drawing sheet drawn by the student");
       out.appendChild(img);
       continue;
     }

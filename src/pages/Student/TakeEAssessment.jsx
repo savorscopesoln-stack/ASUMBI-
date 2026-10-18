@@ -3558,10 +3558,11 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
                   </div>
                 )}
 
-                {q.question_type === "essay" && assessment?.music_paper ? (
-                  // Music paper: typed answer + a button that unlocks the drawing pad.
+                {q.question_type === "essay" && (assessment?.music_paper || assessment?.art_paper) ? (
+                  // Music or Art & Craft paper: typed answer + a button that unlocks the drawing pad.
                   <MusicAnswerBox
                     key={q.id}
+                    kind={assessment?.art_paper && !assessment?.music_paper ? "art" : "music"}
                     qid={q.id}
                     value={answers[q.id] || ""}
                     onChange={(val) => saveAnswer(q.id, val)}
