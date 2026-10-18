@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { round2, fmt2 } from "../../utils/format";
 import { sanitizeHtml, answerToSafeHtml } from "../../utils/safeHtml";
+import { applyAutoWrong } from "../../utils/markingSync";
 import { hasDrawing, withMusicOverlays } from "../../utils/musicAnswer";
 
 /* ─── shared design-token stylesheet, plus a couple of things unique
@@ -430,15 +431,26 @@ function EssayAnswer({ q }) {
   // The saved marked-up HTML already has the ✓/✗ highlights baked in; fall back
   // to the plain answer for work marked by an override score / the AI flow.
   // Music paper: lay the marker's red-pen overlay over each of the student's drawings.
+  // Every point the student wrote that earned nothing is shown as wrong (red
+  // underline + ✗) — also for answers that were marked before this rule existed.
+  const baseHtml = hasMarkedHtml
+    ? sanitizeHtml(q.highlighted_html, { stripTitles: true })
+    : answerToSafeHtml(q.essay_answer);
+  const withWrongs = (() => {
+    if (!answered || q.marks_awarded == null) return null;
+    try {
+      const res = applyAutoWrong(q.id ?? q.answer_id ?? 0, baseHtml, highlights, q.marks_awarded, q.max_marks);
+      return res.changed ? res : null;
+    } catch { return null; }
+  })();
+  const shownHighlights = withWrongs ? withWrongs.list : highlights;
   const answerHtml = withMusicOverlays(
-    hasMarkedHtml
-      ? sanitizeHtml(q.highlighted_html, { stripTitles: true })
-      : answerToSafeHtml(q.essay_answer),
+    withWrongs ? sanitizeHtml(withWrongs.html, { stripTitles: true }) : baseHtml,
     q.music_annotations,
   );
   const modelHtml = q.model_answer_sheet ? answerToSafeHtml(q.model_answer_sheet) : "";
 
-  const earned = highlights.filter((h) => h.status === "correct").length;
+  const earned = shownHighlights.filter((h) => h.status === "correct").length;
   const remarksHtml = q.remarks ? answerToSafeHtml(q.remarks) : "";
   const hasRemarks = !!String(remarksHtml).replace(/<[^>]*>/g, "").trim();
 
@@ -458,13 +470,13 @@ function EssayAnswer({ q }) {
         </div>
       )}
 
-      {highlights.length > 0 && (
+      {shownHighlights.length > 0 && (
         <div style={D.pointsBox}>
           <div style={D.pointsTitle}>
             How your answer was marked
-            <span style={D.pointsCount}>{earned} of {highlights.length} point{highlights.length === 1 ? "" : "s"} earned credit</span>
+            <span style={D.pointsCount}>{earned} of {shownHighlights.length} point{shownHighlights.length === 1 ? "" : "s"} earned credit</span>
           </div>
-          {highlights.map((h, i) => {
+          {shownHighlights.map((h, i) => {
             const ok = h.status === "correct";
             return (
               <div key={h.id || i} style={{ ...D.pointRow, ...(ok ? D.pointRowOk : D.pointRowBad) }}>

@@ -6,7 +6,7 @@ import { hasDrawing } from "../../utils/musicAnswer";
 import { sanitizeHtml } from "../../utils/safeHtml";
 import {
   PENDING_FLUSH_MS, isAutoWrongId, readPending, queuePending, clearPendingBefore, flushPending, flushPendingOnExit,
-  applyPendingToRow, needsAutoWrong, buildAutoWrong, stripAutoWrongHtml,
+  applyPendingToRow, needsAutoWrong, buildAutoWrong, stripAutoWrongHtml, applyAutoWrong,
 } from "../../utils/markingSync";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 import AllocationStatsPanel from "../../components/eassessment/AllocationStatsPanel";
@@ -1010,11 +1010,16 @@ export default function Marking() {
             initialHTML[item.id] = savedHls && item.highlighted_html
               ? item.highlighted_html
               : toDisplayHTML(item.essay_answer);
-            initialScores[item.id] = item.marks_awarded;
-            if (item.remarks) dbRemarks[item.id] = item.remarks;
             initialHighlights[item.id] = savedHls || [
               { id: `prior_${item.id}`, text: "Previously marked", mark: item.marks_awarded, confirmed: true, prior: true },
             ];
+            {
+              // marked before the "other points are wrong" rule? add the ✗s now
+              const bf = applyAutoWrong(item.id, initialHTML[item.id], initialHighlights[item.id], item.marks_awarded, item.max_marks);
+              if (bf.changed) { initialHTML[item.id] = bf.html; initialHighlights[item.id] = bf.list; }
+            }
+            initialScores[item.id] = item.marks_awarded;
+            if (item.remarks) dbRemarks[item.id] = item.remarks;
             preDismissed.add(item.id);
             committedIds.add(item.id);
           } else {
@@ -1364,14 +1369,14 @@ export default function Marking() {
     const score = Number(scores[id]) || 0;
     let list = highlights[id] || [];
     let html = essayHTML[id] || "";
-    if (needsAutoWrong(list, score)) {
-      const wrong = buildAutoWrong(id, html);
-      if (wrong) {
-        list = [wrong.highlight];
-        html = wrong.html;
-        setHighlights((prev) => ({ ...prev, [id]: list }));
-        setEssayHTML((prev) => ({ ...prev, [id]: html }));
-      }
+    // nothing credited -> whole answer ✗; some points credited -> every other
+    // point the student wrote (up to the marks not earned) gets a red ✗ too
+    const auto = applyAutoWrong(id, html, list, score, current.max_marks);
+    if (auto.changed) {
+      list = auto.list;
+      html = auto.html;
+      setHighlights((prev) => ({ ...prev, [id]: list }));
+      setEssayHTML((prev) => ({ ...prev, [id]: html }));
     }
     setScores((prev) => ({ ...prev, [id]: score }));
     queuePending(assessmentId, id, {
@@ -1418,8 +1423,9 @@ export default function Marking() {
   const clearAutoWrong = useCallback((answerId) => {
     setHighlights((prev) => {
       const l = prev[answerId];
-      if (!l || !l.some((h) => isAutoWrongId(h.id))) return prev;
-      return { ...prev, [answerId]: l.filter((h) => !isAutoWrongId(h.id)) };
+      const isAuto = (h) => isAutoWrongId(h.id) && !(Number(h.mark) > 0);
+      if (!l || !l.some(isAuto)) return prev;
+      return { ...prev, [answerId]: l.filter((h) => !isAuto(h)) };
     });
     setEssayHTML((prev) => (prev[answerId] ? { ...prev, [answerId]: stripAutoWrongHtml(prev[answerId]) } : prev));
   }, []);

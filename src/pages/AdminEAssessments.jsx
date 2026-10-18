@@ -298,6 +298,7 @@ export default function AdminEAssessments() {
   const [formOpen,     setFormOpen]     = useState(false);
   const [editOpen,     setEditOpen]     = useState(false);
   const [assignOpen,   setAssignOpen]   = useState(false);
+  const [reportCardOpen, setReportCardOpen] = useState(false);
   const [selected,     setSelected]     = useState(null);
   const [remarkModal,  setRemarkModal]  = useState(null);
   const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "remarks"
@@ -1312,6 +1313,7 @@ export default function AdminEAssessments() {
            <ActionButton primary icon={<IconPlus size={14} />} onClick={() => setFormOpen(true)}>New Assessment</ActionButton>   
           <ActionButton icon={<IconClipboardList size={14} />} onClick={() => navigate("/main-exams")}>Main Examinations</ActionButton>
           
+          <ActionButton icon={<IconAward size={14} />} onClick={() => setReportCardOpen(true)}>Report Card Marks</ActionButton>
           <ActionButton icon={<IconUserPlus size={14} />} onClick={() => setAssignOpen(true)}>Assign Teacher</ActionButton>
           <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(list, "assessments.csv")}>Export</ActionButton>
           <button style={sx.iconBtn} className="dash-icon-btn" onClick={loadAll} title="Refresh data"><IconRefresh size={15} /></button>
@@ -2176,6 +2178,13 @@ export default function AdminEAssessments() {
 
           <SaveButton onClick={saveEditAssessment} loading={saving} label="Save Changes" />
         </Modal>
+      )}
+
+      {reportCardOpen && (
+        <ReportCardMarksModal
+          onClose={() => setReportCardOpen(false)}
+          showToast={showToast}
+        />
       )}
 
       {assignOpen && (
@@ -4284,6 +4293,176 @@ function Modal({ title, children, onClose }) {
         {children}
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REPORT CARD MARKS — what students' report cards may show.
+   One source at a time:
+     • Nothing        -> report cards stay blank
+     • One assessment -> only that assessment's subject + marks
+                         (no CRNM for the other subjects)
+     • A main exam    -> every subject scheduled in it, with its marks
+═══════════════════════════════════════════════════════════ */
+function ReportCardMarksModal({ onClose, showToast }) {
+  const C = useC();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const [opts, setOpts] = useState({ current: { mode: "none" }, assessments: [], exams: [] });
+  const [mode, setMode] = useState("none");
+  const [assessmentId, setAssessmentId] = useState("");
+  const [examId, setExamId] = useState("");
+  const [rel, setRel] = useState(null); // marking progress of the SAVED source
+
+  const loadStatus = async () => {
+    try {
+      const { data } = await API.get("/e-assessments/admin/report-card-release-status");
+      setRel(data);
+    } catch { setRel(null); }
+  };
+
+  const loadAll = async (initial) => {
+    try {
+      const { data } = await API.get("/e-assessments/admin/report-card-options");
+      setOpts(data);
+      if (initial) {
+        setMode(data.current?.mode || "none");
+        if (data.current?.mode === "assessment") setAssessmentId(String(data.current.id));
+        if (data.current?.mode === "exam") setExamId(String(data.current.id));
+      }
+      if (data.current?.mode && data.current.mode !== "none") await loadStatus(); else setRel(null);
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not load report card options", "error");
+      if (initial) onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadAll(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const picked = mode === "assessment" ? opts.assessments.find((a) => String(a.id) === assessmentId)
+    : mode === "exam" ? opts.exams.find((e) => String(e.id) === examId) : null;
+
+  const save = async () => {
+    if (mode === "assessment" && !assessmentId) return showToast("Pick an assessment", "error");
+    if (mode === "exam" && !examId) return showToast("Pick a main examination", "error");
+    setSaving(true);
+    try {
+      await API.put("/e-assessments/admin/report-card-source", {
+        mode, id: mode === "assessment" ? Number(assessmentId) : mode === "exam" ? Number(examId) : null,
+      });
+      showToast(mode === "none" ? "Report cards will stay blank" : `Report cards will now show “${picked?.title || picked?.name}”`);
+      await loadAll(false);
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not save", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const release = async () => {
+    if (!rel?.complete || !rel.ready) return;
+    if (!window.confirm(`Release ${rel.ready} marked result${rel.ready === 1 ? "" : "s"} to the marks table? Students will be notified and the report card will show them.`)) return;
+    setReleasing(true);
+    try {
+      const { data } = await API.put("/e-assessments/admin/report-card-release");
+      showToast(data?.message || "Marks released");
+      await loadStatus();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not release the marks", "error");
+      await loadStatus();
+    } finally {
+      setReleasing(false);
+    }
+  };
+
+  const optionBox = (value, title, hint, body) => (
+    <div onClick={() => setMode(value)} style={{
+      border: `1px solid ${mode === value ? C.accent : C.border}`, background: mode === value ? C.bgAlt : "transparent",
+      borderRadius: 10, padding: "12px 14px", marginBottom: 12, cursor: "pointer",
+    }}>
+      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+        <input type="radio" checked={mode === value} onChange={() => setMode(value)} style={{ marginTop: 3 }} />
+        <span>
+          <span style={{ display: "block", fontWeight: 700, color: C.textPri, fontSize: 14 }}>{title}</span>
+          <span style={{ display: "block", color: C.textMuted, fontSize: 12, marginTop: 2 }}>{hint}</span>
+        </span>
+      </label>
+      {mode === value && body && <div style={{ marginTop: 12 }} onClick={(e) => e.stopPropagation()}>{body}</div>}
+    </div>
+  );
+
+  const savedMode = opts.current?.mode || "none";
+  const unsaved = (mode !== savedMode)
+    || (mode === "assessment" && assessmentId !== String(opts.current?.id))
+    || (mode === "exam" && examId !== String(opts.current?.id));
+  const allReleased = rel && rel.complete && rel.ready === 0 && rel.items.some((i) => i.total > 0);
+
+  return (
+    <Modal title="Report Card Marks" onClose={onClose}>
+      {loading ? (
+        <p style={{ color: C.textMuted }}>Loading…</p>
+      ) : (
+        <>
+          <p style={{ color: C.textMuted, fontSize: 13, marginTop: 0 }}>
+            Choose what students see on their report card. Only one source can be active.
+          </p>
+          {optionBox("none", "Nothing (blank report card)", "No marks are shown until you pick an assessment or an examination.")}
+          {optionBox("assessment", "One assessment", "Only this assessment appears on the report card — no CRNM for other subjects.",
+            <ModalSelect value={assessmentId} onChange={setAssessmentId} placeholder="Select an assessment…"
+              options={opts.assessments.map((a) => ({ value: String(a.id), label: `${a.title}${a.subject ? ` — ${a.subject}` : ""}${a.class_name ? ` (${a.class_name})` : ""}` }))} />)}
+          {optionBox("exam", "A main examination", "Every subject scheduled in the exam appears with its marks (CRNM until a paper is marked).",
+            <ModalSelect value={examId} onChange={setExamId} placeholder="Select a main examination…"
+              options={opts.exams.map((e) => ({ value: String(e.id), label: `${e.name}${e.term ? ` — ${e.term}` : ""}${e.academic_year ? ` ${e.academic_year}` : ""} · ${e.subject_count} subject${e.subject_count === 1 ? "" : "s"}` }))} />)}
+          <SaveButton onClick={save} loading={saving} label="Save selection" />
+
+          {savedMode !== "none" && (
+            <div style={{ marginTop: 22, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+              <div style={{ fontWeight: 800, color: C.textPri, fontSize: 14, marginBottom: 4 }}>
+                Release marks — “{opts.current?.name}”
+              </div>
+              <p style={{ color: C.textMuted, fontSize: 12, margin: "0 0 10px" }}>
+                Marks reach the report card once they are released to the marks table. You can only release when marking is complete.
+              </p>
+              {!rel ? (
+                <p style={{ color: C.textMuted, fontSize: 13 }}>Checking marking progress…</p>
+              ) : (
+                <>
+                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", marginBottom: 10 }}>
+                    {rel.items.map((it) => {
+                      const done = it.total > 0 && it.unmarked + it.remark_open === 0;
+                      return (
+                        <div key={it.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 12px", fontSize: 13, borderBottom: `1px solid ${C.border}`, color: C.textPri }}>
+                          <span>{it.subject || it.title}</span>
+                          <span style={{ color: it.total === 0 ? C.textMuted : done ? C.success || "#16a34a" : C.warning || "#d97706", fontWeight: 600 }}>
+                            {it.total === 0 ? "no submissions"
+                              : done ? (it.ready ? `marked · ${it.ready} to release` : "released")
+                              : `${it.unmarked + it.remark_open} left to mark`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {rel.reason && <p style={{ color: C.warning || "#d97706", fontSize: 12.5, margin: "0 0 10px" }}>{rel.reason}</p>}
+                  {unsaved && <p style={{ color: C.textMuted, fontSize: 12, margin: "0 0 10px" }}>You changed the selection — save it first. This section is about the saved one.</p>}
+                  <button onClick={release} disabled={releasing || unsaved || !rel.complete || !rel.ready}
+                    style={{
+                      width: "100%", padding: 13, border: "none", borderRadius: 9, fontWeight: 700, fontSize: 14,
+                      background: (!rel.complete || !rel.ready || unsaved) ? C.textMuted : C.accent, color: C.white,
+                      cursor: (!rel.complete || !rel.ready || unsaved || releasing) ? "not-allowed" : "pointer",
+                      opacity: (!rel.complete || !rel.ready || unsaved) ? 0.55 : 1,
+                    }}>
+                    {releasing ? "Releasing…" : allReleased ? "All marks released" : rel.complete ? `Release ${rel.ready} mark${rel.ready === 1 ? "" : "s"} to marks table` : "Release (finish marking first)"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Modal>
   );
 }
 

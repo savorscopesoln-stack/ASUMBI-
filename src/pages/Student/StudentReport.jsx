@@ -306,6 +306,9 @@ export default function StudentReport() {
 
   const [marks, setMarks] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  // What the admin picked under E-Assessments → "Report card marks":
+  // { mode: "none" | "assessment" | "exam", name, subjects: [{id,name,code}] }
+  const [source, setSource] = useState({ mode: "none", name: null, subjects: [] });
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -325,12 +328,14 @@ export default function StudentReport() {
       setLoading(true);
       setLoadError(false);
       try {
-        const [m, s, st] = await Promise.all([
-          API.get("/student/marks", { params: { studentId: admissionNo } }),
+        const [m, s, st, src] = await Promise.all([
+          API.get("/student/marks", { params: { studentId: admissionNo, reportCard: 1 } }),
           API.get("/subjects"),
           API.get("/students"),
+          API.get("/report-card-source"),
         ]);
         if (cancelled) return;
+        setSource(src.data || { mode: "none", name: null, subjects: [] });
         setMarks(m.data || []);
         setSubjects(s.data || []);
         setStudents(st.data || []);
@@ -407,10 +412,18 @@ export default function StudentReport() {
      with what the admin picked, instead of showing a full-subject
      average next to a partial-subject table. */
   const reportSubjectIds = school?.reportSubjects;
+  // Nothing picked under "Report card marks" -> the report card stays blank.
+  const reportBlank = source.mode === "none";
   const visibleSubjects = useMemo(() => {
-    if (!Array.isArray(reportSubjectIds) || reportSubjectIds.length === 0) return subjects;
-    return subjects.filter((s) => reportSubjectIds.includes(s.id));
-  }, [subjects, reportSubjectIds]);
+    if (source.mode === "none") return [];
+    // An assessment shows only its own subject; an exam shows every subject
+    // scheduled in it (CRNM where that paper has no mark yet). The picked
+    // source decides the subjects — not the School Settings subject filter.
+    return (source.subjects || []).map((ss) => {
+      const full = subjects.find((x) => (ss.id != null && x.id === ss.id) || x.name === ss.name);
+      return full || { id: ss.id, name: ss.name, code: ss.code };
+    });
+  }, [subjects, source]);
 
   const visibleSubjectNames = useMemo(
     () => new Set(visibleSubjects.map((s) => s.name)),
@@ -418,9 +431,9 @@ export default function StudentReport() {
   );
 
   const visibleMarks = useMemo(() => {
-    if (!Array.isArray(reportSubjectIds) || reportSubjectIds.length === 0) return marks;
+    if (source.mode === "none") return [];
     return marks.filter((m) => visibleSubjectNames.has(m.subjectName));
-  }, [marks, reportSubjectIds, visibleSubjectNames]);
+  }, [marks, source, visibleSubjectNames]);
 
   /* ================= POSITION (unchanged ranking logic) =================
      Two ranks off the same underlying method: `overallPosition` ranks
@@ -481,10 +494,10 @@ export default function StudentReport() {
       highest: scores.length ? round2(Math.max(...scores)) : null,
       lowest: scores.length ? round2(Math.min(...scores)) : null,
       assessedCount: scores.length,
-      grade: hasCrnm ? { grade: "", label: "CRNM", remark: "" } : getGradeForScore(avg, gradingSystem),
-      result: hasCrnm ? "CRNM" : getOverallResultForScore(avg, gradingSystem),
+      grade: reportBlank ? { grade: "", label: "—", remark: "" } : hasCrnm ? { grade: "", label: "CRNM", remark: "" } : getGradeForScore(avg, gradingSystem),
+      result: reportBlank ? "—" : hasCrnm ? "CRNM" : getOverallResultForScore(avg, gradingSystem),
     };
-  }, [visibleMarks, gradingSystem, hasCrnm]);
+  }, [visibleMarks, gradingSystem, hasCrnm, reportBlank]);
 
   /* ================= SUBJECT MAP (unchanged) ================= */
   const subjectMap = useMemo(() => {
@@ -530,6 +543,8 @@ export default function StudentReport() {
      every render, in the same order, or React throws the "change
      in the order of Hooks" error. */
   const examName = useMemo(() => {
+    if (source.mode === "none") return "No exam selected";
+    if (source.name) return source.name;
     // Each field is searched for independently (rather than finding
     // one record that has *any* of the three fields and reading
     // .examName off of it) — a record matching the predicate via
@@ -542,7 +557,7 @@ export default function StudentReport() {
       || marks.find((m) => m.currentExam)?.currentExam
       || marks.find((m) => m.currentTerm)?.currentTerm;
     return fromMarks || school?.examName || school?.currentExam || school?.currentTerm || "Current Exam";
-  }, [marks, school]);
+  }, [marks, school, source]);
 
   const hasResults = marks.length > 0;
 
@@ -935,6 +950,13 @@ export default function StudentReport() {
                   </tr>
                 </thead>
                 <tbody>
+                  {reportBlank && (
+                    <tr>
+                      <td colSpan={5} style={{ ...styles.td, padding: "28px 12px", color: "#64748b", fontStyle: "italic" }}>
+                        No assessment or examination has been selected for the report card yet.
+                      </td>
+                    </tr>
+                  )}
                   {subjectMap.map((s, i) => {
                     const valid = s.score !== null && s.score !== undefined;
                     const badge = valid ? getScoreBadgeStyle(s.score, gradingSystem) : null;

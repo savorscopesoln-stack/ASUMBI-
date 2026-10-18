@@ -195,11 +195,158 @@ export function stripAutoWrongHtml(html) {
   if (typeof document === "undefined" || !html) return html;
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
-  const el = tmp.querySelector(`[data-hid^="${AUTO_WRONG_PREFIX}"]`);
-  if (!el) return html;
-  const badge = el.querySelector(".hl-status");
-  if (badge) badge.remove();
-  while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
-  el.remove();
+  // a point the teacher flipped to ✓ is theirs now — only strip the ones still wrong
+  const els = tmp.querySelectorAll(`[data-hid^="${AUTO_WRONG_PREFIX}"]:not([data-status="correct"])`);
+  if (!els.length) return html;
+  els.forEach((el) => {
+    const badge = el.querySelector(":scope > .hl-status");
+    if (badge) badge.remove();
+    while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+    el.remove();
+  });
+  tmp.normalize();
   return tmp.innerHTML;
+}
+
+/* ── shortfall marking ─────────────────────────────────────
+   A 6-mark question where only 2 points were credited: every OTHER point the
+   student wrote (the parts of the answer nobody highlighted) is marked wrong —
+   red underline plus a ✗ — up to the marks that were not earned. The same
+   pass runs when a teacher finishes a question and when an already-marked
+   answer is opened (student marked paper / teacher review), so old marking
+   gets the wrongs too. It never touches text that already carries a mark. */
+const SHORTFALL_MIN_CHARS = 3;
+
+function newWrongMark(hid) {
+  const mark = document.createElement("mark");
+  mark.className = "hl-mark";
+  mark.dataset.hid = hid;
+  mark.dataset.mark = "0";
+  mark.dataset.fullmark = "1";
+  mark.dataset.status = "wrong";
+  mark.dataset.auto = "shortfall";
+  return mark;
+}
+
+function wrongBadge() {
+  const badge = document.createElement("span");
+  badge.className = "hl-status";
+  badge.dataset.status = "wrong";
+  badge.textContent = "✗";
+  return badge;
+}
+
+// Splits a text node's content into sentence-like points.
+function pointsInText(text) {
+  const out = [];
+  const re = /[^.!?;\n]+[.!?;]*/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const raw = m[0];
+    const lead = raw.length - raw.trimStart().length;
+    const body = raw.trim();
+    if (body.replace(/[^A-Za-z0-9]/g, "").length >= SHORTFALL_MIN_CHARS) {
+      out.push({ start: m.index + lead, end: m.index + lead + body.length, text: body });
+    }
+  }
+  return out;
+}
+
+/* Returns { html, added: [highlight, ...] }. `missing` = marks not earned.
+   No-op (added: []) when nothing is missing or nothing is left to mark. */
+export function addShortfallWrongs(answerId, html, missing) {
+  const cap = Math.floor(Number(missing) || 0);
+  if (typeof document === "undefined" || !html || cap <= 0) return { html, added: [] };
+
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+
+  // points already marked wrong (by the teacher or a previous pass) count toward the shortfall
+  const alreadyWrong = tmp.querySelectorAll('.hl-mark[data-status="wrong"]').length;
+  let budget = cap - alreadyWrong;
+  if (budget <= 0) return { html, added: [] };
+
+  const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => {
+      if (!n.nodeValue || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      const p = n.parentElement;
+      if (!p) return NodeFilter.FILTER_REJECT;
+      if (p.closest(".hl-mark, .hl-status, script, style")) return NodeFilter.FILTER_REJECT;
+      if (p.closest("[data-music-sheet]")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+
+  const added = [];
+  for (const node of nodes) {
+    if (budget <= 0) break;
+    const pts = pointsInText(node.nodeValue).slice(0, budget);
+    if (!pts.length) continue;
+    const text = node.nodeValue;
+    const frag = document.createDocumentFragment();
+    let cursor = 0;
+    for (const pt of pts) {
+      if (pt.start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, pt.start)));
+      const hid = `${AUTO_WRONG_PREFIX}${answerId}_${added.length + 1}`;
+      const mark = newWrongMark(hid);
+      mark.appendChild(document.createTextNode(pt.text));
+      mark.appendChild(wrongBadge());
+      frag.appendChild(mark);
+      added.push({
+        id: hid, text: pt.text.slice(0, 500), mark: 0, status: "wrong",
+        createdAt: Date.now(), confirmed: true, auto: true,
+        reason: "Written, but not one of the marking points — no credit.",
+      });
+      cursor = pt.end;
+      budget -= 1;
+    }
+    if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
+    node.parentNode.replaceChild(frag, node);
+  }
+  return { html: added.length ? tmp.innerHTML : html, added };
+}
+
+/* One entry point for the marking pages: given the teacher's highlights, the
+   total score and the question's marks, return the highlights + html that
+   should be saved (whole-answer ✗ when nothing was credited, otherwise ✗ on
+   the uncredited points). Safe to run repeatedly. */
+export function applyAutoWrong(answerId, html, list, score, maxMarks) {
+  const baseHtml = stripAutoWrongHtml(html || "");
+  const baseList = (list || []).filter((h) => !(isAutoWrongId(h.id) && !(Number(h.mark) > 0)));
+  const sc = Number(score) || 0;
+
+  if (needsAutoWrong(baseList, sc)) {
+    const wrong = buildAutoWrong(answerId, baseHtml);
+    if (wrong) return { html: wrong.html, list: [wrong.highlight], changed: true };
+    return { html: baseHtml, list: baseList, changed: false };
+  }
+  const real = baseList.filter((h) => !h.prior);
+  const max = Number(maxMarks) || 0;
+  if (real.length && max > 0 && sc < max) {
+    const { html: h2, added } = addShortfallWrongs(answerId, baseHtml, max - sc);
+    if (added.length) return { html: h2, list: [...baseList, ...added], changed: true };
+  }
+  return { html: baseHtml, list: baseList, changed: baseHtml !== (html || "") || baseList.length !== (list || []).length };
+}
+
+/* Display-time backfill for answers that were marked BEFORE this rule existed
+   (or never had the wrongs saved): same result as applyAutoWrong, computed
+   from the stored row. Returns the html to show, or null to keep as is. */
+export function backfillWrongsForRow(row) {
+  try {
+    if (!row || typeof document === "undefined") return null;
+    const max = Number(row.max_marks) || 0;
+    if (!(max > 0) || row.marks_awarded == null) return null;
+    const score = Number(row.marks_awarded) || 0;
+    if (score >= max) return null;
+    let list = row.highlights;
+    if (typeof list === "string") { try { list = JSON.parse(list); } catch { list = []; } }
+    list = Array.isArray(list) ? list : [];
+    const hasHtml = !!row.highlighted_html;
+    const base = hasHtml ? row.highlighted_html : (row.essay_answer || "");
+    const res = applyAutoWrong(row.id, base, list, score, max);
+    return res.changed ? { html: res.html, list: res.list } : null;
+  } catch { return null; }
 }
