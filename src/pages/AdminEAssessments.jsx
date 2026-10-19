@@ -1771,7 +1771,7 @@ export default function AdminEAssessments() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-            {[["leaderboard", "Leaderboard & Load"], ["remarks", `Remark Requests${pendingRemarks ? ` (${pendingRemarks})` : ""}`]].map(([k, label]) => (
+            {[["leaderboard", "Leaderboard & Load"], ["option", "Marking Option"], ["remarks", `Remark Requests${pendingRemarks ? ` (${pendingRemarks})` : ""}`]].map(([k, label]) => (
               <button key={k} type="button" onClick={() => setMarkingView(k)}
                 style={{ padding: "8px 14px", borderRadius: 99, cursor: "pointer", fontWeight: 600, fontSize: 13,
                   border: `1px solid ${C.border}`, background: markingView === k ? C.accent : C.card, color: markingView === k ? "#fff" : C.textPri }}>{label}</button>
@@ -1779,6 +1779,7 @@ export default function AdminEAssessments() {
           </div>
 
           {markingView === "leaderboard" && <MarkingLeaderboard />}
+          {markingView === "option" && <MarkingOptionPanel teachers={teachers} showToast={showToast} />}
 
           {markingView === "remarks" && (
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -4892,3 +4893,79 @@ const globalStyles = `
     outline-offset: 2px;
   }
 `;
+
+/* Which highlight-to-mark style each teacher uses on the marking screens.
+   Option 1 (default): select words, a ✓ / ✗ box pops up.
+   Option 2: select words, a ✓ highlight is added straight away (tap ✓ to flip to ✗). */
+function MarkingOptionPanel({ teachers, showToast }) {
+  const [opts, setOpts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(null); // teacher id, or "all"
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    API.get("/e-assessments/admin/marking-options")
+      .then((r) => { if (alive) setOpts(r.data?.options || {}); })
+      .catch(() => showToast && showToast("Could not load marking options", "error"))
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [showToast]);
+
+  const list = (teachers || []).filter((t) => !q.trim() || String(t.name || "").toLowerCase().includes(q.trim().toLowerCase()));
+
+  const save = async (ids, option, key) => {
+    setBusy(key);
+    try {
+      await API.put(ids.length === 1 && key !== "all" ? `/e-assessments/admin/marking-options/${ids[0]}` : "/e-assessments/admin/marking-options",
+        { option, teacherIds: ids });
+      setOpts((o) => { const n = { ...o }; ids.forEach((id) => { n[id] = option; }); return n; });
+      showToast && showToast(ids.length === 1 ? `Marking option ${option} saved` : `Marking option ${option} set for ${ids.length} teachers`);
+    } catch (e) {
+      showToast && showToast(e?.response?.data?.message || "Could not save marking option", "error");
+    } finally { setBusy(null); }
+  };
+
+  const seg = (active) => ({
+    padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", border: "none",
+    background: active ? C.accent : "transparent", color: active ? "#fff" : C.textPri,
+  });
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 16 }}>
+      <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 15, color: C.textPri }}>Marking option per teacher</p>
+      <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textMuted, lineHeight: 1.5 }}>
+        <b>Option 1</b> (default): the teacher selects words and a ✓ / ✗ box pops up to give the point or 0.<br />
+        <b>Option 2</b>: the teacher selects words and a ✓ highlight is added straight away; tapping the ✓ turns it into ✗.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search teachers…" aria-label="Search teachers"
+          style={{ padding: "8px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 13, minWidth: 200 }} />
+        <span style={{ flex: 1 }} />
+        <button type="button" disabled={busy || !(teachers || []).length} onClick={() => save((teachers || []).map((t) => t.id), 1, "all")}
+          style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Set all to option 1</button>
+        <button type="button" disabled={busy || !(teachers || []).length} onClick={() => save((teachers || []).map((t) => t.id), 2, "all")}
+          style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Set all to option 2</button>
+      </div>
+      {loading ? <p style={{ color: C.textMuted, fontSize: 13 }}>Loading…</p> : list.length === 0 ? (
+        <p style={{ color: C.textMuted, fontSize: 13 }}>No teachers found.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {list.map((t) => {
+            const cur = Number(opts[t.id]) === 2 ? 2 : 1;
+            return (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 4px", borderTop: `1px solid ${C.border}` }}>
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: C.textPri }}>{t.name || `Teacher #${t.id}`}</span>
+                <div role="group" aria-label={`Marking option for ${t.name || t.id}`}
+                  style={{ display: "inline-flex", border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", opacity: busy === t.id ? .6 : 1 }}>
+                  <button type="button" disabled={!!busy} style={seg(cur === 1)} onClick={() => cur !== 1 && save([t.id], 1, t.id)}>Option 1</button>
+                  <button type="button" disabled={!!busy} style={seg(cur === 2)} onClick={() => cur !== 2 && save([t.id], 2, t.id)}>Option 2</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

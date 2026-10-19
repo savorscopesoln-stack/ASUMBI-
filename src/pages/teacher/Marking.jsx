@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { PenLine, AlertTriangle, Flag, BookOpen, X } from "lucide-react";
 import API from "../../api";
 import MusicMarkingPanel from "../../components/music/MusicMarkingPanel";
@@ -13,6 +14,8 @@ import {
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
 import ReviewMarkedModal from "../../components/ReviewMarkedModal";
 import AllocationStatsPanel from "../../components/eassessment/AllocationStatsPanel";
+import { useIsPhone } from "../../utils/deviceType";
+import useMarkingOption from "../../hooks/useMarkingOption";
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -459,6 +462,58 @@ function RichEditor({ value, onChange, placeholder }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   PHONE BLOCK — marking is disabled on phones and tablets
+═══════════════════════════════════════════════════════════ */
+function PhoneMarkingBlocked() {
+  return (
+    <div className="mkp-root">
+      <div style={{ maxWidth: 420, margin: "80px auto 0", padding: "28px 24px", textAlign: "center", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16 }}>
+        <p style={{ fontSize: 17, fontWeight: 800, color: "var(--text)", margin: "0 0 8px" }}>Marking isn't available on this device</p>
+        <p style={{ fontSize: 13.5, lineHeight: 1.55, color: "var(--text-secondary)", margin: 0 }}>
+          Marking is only available on a laptop, PC or MacBook. Please open this assessment on a computer to mark it.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ✓ / ✗ POPUP — appears over the words the teacher highlighted
+═══════════════════════════════════════════════════════════ */
+function MarkChoicePopup({ rect, onPick, leaving }) {
+  if (!rect || typeof document === "undefined") return null;
+  const W = 108;
+  const left = Math.min(Math.max(8, rect.left + rect.width / 2 - W / 2), window.innerWidth - W - 8);
+  const above = rect.top - 56;
+  const top = above >= 8 ? above : Math.min(rect.bottom + 10, window.innerHeight - 56);
+  const btn = (bg) => ({
+    width: 44, height: 44, borderRadius: 12, border: "none", background: bg, color: "#fff",
+    fontSize: 22, fontWeight: 800, lineHeight: 1, cursor: "pointer", fontFamily: "inherit",
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+  });
+  return createPortal(
+    <div
+      data-mark-popup
+      role="dialog"
+      aria-label="Mark this selection"
+      onMouseDown={(e) => e.preventDefault()}
+      style={{
+        position: "fixed", left, top, width: W, zIndex: 10000, display: "flex", gap: 8, padding: 6,
+        background: "var(--card, #fff)", border: "1px solid var(--border, #ddd)", borderRadius: 16,
+        boxShadow: "0 8px 28px rgba(0,0,0,.22)",
+        animation: leaving ? "mkp-choice-out .15s ease forwards" : "mkp-choice-in .15s ease both",
+        pointerEvents: leaving ? "none" : "auto",
+      }}
+    >
+      <style>{"@keyframes mkp-choice-in{from{opacity:0;transform:translateY(6px) scale(.9)}to{opacity:1;transform:none}}@keyframes mkp-choice-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(6px) scale(.9)}}"}</style>
+      <button type="button" aria-label="Correct — give the point" title="Correct — give the point" style={btn("var(--success, #22c55e)")} onClick={() => onPick(true)}>✓</button>
+      <button type="button" aria-label="Wrong — give 0" title="Wrong — give 0" style={btn("#ef4444")} onClick={() => onPick(false)}>✗</button>
+    </div>,
+    document.body
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    READ-ONLY RICH ESSAY VIEWER — highlight-to-mark
 ═══════════════════════════════════════════════════════════ */
 // Block-level tags a contentEditable box may use for its own line breaks
@@ -533,7 +588,7 @@ function intersectRanges(lineRange, rawRange) {
   return r;
 }
 
-function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onReason, onLimitReached }) {
+function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onReason, onLimitReached, markingOption = 1 }) {
   const containerRef = useRef(null);
   const totalMarks = highlights.reduce((sum, h) => sum + (h.mark || 0), 0);
 
@@ -555,14 +610,143 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
     [onRemove]
   );
 
-  // Wrapping the raw, arbitrary drag range as-is broke layout whenever it
-  // crossed a line break or paragraph boundary, so a selection is first
-  // grouped by which line(s) it overlaps, then — line by line — clipped
-  // back down to exactly what was dragged (via intersectRanges) before
-  // being wrapped. A drag spanning several lines still gets one mark per
-  // line (each a separately awarded point), but within a single line the
-  // highlight is exactly the selected words, nothing wider.
-  const handleMouseUp = useCallback(() => {
+  // Selecting words no longer highlights them straight away. It opens a
+  // small ✓ / ✗ box over the selection; the choice made there decides the
+  // point: ✓ credits the point, ✗ highlights it with 0. Within a single
+  // line the highlight is exactly the selected words; a drag spanning
+  // several lines still gets one mark per line (see intersectRanges).
+  const [pending, setPending] = useState(null); // { range, rect, text }
+
+  useEffect(() => { setPending(null); }, [answerId]);
+
+  const captureSelection = useCallback(() => {
+    const sel = window.getSelection();
+    const container = containerRef.current;
+    if (!sel || !container || sel.isCollapsed || sel.rangeCount === 0) return;
+    const rawRange = sel.getRangeAt(0);
+    if (!container.contains(rawRange.commonAncestorContainer)) return;
+
+    const selectedText = sel.toString().trim();
+    if (!selectedText || selectedText.length < 3) {
+      sel.removeAllRanges();
+      return;
+    }
+
+    for (const el of container.querySelectorAll(".hl-mark")) {
+      if (rawRange.intersectsNode(el)) {
+        sel.removeAllRanges();
+        setPending(null);
+        return;
+      }
+    }
+
+    const range = rawRange.cloneRange();
+    setPending({ range, rect: range.getBoundingClientRect(), text: selectedText });
+  }, []);
+
+  // Mouse: after the drag ends. Touch screens (tablets): selection is
+  // adjusted with handles and never fires mouseup, so watch the selection
+  // itself and settle after it stops moving.
+  useEffect(() => {
+    if (markingOption === 2 || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
+    let t;
+    const onSelChange = () => {
+      clearTimeout(t);
+      t = setTimeout(captureSelection, 450);
+    };
+    document.addEventListener("selectionchange", onSelChange);
+    return () => { clearTimeout(t); document.removeEventListener("selectionchange", onSelChange); };
+  }, [captureSelection, markingOption]);
+
+  // Keep the popup attached while the page scrolls; close on Esc or on a
+  // press anywhere outside it.
+  useEffect(() => {
+    if (!pending) return undefined;
+    const reposition = () => setPending((p) => (p ? { ...p, rect: p.range.getBoundingClientRect() } : p));
+    const onKey = (e) => { if (e.key === "Escape") { setPending(null); window.getSelection()?.removeAllRanges(); } };
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest("[data-mark-popup]"))) setPending(null); };
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [pending]);
+
+  const applyChoice = useCallback((isCorrect) => {
+    const p = pending;
+    const container = containerRef.current;
+    if (!p || p.leaving || !container) return;
+    // the pick is applied immediately; the box fades out and is removed
+    setPending({ ...p, leaving: true });
+    setTimeout(() => setPending((cur) => (cur && cur.leaving ? null : cur)), 160);
+    window.getSelection()?.removeAllRanges();
+    const rawRange = p.range;
+
+    const lineGroups = getLineGroups(container);
+    const lineData = lineGroups
+      .map((nodes) => ({ nodes, range: nodesToRange(nodes) }))
+      .filter(({ range }) => range && rangesOverlap(range, rawRange));
+    if (lineData.length === 0) return;
+
+    let remaining = Math.max(0, (maxMarks || 1) - totalMarks);
+    const targets = lineData.map((l) => intersectRanges(l.range, rawRange));
+
+    for (const targetRange of targets) {
+      const text = targetRange.toString().trim();
+      if (!text) continue;
+
+      // ✓ takes a point from what is left of the question's marks;
+      // ✗ is always free — it is worth 0.
+      let markValue = 0;
+      let fullMark = 1;
+      if (isCorrect) {
+        if (remaining <= 0) { onLimitReached && onLimitReached(); break; }
+        markValue = Math.min(1, remaining);
+        remaining -= markValue;
+        fullMark = markValue;
+      }
+      const status = isCorrect ? "correct" : "wrong";
+
+      const hid = `hl_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const markEl = document.createElement("mark");
+      markEl.className = "hl-mark";
+      markEl.dataset.hid = hid;
+      markEl.dataset.mark = String(markValue);
+      markEl.dataset.fullmark = String(fullMark);
+      markEl.dataset.status = status;
+      markEl.title = "Click the highlight to remove it";
+
+      try {
+        targetRange.surroundContents(markEl);
+      } catch (e) {
+        // Clean ranges should always be safe to wrap; if the browser still
+        // balks, skip this one segment rather than break the layout.
+        continue;
+      }
+
+      // ✓/✗ badge after the words — its own element so it can be tapped
+      // separately from the highlight (which removes the highlight).
+      const badge = document.createElement("span");
+      badge.className = "hl-status";
+      badge.dataset.status = status;
+      badge.textContent = isCorrect ? "✓" : "✗";
+      badge.title = "Tap to switch between ✓ and ✗";
+      markEl.appendChild(badge);
+
+      onAdd({ id: hid, text, mark: markValue, createdAt: Date.now(), confirmed: true }, container.innerHTML);
+    }
+  }, [pending, maxMarks, totalMarks, onAdd, onLimitReached]);
+
+  // ── MARKING OPTION 2 ─ select words and a correct (✓) highlight is added
+  // straight away; tap its ✓ to flip it to wrong. (Option 1 = ✓/✗ popup.)
+  const handleMouseUpOpt2 = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) return;
     const rawRange = sel.getRangeAt(0);
@@ -646,7 +830,14 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       if (!el) return;
       const fullMark = Number(el.dataset.fullmark ?? el.dataset.mark ?? 1);
       const nowWrong = el.dataset.status !== "wrong";
-      const newMark = nowWrong ? 0 : fullMark;
+      let newMark = nowWrong ? 0 : fullMark;
+      if (markingOption !== 2) {
+        // option 1: flipping ✗ back to ✓ can't push the question past its max marks
+        const others = highlights.reduce((sum, h) => (h.id === hid ? sum : sum + (h.mark || 0)), 0);
+        const cap = maxMarks != null ? Math.max(0, maxMarks - others) : fullMark;
+        newMark = nowWrong ? 0 : Math.min(fullMark, cap);
+        if (!nowWrong && newMark <= 0) { onLimitReached && onLimitReached(); return; }
+      }
 
       el.dataset.status = nowWrong ? "wrong" : "correct";
       el.dataset.mark = String(newMark);
@@ -657,7 +848,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       }
       onAdjust(hid, newMark, container.innerHTML);
     },
-    [onAdjust]
+    [onAdjust, highlights, maxMarks, onLimitReached, markingOption]
   );
 
   const handleContainerClick = useCallback(
@@ -705,7 +896,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       <div style={s.essayHeaderRow}>
         <div style={s.essayHint}>
           <PenLine size={14} style={{ flexShrink: 0 }} />
-          <span>Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong (it turns red with a ✗). An answer you move on from with no highlights is marked wrong automatically.</span>
+          <span>{markingOption === 2 ? "Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong (it turns red with a ✗). An answer you move on from with no highlights is marked wrong automatically." : "Highlight the words you want to mark — a ✓ / ✗ box pops up: ✓ gives the point, ✗ gives 0. Tap a badge later to switch it. Click the highlighted words to remove them. An answer you move on from with no highlights is marked wrong automatically."}</span>
         </div>
         {maxMarks != null && (
           <div style={s.markMeter}>
@@ -716,6 +907,8 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
           </div>
         )}
       </div>
+
+      {markingOption !== 2 && pending && <MarkChoicePopup rect={pending.rect} leaving={!!pending.leaving} onPick={applyChoice} />}
 
       {/* Same ruled exercise-book paper the student typed on — read-only, highlight-only. */}
       <RuledSheetFrame html={html}>
@@ -728,7 +921,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
           role="document"
           aria-readonly="true"
           aria-label="Student's answer (read only)"
-          onMouseUp={handleMouseUp}
+          onMouseUp={markingOption === 2 ? handleMouseUpOpt2 : () => setTimeout(captureSelection, 0)}
           onClick={handleContainerClick}
           dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
         />
@@ -770,6 +963,8 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
 ═══════════════════════════════════════════════════════════ */
 export default function Marking() {
   useGlobalMarkingStyles();
+  const isPhone = useIsPhone();
+  const markingOption = useMarkingOption(); // 1 (default) or 2 — set per teacher by the admin
   const { id: assessmentId } = useParams();
 
   const [queue, setQueue]           = useState([]);
@@ -1310,6 +1505,9 @@ export default function Marking() {
     }
   };
 
+  /* ══════════════════════════════════════════ RENDER: phones blocked ══ */
+  if (isPhone) return <PhoneMarkingBlocked />;
+
   /* ══════════════════════════════════════════ RENDER: loading ══ */
   if (loading)
     return (
@@ -1538,6 +1736,7 @@ export default function Marking() {
             <div>
               <p className="mkp-answer-heading">answer</p>
               <RichEssayViewer
+                markingOption={markingOption}
                 answerId={current.id}
                 html={essayHTML[current.id] ?? toDisplayHTML(current.essay_answer || "")}
                 highlights={editableHlForCurrent}
