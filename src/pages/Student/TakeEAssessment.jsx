@@ -232,6 +232,13 @@ const sebConfigHttpUrl = (assessmentId) => {
 const sebLaunchUrl = (assessmentId) =>
   sebConfigHttpUrl(assessmentId).replace(/^https:/i, "sebs:").replace(/^http:/i, "seb:");
 const HEARTBEAT_MS = 15000;
+// When time runs out every student's browser would submit in the same second and
+// the server would have to write hundreds of papers at once. Each device waits a
+// random 0–TIME_UP_JITTER_MS first so the room's submits arrive spread out. Kept
+// well under the server's 2-minute auto-submit grace, and the answers are already
+// autosaved, so nothing is at risk during the wait.
+const TIME_UP_JITTER_MS = 20000;
+const RETRY_JITTER_MS = 4000; // extra random delay added to every submit retry
 const LOCK_POLL_MS = 5000; // how often a locked screen asks the server whether an admin unlocked it
 const MAX_VIOLATIONS = 3;
 const START_PAPER_TIMEOUT_MS = 25000; // max wait for the paper to load after activation
@@ -1228,6 +1235,24 @@ export default function TakeEAssessment() {
   const handleSubmitRef = useRef(null);   // always the latest handleSubmit
   const lastSavedRef = useRef("");        // JSON of the last answers the server confirmed
   const submitRetryRef = useRef(0);
+  const timeUpTimerRef = useRef(null);     // pending (jittered) time-up submit
+  const mergeNextSyncRef = useRef(false);  // first sync after (re)entering: add to the server draft, never replace it
+
+  // Submit for time-up / "back online", after a random delay (see TIME_UP_JITTER_MS).
+  // Only one can be pending; a manual Submit press cancels it (see handleSubmit).
+  const scheduleAutoSubmit = useCallback(() => {
+    if (timeUpTimerRef.current) return;
+    const wait = Math.floor(Math.random() * TIME_UP_JITTER_MS);
+    // Deferred: this can be called from inside a state updater (the countdown).
+    queueMicrotask(() => {
+      setErrorMsg("Time's up — saving your answers…");
+      announce("Time's up. Saving your answers.", true);
+    });
+    timeUpTimerRef.current = setTimeout(() => {
+      timeUpTimerRef.current = null;
+      handleSubmitRef.current?.(true);
+    }, wait);
+  }, []);
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [autosaveFailed, setAutosaveFailed] = useState(false);
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
@@ -1620,6 +1645,7 @@ export default function TakeEAssessment() {
       cachedAt: Date.now(),
     });
 
+    mergeNextSyncRef.current = true; // see autosaveNow: protects progress already on the server
     setCurrentQuestionIndex(0);
     setPhase("active");
   }, [id]);
@@ -1797,7 +1823,9 @@ export default function TakeEAssessment() {
         token: tokenRef.current || undefined,
         device_id: deviceId,
         client_saved_at: answersUpdatedAtRef.current || Date.now(),
+        merge_existing: mergeNextSyncRef.current || undefined,
       });
+      mergeNextSyncRef.current = false; // the server now holds everything this device had
       // Only mark clean if nothing changed while the request was in flight.
       if (JSON.stringify(answersRef.current || {}) === snapshot) {
         lastSavedRef.current = snapshot;
@@ -1829,7 +1857,7 @@ export default function TakeEAssessment() {
       setOnline(true);
       autosaveNow();
       // Time ran out while offline: finish the pending submit as soon as we're back.
-      if (timeUpRef.current) handleSubmitRef.current?.(true);
+      if (timeUpRef.current) scheduleAutoSubmit();
     };
     const onOffline = () => setOnline(false);
     document.addEventListener("visibilitychange", onHidden);
@@ -1843,7 +1871,7 @@ export default function TakeEAssessment() {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [phase, autosaveNow]);
+  }, [phase, autosaveNow, scheduleAutoSubmit]);
 
   /* ── a second tab took over this exam on this device → stop this one ── */
   useEffect(() => {
@@ -1860,7 +1888,10 @@ export default function TakeEAssessment() {
   }, [phase, id]);
 
   // Release the one-tab lease when this screen goes away.
-  useEffect(() => () => { tabClaimRef.current?.release?.(); }, []);
+  useEffect(() => () => {
+    tabClaimRef.current?.release?.();
+    if (timeUpTimerRef.current) { clearTimeout(timeUpTimerRef.current); timeUpTimerRef.current = null; }
+  }, []);
 
   /* ── countdown timer ── */
   useEffect(() => {
@@ -1875,7 +1906,7 @@ export default function TakeEAssessment() {
         if (left <= 0) {
           clearInterval(timerRef.current);
           timeUpRef.current = true;
-          handleSubmitRef.current?.(true);
+          scheduleAutoSubmit();
           return 0;
         }
         return left;
@@ -1895,6 +1926,11 @@ export default function TakeEAssessment() {
     setPhase("locked");
     clearInterval(heartbeatRef.current);
     clearInterval(timerRef.current);
+    // Save whatever the student has typed BEFORE anything else: once locked, the
+    // autosave timer stops, so without this their latest answers would stay only on
+    // this device and be missing if the exam is unlocked on another one. The server
+    // accepts this save from the bound device even though the session is locked.
+    Promise.resolve(autosaveNow()).catch(() => { /* still safe in the device cache */ });
     // A lock this device decided on (violations) must also be recorded on
     // the server, otherwise the admin screen still shows the session as
     // Active, offers no Unlock button, and the student can never get back
@@ -1904,7 +1940,7 @@ export default function TakeEAssessment() {
         token: tokenRef.current, device_id: deviceId, reason,
       }).catch(() => { /* the locked screen re-reports it while it waits */ });
     }
-  }, [id, deviceId]);
+  }, [id, deviceId, autosaveNow]);
 
   const registerViolation = useCallback((label) => {
     setViolations((v) => {
@@ -2599,6 +2635,8 @@ export default function TakeEAssessment() {
           return;
         }
         setCanResume(false);
+        const restored = Object.values(answersRef.current || {}).filter((v) => (typeof v === "string" ? v.trim() !== "" : !!v)).length;
+        if (restored > 0) announce(`Exam resumed. ${restored} saved answer${restored === 1 ? "" : "s"} restored.`, true);
       }
     } catch (err) {
       const status = err?.response?.status;
@@ -2763,6 +2801,8 @@ export default function TakeEAssessment() {
 
   const handleSubmit = async (auto = false) => {
     if (submitting) return;
+    // Submitting now (manual press, or the jitter timer firing): drop the pending one.
+    if (timeUpTimerRef.current) { clearTimeout(timeUpTimerRef.current); timeUpTimerRef.current = null; }
     setSubmitting(true);
     try {
       const payload = {
@@ -2797,9 +2837,17 @@ export default function TakeEAssessment() {
       // blip). Keep trying — the server's own autosave sweep is the backstop.
       if (auto && status !== 423 && status !== 403 && (!err?.response || submitRetryRef.current < 30)) {
         submitRetryRef.current += 1;
-        setErrorMsg("Time's up — saving your answers, reconnecting…");
-        announce("Time's up. Saving your answers, reconnecting.", true);
-        setTimeout(() => handleSubmitRef.current?.(true), 8000);
+        // 503 "busy" = the server is saving many papers; it says how long to wait.
+        // Add random jitter so the students who were refused don't all return together.
+        const busy = status === 503 && err?.response?.data?.busy;
+        const hintSec = Number(err?.response?.data?.retry_after);
+        const delay = (hintSec > 0 ? hintSec * 1000 : 8000) + Math.floor(Math.random() * RETRY_JITTER_MS);
+        const retryMsg = busy
+          ? (err.response.data.message || "Many students are submitting — saving your answers in a moment…")
+          : "Time's up — saving your answers, reconnecting…";
+        setErrorMsg(retryMsg);
+        announce(busy ? "Many students are submitting. Your answers are safe; retrying shortly." : "Time's up. Saving your answers, reconnecting.", true);
+        setTimeout(() => handleSubmitRef.current?.(true), delay);
         return;
       }
       const failMsg = err?.response
@@ -3110,9 +3158,17 @@ Download the exam file, then open it. Safe Exam Browser starts and loads this ex
           <div style={{ ...S.iconCircle, background: "var(--success-tint)" }}>
             <CheckCircle2 size={26} color="var(--success)" aria-hidden="true" />
           </div>
-          <p role="alert" data-phase-heading tabIndex={-1} style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, textAlign: "center", margin: "16px 0 0" }}>
-            {errorMsg || "This assessment is complete."}
+          <h1 role="alert" data-phase-heading tabIndex={-1} style={{ color: "var(--text)", fontWeight: 800, fontSize: "clamp(26px, 6vw, 34px)", lineHeight: 1.15, textAlign: "center", margin: "18px 0 0" }}>
+            The exam has ended
+          </h1>
+          <p style={{ color: "var(--success)", fontWeight: 700, fontSize: "clamp(18px, 4.5vw, 22px)", lineHeight: 1.3, textAlign: "center", margin: "10px 0 0" }}>
+            Your responses have been saved.
           </p>
+          {errorMsg ? (
+            <p style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "center", margin: "12px 0 0" }}>
+              {errorMsg}
+            </p>
+          ) : null}
           {loggedOut && sebQuitIn !== null ? (
             <p style={{ color: "var(--text-secondary)", fontSize: 14, textAlign: "center", margin: "12px 0 0" }}>
               Safe Exam Browser will close in {Math.max(sebQuitIn, 0)} second{sebQuitIn === 1 ? "" : "s"}.

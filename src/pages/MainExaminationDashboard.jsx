@@ -9,7 +9,7 @@ import {
   Table2, PlayCircle, CalendarDays, ChevronLeft, ChevronRight, Printer,
   ChevronDown, Search, UserCircle2, HelpCircle, Gauge, Timer, ClipboardCheck,
   AlertCircle, Target, Download, FileSpreadsheet, Building2, Eye, X,
-  Key, Copy, RotateCw, Undo2,
+  Key, Copy, RotateCw, Undo2, TimerReset,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -480,6 +480,7 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
               onAttach={(eid) => attachAssessment(s, eid)}
               mainExamId={id}
               showToast={showToast}
+              onChanged={onChanged}
             />
           ))}
         </div>
@@ -561,10 +562,12 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
   );
 }
 
-function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach, mainExamId, showToast }) {
+function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach, mainExamId, showToast, onChanged }) {
   const C = useC();
   const [attaching, setAttaching] = useState(false);
   const [replayOpen, setReplayOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
+  const canAddTime = !!s.e_assessment_id && s.status === "active";
   const canReplay = !!s.e_assessment_id && ["ended", "marking", "completed"].includes(s.status);
   // Only an actually-live session is protected from removal — a finished
   // one (ended/marking/completed) can be removed since its results live
@@ -612,6 +615,9 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach, mainExam
               {assessmentOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           )}
+          {canAddTime && (
+            <MiniBtn tone="warning" icon={<TimerReset size={12} />} onClick={() => setTimeOpen(true)} title="Give everyone sitting this exam extra minutes">Add time</MiniBtn>
+          )}
           {canReplay && (
             <MiniBtn tone="warning" icon={<RotateCw size={12} />} onClick={() => setReplayOpen(true)} title="Let selected students sit this finished paper again">Replay paper</MiniBtn>
           )}
@@ -619,8 +625,50 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach, mainExam
           <MiniBtn tone="danger" icon={<Trash2 size={12} />} onClick={onDelete} disabled={deleteLocked} title={deleteLocked ? "Cannot remove while active — end it first" : "Remove"} />
         </div>
       </div>
+      {timeOpen && <AddTimeModal mainExamId={mainExamId} s={s} onClose={() => setTimeOpen(false)} onDone={onChanged} showToast={showToast} />}
       {replayOpen && <ReplayPaperModal mainExamId={mainExamId} s={s} onClose={() => setReplayOpen(false)} showToast={showToast} />}
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADD TIME — gives an exam that is running right now extra minutes.
+   Moves the subject's end time and every student's countdown together.
+═══════════════════════════════════════════════════════════ */
+function AddTimeModal({ mainExamId, s, onClose, onDone, showToast }) {
+  const C = useC();
+  const [minutes, setMinutes] = useState("10");
+  const [saving, setSaving] = useState(false);
+  const n = Number.parseInt(minutes, 10);
+  const valid = Number.isInteger(n) && n > 0 && n <= 240;
+
+  const save = async () => {
+    if (!valid) return;
+    setSaving(true);
+    try {
+      const r = await API.post(`/main-exams/${mainExamId}/subjects/${s.id}/extend`, { minutes: n });
+      showToast(r.data?.message || "Time added");
+      if (onDone) await onDone();
+      onClose();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not add time", "error");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title={`Add time — ${s.subject}${s.paper_label ? ` (${s.paper_label})` : ""}`} onClose={onClose} maxWidth={460}>
+      <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textSec, lineHeight: 1.5 }}>
+        Everyone currently sitting this exam gets the extra minutes on their countdown, and the exam closes later by the same amount.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {[5, 10, 15, 30, 60].map((m) => (
+          <MiniBtn key={m} neutral={n !== m} onClick={() => setMinutes(String(m))}>+{m} min</MiniBtn>
+        ))}
+      </div>
+      <FieldLabel>Extra minutes (1–240)</FieldLabel>
+      <ModalInput type="number" value={minutes} onChange={setMinutes} placeholder="e.g. 15" />
+      <SaveButton onClick={save} loading={saving} disabled={!valid} label={valid ? `Add ${n} minute${n === 1 ? "" : "s"}` : "Add time"} icon={<TimerReset size={14} />} />
+    </Modal>
   );
 }
 
@@ -638,6 +686,7 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
   const [picked, setPicked] = useState({}); // student_id -> name
   const [policy, setPolicy] = useState("replace");
   const [saving, setSaving] = useState(false);
+  const [allMode, setAllMode] = useState(false); // true = everyone who sat the paper (resolved on the server)
 
   const load = useCallback(async (term) => {
     setLoading(true);
@@ -656,16 +705,30 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
   }, [q, load]);
 
   const pickedIds = Object.keys(picked);
+  const sm0 = data.summary;
+  const allCount = sm0 ? Math.max(0, (sm0.sat || 0) - (sm0.pending || 0)) : 0;
+  const selectedCount = allMode ? allCount : pickedIds.length;
+  const visible = data.students.filter((st) => !(Number(st.resit_allowed) === 1 && st.session_status === "issued"));
+  const allVisiblePicked = visible.length > 0 && visible.every((st) => picked[st.student_id]);
+  const toggleVisible = () => setPicked((p) => {
+    const n = { ...p };
+    if (allVisiblePicked) visible.forEach((st) => delete n[st.student_id]);
+    else visible.forEach((st) => { n[st.student_id] = st.name || `#${st.student_id}`; });
+    return n;
+  });
   const toggle = (st) => setPicked((p) => { const n = { ...p }; n[st.student_id] ? delete n[st.student_id] : (n[st.student_id] = st.name || `#${st.student_id}`); return n; });
 
   const grant = async () => {
-    if (!pickedIds.length) return;
-    if (!window.confirm(`Let ${pickedIds.length} selected student${pickedIds.length === 1 ? "" : "s"} sit "${s.subject}" again?\n\nOnly they can enter; the paper stays closed to everyone else.`)) return;
+    if (!selectedCount) return;
+    if (!window.confirm(`Let ${allMode ? `all ${selectedCount}` : selectedCount} selected student${selectedCount === 1 ? "" : "s"} sit "${s.subject}" again?\n\nOnly they can enter; the paper stays closed to everyone else.`)) return;
     setSaving(true);
     try {
-      const r = await API.post(base, { student_ids: pickedIds.map(Number), score_policy: policy });
+      const r = await API.post(base, allMode
+        ? { all: true, score_policy: policy }
+        : { student_ids: pickedIds.map(Number), score_policy: policy });
       showToast(r.data?.message || "Replay granted");
       setPicked({});
+      setAllMode(false);
       load(q.trim());
     } catch (err) {
       showToast(err?.response?.data?.message || "Could not grant the replay", "error");
@@ -698,6 +761,19 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
 
       <ModalInput value={q} onChange={setQ} placeholder="Search a student's name, username or class (2+ letters)…" />
 
+      {allCount > 0 && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 0", fontSize: 13, fontWeight: 600, color: C.textPri, cursor: "pointer" }}>
+          <input type="checkbox" checked={allMode} onChange={(e) => { setAllMode(e.target.checked); if (e.target.checked) setPicked({}); }} />
+          Select all {allCount} student{allCount === 1 ? "" : "s"} who sat this paper
+        </label>
+      )}
+      {!allMode && visible.length > 1 && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 0", fontSize: 12.5, color: C.textSec, cursor: "pointer" }}>
+          <input type="checkbox" checked={allVisiblePicked} onChange={toggleVisible} />
+          Select all {visible.length} shown
+        </label>
+      )}
+
       <div style={{ margin: "10px 0", minHeight: 40 }}>
         {loading && <div style={{ fontSize: 12.5, color: C.textMuted }}>Searching…</div>}
         {!loading && !data.searched && <div style={{ fontSize: 12.5, color: C.textMuted }}>Students aren't listed until you search.</div>}
@@ -706,7 +782,7 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
           const pending = Number(st.resit_allowed) === 1 && st.session_status === "issued";
           return (
             <div key={st.student_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: `1px solid ${C.border}` }}>
-              <input type="checkbox" disabled={pending} checked={!!picked[st.student_id]} onChange={() => toggle(st)} aria-label={`Select ${st.name}`} />
+              <input type="checkbox" disabled={pending || allMode} checked={allMode ? !pending : !!picked[st.student_id]} onChange={() => toggle(st)} aria-label={`Select ${st.name}`} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, color: C.textPri, fontSize: 13.5 }}>{st.name || `#${st.student_id}`}</div>
                 <div style={{ fontSize: 11.5, color: C.textMuted }}>{[st.class_name, st.username].filter(Boolean).join(" · ")}</div>
@@ -718,7 +794,10 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
         })}
       </div>
 
-      {pickedIds.length > 0 && (
+      {allMode && (
+        <div style={{ margin: "6px 0 10px", fontSize: 12.5, color: C.textSec }}>All {allCount} student{allCount === 1 ? "" : "s"} who sat this paper (except any with a replay already waiting) will be included.</div>
+      )}
+      {!allMode && pickedIds.length > 0 && (
         <div style={{ margin: "6px 0 10px", fontSize: 12.5, color: C.textSec }}>
           Selected ({pickedIds.length}): {Object.values(picked).slice(0, 6).join(", ")}{pickedIds.length > 6 ? ` +${pickedIds.length - 6} more` : ""}{" "}
           <button type="button" onClick={() => setPicked({})} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12.5 }}>Clear</button>
@@ -728,7 +807,7 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
       <FieldLabel>Which mark counts</FieldLabel>
       <ModalSelect value={policy} onChange={setPolicy}
         options={[{ value: "replace", label: "The replay mark replaces the old one" }, { value: "keep_best", label: "Keep whichever mark is higher" }]} />
-      <SaveButton onClick={grant} loading={saving} disabled={!pickedIds.length} label={`Allow replay for ${pickedIds.length || ""} selected`.trim()} icon={<RotateCw size={14} />} />
+      <SaveButton onClick={grant} loading={saving} disabled={!selectedCount} label={`Allow replay for ${selectedCount || ""} selected`.trim()} icon={<RotateCw size={14} />} />
     </Modal>
   );
 }
