@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api";
-import { Inbox, CheckCheck, Loader2 } from "lucide-react";
+import { Inbox, CheckCheck, Loader2, Archive } from "lucide-react";
 
 /* Read-side of the notifications system: lists whatever landed in
    Notifications for the logged-in account (admin/Users, teacher/
@@ -11,16 +11,22 @@ import { Inbox, CheckCheck, Loader2 } from "lucide-react";
    Deliberately has no header/page-chrome of its own — the page that
    renders it (AdminNotifications' Inbox tab, TeacherNotifications)
    supplies the title/subtitle/back-button so this stays a drop-in
-   list for any portal. */
+   list for any portal.
+
+   Read notifications are archived server-side (the moment they're marked
+   read), so this has two views: "Inbox" (not archived) and "Archived"
+   (read history). A row you just read stays visible until you reload or
+   switch tabs, then it lives under Archived. */
 export default function NotificationInbox({ onCountChange }) {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
+  const [view, setView] = useState("inbox"); // "inbox" | "archived"
 
-  const loadNotifications = async () => {
+  const loadNotifications = async (which = view) => {
     try {
-      const res = await API.get("/notifications");
+      const res = await API.get("/notifications", which === "archived" ? { params: { archived: 1 } } : undefined);
       setNotifications(res.data || []);
     } catch (err) {
       console.log(err);
@@ -30,14 +36,17 @@ export default function NotificationInbox({ onCountChange }) {
   };
 
   useEffect(() => {
-    loadNotifications();
+    setLoading(true);
+    setNotifications([]);
+    loadNotifications(view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [view]);
 
   useEffect(() => {
-    if (!onCountChange) return;
+    // The unread badge only ever reflects the inbox (unread items are never archived).
+    if (!onCountChange || view !== "inbox") return;
     onCountChange(notifications.filter((n) => !n.isRead).length);
-  }, [notifications, onCountChange]);
+  }, [notifications, onCountChange, view]);
 
   const markRead = async (id) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
@@ -52,7 +61,7 @@ export default function NotificationInbox({ onCountChange }) {
   // carries a link back to the relevant leave/record, takes the user
   // straight there.
   const handleRowClick = (n) => {
-    if (!n.isRead) markRead(n.id);
+    if (view === "inbox" && !n.isRead) markRead(n.id);
     if (n.link) navigate(n.link);
   };
 
@@ -68,7 +77,7 @@ export default function NotificationInbox({ onCountChange }) {
     }
   };
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const unreadCount = view === "inbox" ? notifications.filter((n) => !n.isRead).length : 0;
 
   const formatTime = (d) => {
     if (!d) return "";
@@ -81,6 +90,19 @@ export default function NotificationInbox({ onCountChange }) {
 
   return (
     <div>
+      <div style={S.tabs}>
+        {[["inbox", "Inbox"], ["archived", "Archived"]].map(([key, label]) => (
+          <button
+            key={key}
+            style={{ ...S.tab, ...(view === key ? S.tabActive : {}) }}
+            onClick={() => setView(key)}
+          >
+            {key === "archived" && <Archive size={13} />}
+            {label}
+          </button>
+        ))}
+      </div>
+
       {unreadCount > 0 && (
         <div style={S.toolbar}>
           <button style={S.markAllBtn} onClick={markAllRead} disabled={markingAll}>
@@ -99,7 +121,7 @@ export default function NotificationInbox({ onCountChange }) {
         ) : notifications.length === 0 ? (
           <div style={S.emptyState}>
             <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
-            <div>No notifications yet</div>
+            <div>{view === "archived" ? "No archived notifications" : "No notifications yet"}</div>
           </div>
         ) : (
           notifications.map((n) => (
@@ -129,6 +151,13 @@ export default function NotificationInbox({ onCountChange }) {
 }
 
 const S = {
+  tabs: { display: "flex", gap: 6, marginBottom: 12 },
+  tab: {
+    display: "flex", alignItems: "center", gap: 6,
+    background: "transparent", border: "1px solid var(--border)", color: "var(--text-secondary)",
+    padding: "6px 14px", borderRadius: 999, cursor: "pointer", fontWeight: 700, fontSize: 12.5,
+  },
+  tabActive: { background: "var(--primary-tint)", color: "var(--primary)", borderColor: "var(--primary)" },
   toolbar: { display: "flex", justifyContent: "flex-end", marginBottom: 12 },
   markAllBtn: {
     display: "flex", alignItems: "center", gap: 6,

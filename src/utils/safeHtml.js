@@ -28,7 +28,7 @@ const DROP_WITH_CONTENT = new Set([
   "LINK", "META", "FORM", "INPUT", "TEXTAREA", "SELECT", "BUTTON", "VIDEO", "AUDIO", "CANVAS",
 ]);
 
-const ALLOWED_CLASSES = new Set(["hl-mark", "hl-status"]);
+const ALLOWED_CLASSES = new Set(["hl-mark", "hl-status", "hl-blank-x"]);
 const ALLOWED_DATA = new Set(["data-hid", "data-mark", "data-fullmark", "data-status", "data-music-sheet", "data-tpl"]);
 
 // A music-paper drawing sheet: PNG data URL only, capped so one answer can't be abused.

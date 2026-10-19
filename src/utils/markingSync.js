@@ -150,43 +150,76 @@ export function needsAutoWrong(highlightList, score) {
   return real.length === 0 && (Number(score) || 0) === 0;
 }
 
-/* Wraps the entire answer in a red "wrong" mark with a ✗ badge. Returns
-   { html, highlight } or null when there is no answer text to mark. */
+/* ── blank answers ──────────────────────────────────────────
+   An answer with no text (empty, only spaces/line breaks, or a table of empty
+   cells) and no drawing is blank. Blank answers are never shown to a teacher
+   as work to mark: they are scored 0 automatically and carry one big ✗ in the
+   answer space. */
+export function isBlankAnswerHtml(html) {
+  if (html == null) return true;
+  const str = String(html);
+  if (!str.trim()) return true;
+  if (typeof DOMParser === "undefined") return false; // can't tell — treat as an answer
+  const body = new DOMParser().parseFromString(str, "text/html").body; // inert
+  if (body.querySelector("img, svg, canvas, video, audio, iframe, object, embed")) return false;
+  return !(body.textContent || "").replace(/[\s\u00a0\u200b-\u200d\ufeff]/g, "");
+}
+
+/* The big ✗ that fills the answer space of a blank answer. */
+export const blankXHtml = (answerId) =>
+  `<div class="hl-blank-x" data-hid="${AUTO_WRONG_PREFIX}${answerId}_x1" data-status="wrong">✗</div>`;
+
+/* Big X: EVERY point the student wrote is underlined in red and gets its own
+   ✗ at the end. Ids are `wrong_<answerId>_x<n>`. Falls back to wrapping the
+   whole answer in one mark (id `wrong_<answerId>`) only when the answer has no
+   text to split (e.g. a drawing). Returns { html, highlights: [...] } or null
+   when there is nothing to mark. */
+export const bigXPrefix = (answerId) => `${AUTO_WRONG_PREFIX}${answerId}_x`;
+export const isBigXId = (answerId, hid) =>
+  typeof hid === "string" && (hid === `${AUTO_WRONG_PREFIX}${answerId}` || hid.startsWith(bigXPrefix(answerId)));
+
 export function buildAutoWrong(answerId, html) {
   if (typeof document === "undefined") return null;
   const tmp = document.createElement("div");
   tmp.innerHTML = sanitizeHtml(html || "");
+  if (isBlankAnswerHtml(tmp.innerHTML)) {
+    return {
+      html: blankXHtml(answerId),
+      highlights: [{
+        id: `${AUTO_WRONG_PREFIX}${answerId}_x1`, text: "No answer", mark: 0, status: "wrong",
+        createdAt: Date.now(), confirmed: true, auto: true, reason: "No answer was given.",
+      }],
+    };
+  }
   const text = (tmp.textContent || "").trim();
-  const hasTable = !!tmp.querySelector("table");
-  if (!text && !hasTable) return null;
 
+  const added = markPoints(tmp, answerId, Infinity, {
+    prefix: bigXPrefix(answerId), minChars: 1, auto: "bigx",
+    reason: "Marked wrong — no credit for this point.",
+  });
+  if (added.length) return { html: tmp.innerHTML, highlights: added };
+
+  // nothing splittable: wrap the lot in a single ✗ mark
   const hid = `${AUTO_WRONG_PREFIX}${answerId}`;
-  const mark = document.createElement("mark");
-  mark.className = "hl-mark";
-  mark.dataset.hid = hid;
-  mark.dataset.mark = "0";
-  mark.dataset.fullmark = "1";
-  mark.dataset.status = "wrong";
+  const mark = newWrongMark(hid);
+  mark.dataset.auto = "bigx";
   while (tmp.firstChild) mark.appendChild(tmp.firstChild);
-
-  const badge = document.createElement("span");
-  badge.className = "hl-status";
-  badge.dataset.status = "wrong";
-  badge.textContent = "✗";
-  mark.appendChild(badge);
+  mark.appendChild(wrongBadge());
   tmp.appendChild(mark);
-
   return {
     html: tmp.innerHTML,
-    highlight: {
-      id: hid,
-      text: (text || "Answer").slice(0, 500),
-      mark: 0,
-      createdAt: Date.now(),
-      confirmed: true,
+    highlights: [{
+      id: hid, text: (text || "Answer").slice(0, 500), mark: 0, status: "wrong",
+      createdAt: Date.now(), confirmed: true, auto: true,
       reason: "No marking points were found in this answer.",
-    },
+    }],
   };
+}
+
+/* Removes every big-X mark of one answer (so a reopened answer can be
+   highlighted), leaving shortfall ✗s and the teacher's own marks alone. */
+export function stripBigXHtml(html, answerId) {
+  return stripAutoWrongHtml(html, answerId);
 }
 
 /* Removes the whole-answer ✗ again (used when a teacher reopens an answer
@@ -200,11 +233,12 @@ export function stripAutoWrongHtml(html, onlyWholeAnswerId) {
   // blocks highlighting); the per-point red underlines are kept so a reopened
   // question still shows which points earned nothing.
   const sel = onlyWholeAnswerId != null
-    ? `[data-hid="${AUTO_WRONG_PREFIX}${onlyWholeAnswerId}"]:not([data-status="correct"])`
+    ? `[data-hid="${AUTO_WRONG_PREFIX}${onlyWholeAnswerId}"]:not([data-status="correct"]), [data-hid^="${bigXPrefix(onlyWholeAnswerId)}"]:not([data-status="correct"])`
     : `[data-hid^="${AUTO_WRONG_PREFIX}"]:not([data-status="correct"])`;
   const els = tmp.querySelectorAll(sel);
   if (!els.length) return html;
   els.forEach((el) => {
+    if (el.classList.contains("hl-blank-x")) { el.remove(); return; }
     const badge = el.querySelector(":scope > .hl-status");
     if (badge) badge.remove();
     while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
@@ -243,7 +277,7 @@ function wrongBadge() {
 }
 
 // Splits a text node's content into sentence-like points.
-function pointsInText(text) {
+function pointsInText(text, minChars = SHORTFALL_MIN_CHARS) {
   const out = [];
   const re = /[^.!?;\n]+[.!?;]*/g;
   let m;
@@ -251,28 +285,18 @@ function pointsInText(text) {
     const raw = m[0];
     const lead = raw.length - raw.trimStart().length;
     const body = raw.trim();
-    if (body.replace(/[^A-Za-z0-9]/g, "").length >= SHORTFALL_MIN_CHARS) {
+    if (body.replace(/[^A-Za-z0-9]/g, "").length >= minChars) {
       out.push({ start: m.index + lead, end: m.index + lead + body.length, text: body });
     }
   }
   return out;
 }
 
-/* Returns { html, added: [highlight, ...] }. `missing` = marks not earned.
-   No-op (added: []) when nothing is missing or nothing is left to mark. */
-export function addShortfallWrongs(answerId, html, missing) {
-  const cap = Math.floor(Number(missing) || 0);
-  if (typeof document === "undefined" || !html || cap <= 0) return { html, added: [] };
-
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-
-  // points already marked wrong (by the teacher or a previous pass) count toward the shortfall
-  const alreadyWrong = tmp.querySelectorAll('.hl-mark[data-status="wrong"]').length;
-  let budget = cap - alreadyWrong;
-  if (budget <= 0) return { html, added: [] };
-
-  const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT, {
+/* Wraps every point in the unmarked text of `root` (up to `budget`) in a red
+   ✗ mark. Text already inside a mark is never touched. Returns the highlight
+   entries it added. */
+function markPoints(root, answerId, budget, { prefix, minChars, auto, reason }) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => {
       if (!n.nodeValue || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
       const p = n.parentElement;
@@ -288,22 +312,22 @@ export function addShortfallWrongs(answerId, html, missing) {
   const added = [];
   for (const node of nodes) {
     if (budget <= 0) break;
-    const pts = pointsInText(node.nodeValue).slice(0, budget);
+    const pts = pointsInText(node.nodeValue, minChars).slice(0, budget);
     if (!pts.length) continue;
     const text = node.nodeValue;
     const frag = document.createDocumentFragment();
     let cursor = 0;
     for (const pt of pts) {
       if (pt.start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, pt.start)));
-      const hid = `${AUTO_WRONG_PREFIX}${answerId}_${added.length + 1}`;
+      const hid = `${prefix}${added.length + 1}`;
       const mark = newWrongMark(hid);
+      mark.dataset.auto = auto;
       mark.appendChild(document.createTextNode(pt.text));
       mark.appendChild(wrongBadge());
       frag.appendChild(mark);
       added.push({
         id: hid, text: pt.text.slice(0, 500), mark: 0, status: "wrong",
-        createdAt: Date.now(), confirmed: true, auto: true,
-        reason: "Written, but not one of the marking points — no credit.",
+        createdAt: Date.now(), confirmed: true, auto: true, reason,
       });
       cursor = pt.end;
       budget -= 1;
@@ -311,7 +335,38 @@ export function addShortfallWrongs(answerId, html, missing) {
     if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
     node.parentNode.replaceChild(frag, node);
   }
+  return added;
+}
+
+/* Returns { html, added: [highlight, ...] }. Rule: when the credited marks fall
+   short of the question's marks, EVERY point the student wrote that nobody
+   highlighted is marked wrong (red underline + ✗) — no cap. `missing` only
+   decides whether the rule applies (> 0). */
+export function addShortfallWrongs(answerId, html, missing) {
+  if (typeof document === "undefined" || !html || !(Number(missing) > 0)) return { html, added: [] };
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  const added = markPoints(tmp, answerId, Infinity, {
+    prefix: `${AUTO_WRONG_PREFIX}${answerId}_`, minChars: SHORTFALL_MIN_CHARS, auto: "shortfall",
+    reason: "Written, but not one of the marking points — no credit.",
+  });
   return { html: added.length ? tmp.innerHTML : html, added };
+}
+
+/* Clears every mark (the teacher's highlights too) and puts the big X on the
+   whole answer. Used by the ✗ quick-mark button. */
+export function stripAllMarksHtml(html) {
+  if (typeof document === "undefined" || !html) return html || "";
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  tmp.querySelectorAll(".hl-blank-x").forEach((el) => el.remove());
+  tmp.querySelectorAll(".hl-mark").forEach((el) => {
+    el.querySelectorAll(":scope > .hl-status").forEach((b) => b.remove());
+    while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+    el.remove();
+  });
+  tmp.normalize();
+  return tmp.innerHTML;
 }
 
 /* One entry point for the marking pages: given the teacher's highlights, the
@@ -325,7 +380,7 @@ export function applyAutoWrong(answerId, html, list, score, maxMarks) {
 
   if (needsAutoWrong(baseList, sc)) {
     const wrong = buildAutoWrong(answerId, baseHtml);
-    if (wrong) return { html: wrong.html, list: [wrong.highlight], changed: true };
+    if (wrong) return { html: wrong.html, list: wrong.highlights, changed: true };
     return { html: baseHtml, list: baseList, changed: false };
   }
   const real = baseList.filter((h) => !h.prior);

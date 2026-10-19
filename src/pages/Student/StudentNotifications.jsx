@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import API from "../../api";
-import { Bell, Inbox, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, Inbox, CheckCheck, Loader2, Archive } from "lucide-react";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app; a no-op if already mounted by the layout or
@@ -80,10 +80,13 @@ export default function StudentNotifications() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
+  // Read notifications are archived server-side the moment they're read.
+  // A row you just read stays visible until you reload or switch tabs.
+  const [view, setView] = useState("inbox"); // "inbox" | "archived"
 
-  const loadNotifications = async () => {
+  const loadNotifications = async (which = view) => {
     try {
-      const res = await API.get("/notifications");
+      const res = await API.get("/notifications", which === "archived" ? { params: { archived: 1 } } : undefined);
       setNotifications(res.data || []);
     } catch (err) {
       console.log(err);
@@ -93,8 +96,11 @@ export default function StudentNotifications() {
   };
 
   useEffect(() => {
-    loadNotifications();
-  }, []);
+    setLoading(true);
+    setNotifications([]);
+    loadNotifications(view);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   const markRead = async (id) => {
     // instant UI update
@@ -120,7 +126,7 @@ export default function StudentNotifications() {
     }
   };
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const unreadCount = view === "inbox" ? notifications.filter((n) => !n.isRead).length : 0;
 
   const formatTime = (d) => {
     if (!d) return "";
@@ -150,6 +156,19 @@ export default function StudentNotifications() {
         )}
       </header>
 
+<div style={D.tabs}>
+        {[["inbox", "Inbox"], ["archived", "Archived"]].map(([key, label]) => (
+          <button
+            key={key}
+            style={{ ...D.tab, ...(view === key ? D.tabActive : {}) }}
+            onClick={() => setView(key)}
+          >
+            {key === "archived" && <Archive size={13} />}
+            {label}
+          </button>
+        ))}
+      </div>
+
       <section style={D.panel}>
         {loading ? (
           <div style={D.emptyState}>
@@ -159,15 +178,15 @@ export default function StudentNotifications() {
         ) : notifications.length === 0 ? (
           <div style={D.emptyState}>
             <Inbox size={22} color="var(--text-muted)" style={{ marginBottom: 8 }} />
-            <div>No notifications yet</div>
+            <div>{view === "archived" ? "No archived notifications" : "No notifications yet"}</div>
           </div>
         ) : (
           notifications.map((n) => (
             <div
               key={n.id}
               style={{ ...D.row, ...(n.isRead ? {} : D.rowUnread) }}
-              onClick={() => !n.isRead && markRead(n.id)}
-              role={!n.isRead ? "button" : undefined}
+              onClick={() => view === "inbox" && !n.isRead && markRead(n.id)}
+              role={view === "inbox" && !n.isRead ? "button" : undefined}
             >
               <div style={D.rowTop}>
                 <span style={D.rowTitle}>
@@ -186,6 +205,13 @@ export default function StudentNotifications() {
 }
 
 const D = {
+  tabs: { display: "flex", gap: 6, marginBottom: 12 },
+  tab: {
+    display: "flex", alignItems: "center", gap: 6,
+    background: "transparent", border: "1px solid var(--border)", color: "var(--text-secondary)",
+    padding: "6px 14px", borderRadius: 999, cursor: "pointer", fontWeight: 700, fontSize: 12.5,
+  },
+  tabActive: { background: "var(--primary-tint)", color: "var(--primary)", borderColor: "var(--primary)" },
   main: {
     padding: "24px 32px 56px",
     background: "var(--bg)",

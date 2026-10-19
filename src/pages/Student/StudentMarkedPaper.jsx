@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { round2, fmt2 } from "../../utils/format";
 import { sanitizeHtml, answerToSafeHtml } from "../../utils/safeHtml";
-import { applyAutoWrong } from "../../utils/markingSync";
+import { applyAutoWrong, isBlankAnswerHtml, blankXHtml } from "../../utils/markingSync";
 import { hasDrawing, withMusicOverlays } from "../../utils/musicAnswer";
 
 /* ─── shared design-token stylesheet, plus a couple of things unique
@@ -122,6 +122,9 @@ const injectAnswerStyles = () => {
     .mp-answer mark.hl-mark { color: inherit; border-radius: 3px; padding: 1px 3px; cursor: default; animation: none; }
     .mp-answer mark.hl-mark[data-status="correct"] { background: var(--success-tint); border-bottom: 2px solid var(--success); }
     .mp-answer mark.hl-mark[data-status="wrong"] { background: var(--destructive-tint); border-bottom: none; text-decoration: underline; text-decoration-color: var(--destructive); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+    /* blank answer: one big ✗ fills the answer space */
+    .hl-blank-x { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 140px; color: #ef4444; font-size: 96px; font-weight: 800; line-height: 1; user-select: none; }
+    .hl-blank-x::after { content: "No answer given"; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; margin-top: 6px; }
     .mp-answer .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; vertical-align: middle; color: #fff; pointer-events: none; text-decoration: none; }
     .mp-answer .hl-status[data-status="correct"] { background: var(--success); }
     .mp-answer .hl-status[data-status="wrong"] { background: var(--destructive); width: 18px; height: 18px; font-size: 12px; }
@@ -426,7 +429,7 @@ function QuestionCard({ q, index }) {
 function EssayAnswer({ q }) {
   const highlights = Array.isArray(q.highlights) ? q.highlights : [];
   const hasMarkedHtml = highlights.length > 0 && !!q.highlighted_html;
-  const answered = !!(q.essay_answer && String(q.essay_answer).replace(/<[^>]*>/g, "").trim()) || /<table/i.test(q.essay_answer || "") || hasDrawing(q.essay_answer);
+  const answered = !isBlankAnswerHtml(q.essay_answer) || hasDrawing(q.essay_answer);
 
   // The saved marked-up HTML already has the ✓/✗ highlights baked in; fall back
   // to the plain answer for work marked by an override score / the AI flow.
@@ -460,7 +463,7 @@ function EssayAnswer({ q }) {
       {answered ? (
         <div className="mp-answer ruled-paper" dangerouslySetInnerHTML={{ __html: answerHtml }} />
       ) : (
-        <div style={D.essayText}><em style={{ color: "var(--text-muted)" }}>Not answered</em></div>
+        <div className="mp-answer ruled-paper" dangerouslySetInnerHTML={{ __html: blankXHtml(q.id ?? q.answer_id ?? 0) }} />
       )}
 
       {modelHtml && (

@@ -8,9 +8,10 @@ import { sanitizeHtml } from "../../utils/safeHtml";
 import RuledSheetFrame from "../../components/RuledSheetFrame";
 import {
   PENDING_FLUSH_MS, isAutoWrongId, readPending, queuePending, clearPendingBefore, flushPending, flushPendingOnExit,
-  applyPendingToRow, needsAutoWrong, buildAutoWrong, stripAutoWrongHtml, applyAutoWrong,
+  applyPendingToRow, needsAutoWrong, buildAutoWrong, stripAutoWrongHtml, applyAutoWrong, isBigXId, stripAllMarksHtml, isBlankAnswerHtml,
 } from "../../utils/markingSync";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
+import ReviewMarkedModal from "../../components/ReviewMarkedModal";
 import AllocationStatsPanel from "../../components/eassessment/AllocationStatsPanel";
 
 /* ═══════════════════════════════════════════════════════════
@@ -172,6 +173,9 @@ const injectMarkingStyles = () => {
     .hl-mark[data-status="wrong"] { background: rgba(239,68,68,.12); border-bottom: none; text-decoration: underline; text-decoration-color: #ef4444; text-decoration-thickness: 2px; text-underline-offset: 3px; }
     .hl-mark[data-status="wrong"]:hover { background: rgba(239,68,68,.35); }
     .hl-mark[data-status="wrong"] .hl-status { text-decoration: none; }
+    /* blank answer: one big ✗ fills the answer space */
+    .hl-blank-x { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 140px; color: #ef4444; font-size: 96px; font-weight: 800; line-height: 1; user-select: none; }
+    .hl-blank-x::after { content: "No answer given"; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; margin-top: 6px; }
     .hl-status { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; font-size: 9px; font-weight: 800; line-height: 1; cursor: pointer; vertical-align: middle; color: #fff; user-select: none; }
     .hl-status[data-status="correct"] { background: var(--success, #22c55e); }
     .hl-status[data-status="wrong"] { background: #ef4444; width: 18px; height: 18px; font-size: 12px; }
@@ -792,6 +796,8 @@ export default function Marking() {
   const [error, setError]             = useState(null);
   const [allDone, setAllDone]         = useState(false);
   const [pendingJump, setPendingJump] = useState(null);
+  const [reviewOpen, setReviewOpen]   = useState(false);
+  const [reviewStart, setReviewStart] = useState(0);
 
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
@@ -898,6 +904,7 @@ export default function Marking() {
         const preDismissed = new Set();
         const dbRemarks = {};
         const committedIds = new Set();
+        let autoBlankCount = 0;
 
         for (const item of interleaved) {
           // already graded in an earlier session — surface it as done, don't re-queue it
@@ -929,10 +936,22 @@ export default function Marking() {
             if (item.remarks) dbRemarks[item.id] = item.remarks;
             preDismissed.add(item.id);
             committedIds.add(item.id);
+          } else if (isBlankAnswerHtml(item.essay_answer)) {
+            // blank answer: scored 0 with a big ✗ in the answer space, and kept
+            // out of the teacher's queue — nobody has to open an empty answer
+            const bx = buildAutoWrong(item.id, "");
+            initialHTML[item.id] = bx ? bx.html : "";
+            initialHighlights[item.id] = bx ? bx.highlights : [];
+            initialScores[item.id] = 0;
+            preDismissed.add(item.id);
+            committedIds.add(item.id);
+            queuePending(assessmentId, item.id, { score: 0, remark: "", highlights: bx ? bx.highlights : [], essayHTML: bx ? bx.html : "" });
+            autoBlankCount += 1;
           } else {
             initialHTML[item.id] = toDisplayHTML(item.essay_answer);
           }
         }
+        if (autoBlankCount) flushPending(assessmentId).catch(() => {}); // the 30s timer retries on failure
 
         const initialAnn = {};
         for (const item of interleaved) {
@@ -981,6 +1000,11 @@ export default function Marking() {
 
   /* ── DERIVED ── */
   const remaining = useMemo(() => queue.filter((q) => !dismissed.has(q.id)), [queue, dismissed]);
+  // everything already marked, in queue order — blank answers (auto-marked 0) are left out
+  const markedForReview = useMemo(
+    () => queue.filter((q) => dismissed.has(q.id) && !isBlankAnswerHtml(q.essay_answer)),
+    [queue, dismissed],
+  );
   const current    = remaining[currentIdx] ?? null;
   const totalScore =
     Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0) +
@@ -1122,12 +1146,13 @@ export default function Marking() {
     }
   }, [assessmentId, showToast]);
 
-  const markAndAdvance = useCallback(() => {
+  const markAndAdvance = useCallback((bigX = false) => {
     if (!current) return;
     const id = current.id;
-    const score = Number(scores[id]) || 0;
-    let list = highlights[id] || [];
-    let html = essayHTML[id] || "";
+    // big X: ignore any highlights/score — the whole answer is wrong
+    const score = bigX === true ? 0 : Number(scores[id]) || 0;
+    let list = bigX === true ? [] : highlights[id] || [];
+    let html = bigX === true ? stripAllMarksHtml(essayHTML[id] || "") : essayHTML[id] || "";
     // nothing credited -> whole answer ✗; some points credited -> every other
     // point the student wrote (up to the marks not earned) gets a red ✗ too
     const auto = applyAutoWrong(id, html, list, score, current.max_marks);
@@ -1174,7 +1199,7 @@ export default function Marking() {
   const clearAutoWrong = useCallback((answerId) => {
     setHighlights((prev) => {
       const l = prev[answerId];
-      const isAuto = (h) => h.id === `wrong_${answerId}` && !(Number(h.mark) > 0);
+      const isAuto = (h) => isBigXId(answerId, h.id) && !(Number(h.mark) > 0);
       if (!l || !l.some(isAuto)) return prev;
       return { ...prev, [answerId]: l.filter((h) => !isAuto(h)) };
     });
@@ -1216,7 +1241,7 @@ export default function Marking() {
   /* ── keyboard shortcuts ── */
   useEffect(() => {
     const handler = (e) => {
-      if (loading || error || allDone || !current) return;
+      if (loading || error || allDone || !current || reviewOpen) return;
       const tag = document.activeElement?.tagName;
       const isEditable = document.activeElement?.isContentEditable;
       if (tag === "TEXTAREA" || tag === "INPUT" || isEditable) return;
@@ -1227,7 +1252,7 @@ export default function Marking() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [loading, error, allDone, current, goNext, goPrev, markAndAdvance, toggleFlag]);
+  }, [loading, error, allDone, current, reviewOpen, goNext, goPrev, markAndAdvance, toggleFlag]);
 
   /* ── SAVE ── */
   const saveMarking = async () => {
@@ -1312,14 +1337,32 @@ export default function Marking() {
     return (
       <div className="mkp-root">
         <Toast toast={toast} onDismiss={dismissToast} />
-        <MarkingTabStrip />
+        {reviewOpen && (
+        <ReviewMarkedModal
+          items={markedForReview}
+          startIndex={reviewStart}
+          getHtml={(q) => essayHTML[q.id] ?? q.essay_answer}
+          getScore={(q) => scores[q.id] ?? (highlights[q.id] || []).reduce((sum, h) => sum + (Number(h.mark) || 0), 0)}
+          getRemark={(q) => remarks[q.id]}
+          getAnnotations={(q) => musicAnn[q.id]}
+          isFlagged={(q) => !!flags[q.id]}
+          onRemark={(q) => { setReviewOpen(false); reopenAnswer(q); }}
+          onClose={() => setReviewOpen(false)}
+        />
+      )}
+      <MarkingTabStrip />
 
         <div className="mkp-topbar">
           <div>
             <h2 style={s.heading}>Marking complete</h2>
             <p style={s.subheading}>Every essay question in this batch has been marked.</p>
           </div>
+          <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="mkp-btn" style={s.reopenBtn} onClick={() => { setReviewStart(0); setReviewOpen(true); }} disabled={markedForReview.length === 0} title="Flip through everything you have marked">
+            Review marked ({markedForReview.length})
+          </button>
           <SaveBtn saving={saving} saved={saved} onClick={saveMarking} />
+          </span>
         </div>
 
         <div className="mkp-stats-row">
@@ -1374,6 +1417,19 @@ export default function Marking() {
   return (
     <div className="mkp-root">
       <Toast toast={toast} onDismiss={dismissToast} />
+      {reviewOpen && (
+        <ReviewMarkedModal
+          items={markedForReview}
+          startIndex={reviewStart}
+          getHtml={(q) => essayHTML[q.id] ?? q.essay_answer}
+          getScore={(q) => scores[q.id] ?? (highlights[q.id] || []).reduce((sum, h) => sum + (Number(h.mark) || 0), 0)}
+          getRemark={(q) => remarks[q.id]}
+          getAnnotations={(q) => musicAnn[q.id]}
+          isFlagged={(q) => !!flags[q.id]}
+          onRemark={(q) => { setReviewOpen(false); reopenAnswer(q); }}
+          onClose={() => setReviewOpen(false)}
+        />
+      )}
       <MarkingTabStrip />
 
       <div className="mkp-topbar">
@@ -1387,7 +1443,12 @@ export default function Marking() {
             {!saved && queue.length > 0 && <span style={{ color: "var(--text-muted)" }}> · unsaved changes</span>}
           </p>
         </div>
-        <SaveBtn saving={saving} saved={saved} onClick={saveMarking} />
+        <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="mkp-btn" style={s.reopenBtn} onClick={() => { setReviewStart(0); setReviewOpen(true); }} disabled={markedForReview.length === 0} title="Flip through everything you have marked">
+            Review marked ({markedForReview.length})
+          </button>
+          <SaveBtn saving={saving} saved={saved} onClick={saveMarking} />
+          </span>
       </div>
 
       {queue.length > 0 && (
@@ -1533,7 +1594,7 @@ export default function Marking() {
                 title="Award zero and move on"
                 onClick={() => {
                   handleScoreChange(current.id, 0, current.max_marks);
-                  markAndAdvance();
+                  markAndAdvance(true);
                 }}
               >
                 ✗
