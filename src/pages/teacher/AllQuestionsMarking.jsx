@@ -667,6 +667,23 @@ function intersectRanges(lineRange, rawRange) {
   return r;
 }
 
+// Wrap a range in a <mark>. surroundContents() throws when the range only
+// partly covers an inline element (e.g. a selection that starts inside a
+// <b>/<u> and ends outside it), so fall back to extract + re-insert, which
+// splits such elements cleanly. Returns false only if both ways fail.
+function wrapRangeInMark(range, markEl) {
+  try { range.surroundContents(markEl); return true; } catch (e) { /* partial inline markup — fall through */ }
+  try {
+    markEl.appendChild(range.extractContents());
+    range.insertNode(markEl);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+let markSeq = 0; // keeps highlight ids unique even when several are made in the same millisecond
+
 function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove, onAdjust, onReason, onLimitReached, markingOption = 1 }) {
   const containerRef = useRef(null);
   const totalMarks = highlights.reduce((sum, h) => sum + (h.mark || 0), 0);
@@ -788,12 +805,11 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       if (isCorrect) {
         if (remaining <= 0) { onLimitReached && onLimitReached(); break; }
         markValue = Math.min(1, remaining);
-        remaining -= markValue;
         fullMark = markValue;
       }
       const status = isCorrect ? "correct" : "wrong";
 
-      const hid = `hl_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const hid = `hl_${Date.now()}_${markSeq++}_${Math.floor(Math.random() * 10000)}`;
       const markEl = document.createElement("mark");
       markEl.className = "hl-mark";
       markEl.dataset.hid = hid;
@@ -802,13 +818,8 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       markEl.dataset.status = status;
       markEl.title = "Click the highlight to remove it";
 
-      try {
-        targetRange.surroundContents(markEl);
-      } catch (e) {
-        // Clean ranges should always be safe to wrap; if the browser still
-        // balks, skip this one segment rather than break the layout.
-        continue;
-      }
+      if (!wrapRangeInMark(targetRange, markEl)) continue; // nothing was wrapped, so no point is spent
+      remaining -= markValue;
 
       // ✓/✗ badge after the words — its own element so it can be tapped
       // separately from the highlight (which removes the highlight).
@@ -1536,6 +1547,7 @@ export default function Marking() {
     const answerId = current.id;
     const prevHTML = essayHTML[answerId];
     const prevList = highlights[answerId] || [];
+    const prevScore = scores[answerId];
     removeHighlight(answerId, hlId);
     setEssayHTML((prev) => ({ ...prev, [answerId]: newHtml }));
     showToast("Highlight removed", "info", {
@@ -1543,9 +1555,11 @@ export default function Marking() {
       onClick: () => {
         setEssayHTML((prev) => ({ ...prev, [answerId]: prevHTML }));
         setHighlights((prev) => ({ ...prev, [answerId]: prevList }));
+        setScores((prev) => ({ ...prev, [answerId]: prevScore }));
+        setSaved(false);
       },
     });
-  }, [current, essayHTML, highlights, removeHighlight, showToast]);
+  }, [current, essayHTML, highlights, scores, removeHighlight, showToast]);
 
   const handleEssayAdjust = useCallback((hlId, newMark, newHtml) => {
     if (!current) return;
