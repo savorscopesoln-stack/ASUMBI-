@@ -7,10 +7,12 @@ import {
   Check, CheckCircle2, AlertTriangle, Lock, Unlock, Zap, Rocket, MessageSquare, Mail,
   BarChart3, ClipboardList, FileText, Award, LockKeyhole, Users, Inbox, Clock, TrendingUp,
   Sun, Moon, Server, GraduationCap, PlusCircle, MinusCircle, Save, HelpCircle, Smartphone, ShieldCheck, Camera,
+  Eye, Pause, Send,
 } from "lucide-react";
 import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 import { fmtDateTime } from "../components/mainExams/shared";
 import MarkingLeaderboard from "../components/eassessment/MarkingLeaderboard";
+import SuggestedRemarksPanel from "../components/eassessment/SuggestedRemarksPanel";
 import { downloadTablesPdf } from "../utils/pdfExport";
 import { getSchoolInfo, drawSchoolHeader } from "../utils/schoolInfo";
 import EvidenceGallery from "../components/eassessment/EvidenceGallery";
@@ -301,11 +303,15 @@ export default function AdminEAssessments() {
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [selected,     setSelected]     = useState(null);
   const [remarkModal,  setRemarkModal]  = useState(null);
-  const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "remarks"
+  const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "option" | "suggested" | "remarks"
   const [releaseModal, setReleaseModal] = useState(null);
   const [unsubmitted,    setUnsubmitted]    = useState([]);   // sat the exam, nothing submitted
   const [resitModal,     setResitModal]     = useState(null); // { student_id, e_assessment_id, student_name, assessment_title, hasPrevious }
   const [resitPolicy,    setResitPolicy]    = useState("replace");
+  // Bulk "Allow resit": ticked students across the submissions list and "Did Not Submit"
+  // (key "assessmentId:studentId" -> row), plus the confirm dialog.
+  const [resitSel,        setResitSel]       = useState(() => new Map());
+  const [bulkResitOpen,   setBulkResitOpen]  = useState(false);
   const [answerModal,  setAnswerModal]  = useState(null);
   const [photoModal,   setPhotoModal]   = useState(null); // { name, loading, evidence, zoom }
   const [quickStats,   setQuickStats]   = useState(null);
@@ -1109,6 +1115,53 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
+  const resitKey = (r) => `${r.e_assessment_id}:${r.student_id}`;
+  const resitEntry = (r, hasPrevious) => ({
+    e_assessment_id: r.e_assessment_id, student_id: r.student_id,
+    student_name: r.student_name || `Student #${r.student_id}`,
+    assessment_title: r.assessment_title || `Assessment #${r.e_assessment_id}`,
+    hasPrevious,
+  });
+  const toggleResitRow = (r, hasPrevious) => setResitSel((prev) => {
+    const n = new Map(prev); const k = resitKey(r);
+    n.has(k) ? n.delete(k) : n.set(k, resitEntry(r, hasPrevious));
+    return n;
+  });
+  const setResitRows = (rows, hasPrevious, on) => setResitSel((prev) => {
+    const n = new Map(prev);
+    rows.forEach((r) => { on ? n.set(resitKey(r), resitEntry(r, hasPrevious)) : n.delete(resitKey(r)); });
+    return n;
+  });
+  const openBulkResit = () => { setResitPolicy("replace"); setBulkResitOpen(true); };
+  const confirmBulkResit = async () => {
+    const items = [...resitSel.values()];
+    if (!items.length) return;
+    try {
+      setSaving(true);
+      const anyPrev = items.some((i) => i.hasPrevious);
+      const { data } = await API.post("/e-assessments/admin/resit/bulk", {
+        items: items.map((i) => ({ assessment_id: i.e_assessment_id, student_id: i.student_id })),
+        score_policy: anyPrev ? resitPolicy : "replace",
+      });
+      const failed = data?.failed || [];
+      showToast(data?.message || "Resits granted", failed.length && !data?.granted ? "error" : undefined);
+      if (failed.length) {
+        // leave the ones that could not be granted ticked so they can be looked at / retried
+        const stuck = new Set(failed.map((f) => `${f.assessment_id}:${f.student_id}`));
+        setResitSel((prev) => new Map([...prev].filter(([k]) => stuck.has(k))));
+        window.alert(`${failed.length} could not be given a resit:\n\n` + failed.slice(0, 8)
+          .map((f) => `• ${resitSel.get(`${f.assessment_id}:${f.student_id}`)?.student_name || `#${f.student_id}`}: ${f.message}`).join("\n")
+          + (failed.length > 8 ? `\n…and ${failed.length - 8} more` : ""));
+      } else {
+        setResitSel(new Map());
+      }
+      setBulkResitOpen(false);
+      loadAll();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not grant the resits", "error");
+    } finally { setSaving(false); }
+  };
+
   const cancelResit = async (sess) => {
     if (!window.confirm("Cancel this resit? The student will keep their existing result.")) return;
     try {
@@ -1128,6 +1181,13 @@ export default function AdminEAssessments() {
       const r = await API.get("/e-assessments/admin/exam-sessions");
       setExamSessions(extract(r));
     } catch { /* the 10s Device Locks poll will catch up */ }
+  };
+
+  const refreshUnsubmitted = async () => {
+    try {
+      const r = await API.get("/e-assessments/admin/exam-sessions/unsubmitted");
+      setUnsubmitted(extract(r));
+    } catch { /* the next full refresh will catch up */ }
   };
 
   const unlockSession = async (sessionId) => {
@@ -1152,6 +1212,61 @@ export default function AdminEAssessments() {
       refreshExamSessions();
     } catch (err) {
       showToast(err?.response?.data?.message || "Bulk unlock failed", "error");
+    } finally { setSaving(false); }
+  };
+
+  // Live control: stop (pause) or submit a student's exam at any moment.
+  const stopSession = async (sess) => {
+    const who = sess.student_name || `student #${sess.student_id}`;
+    if (!window.confirm(`Stop ${who}'s exam now?\n\nTheir screen locks within a few seconds. Nothing they typed is lost, and you can Unlock them later so they continue.`)) return;
+    try {
+      setSaving(true);
+      const res = await API.put(`/e-assessments/admin/exam-sessions/${sess.id}/stop`);
+      showToast(res.data?.message || "Exam stopped");
+      refreshExamSessions();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not stop the exam", "error");
+    } finally { setSaving(false); }
+  };
+
+  const submitSession = async (sess) => {
+    const who = sess.student_name || `student #${sess.student_id}`;
+    if (!window.confirm(`Submit ${who}'s exam now?\n\nThis is final. Their last autosaved answers (saved about every 30 seconds) are submitted and the exam ends on their screen.`)) return;
+    try {
+      setSaving(true);
+      const res = await API.post(`/e-assessments/admin/exam-sessions/${sess.id}/submit`);
+      showToast(res.data?.message ? `Done — ${res.data.message}` : "Exam submitted");
+      refreshExamSessions();
+      refreshUnsubmitted();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not submit the exam", "error");
+    } finally { setSaving(false); }
+  };
+
+  const bulkStop = async (sessionIds, label) => {
+    if (!sessionIds.length) return;
+    if (!window.confirm(`Stop ${label} (${sessionIds.length} exam${sessionIds.length === 1 ? "" : "s"})?\n\nEach student's screen locks within a few seconds. Nothing is lost, and you can Unlock them to continue.`)) return;
+    try {
+      setSaving(true);
+      const res = await API.put("/e-assessments/admin/exam-sessions/stop-bulk", { sessionIds });
+      showToast(res.data?.message || "Exams stopped");
+      refreshExamSessions();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Bulk stop failed", "error");
+    } finally { setSaving(false); }
+  };
+
+  const bulkSubmit = async (sessionIds, label) => {
+    if (!sessionIds.length) return;
+    if (!window.confirm(`Submit ${label} (${sessionIds.length} exam${sessionIds.length === 1 ? "" : "s"}) now?\n\nThis is final. Each student's last autosaved answers are submitted and their exam ends.`)) return;
+    try {
+      setSaving(true);
+      const res = await API.post("/e-assessments/admin/exam-sessions/submit-bulk", { sessionIds });
+      showToast(res.data?.message ? `Done — ${res.data.message}` : "Exams submitted");
+      refreshExamSessions();
+      refreshUnsubmitted();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Bulk submit failed", "error");
     } finally { setSaving(false); }
   };
 
@@ -1609,6 +1724,8 @@ export default function AdminEAssessments() {
             )}>Export CSV</ActionButton>
           </div>
 
+          {resitSel.size > 0 && <ResitSelectionBar count={resitSel.size} onAllow={openBulkResit} onClear={() => setResitSel(new Map())} />}
+
           <div style={{ marginBottom: 20 }}>
             <input
               type="search" value={subSearch} onChange={(e) => setSubSearch(e.target.value)}
@@ -1704,12 +1821,18 @@ export default function AdminEAssessments() {
                       <table style={sx.table}>
                         <thead>
                           <tr>
+                            <Th>
+                              <input type="checkbox" aria-label="Select all shown for resit"
+                                checked={subs.slice(0, 100).length > 0 && subs.slice(0, 100).every((x) => resitSel.has(resitKey(x)))}
+                                onChange={(e) => setResitRows(subs.slice(0, 100), true, e.target.checked)} />
+                            </Th>
                             {["Student","Assessment","Submitted","Assigned To","Mark","Grade","Status","Actions"].map((h) => <Th key={h}>{h}</Th>)}
                           </tr>
                         </thead>
                         <tbody>
                           {subs.slice(0, 100).map((sub) => (
                             <tr key={sub.id} className="row-hover">
+                              <Td><input type="checkbox" checked={resitSel.has(resitKey(sub))} onChange={() => toggleResitRow(sub, true)} aria-label={`Select ${sub.student_name || sub.student_id} for resit`} /></Td>
                               <Td><span style={{ fontWeight: 600, color: C.textPri }}>{sub.student_name || `#${sub.student_id}`}</span></Td>
                               <Td style={{ color: C.textSec, fontSize: 13 }}>{sub.assessment_title || "—"}</Td>
                               <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDate(sub.submitted_at)}</Td>
@@ -1771,7 +1894,7 @@ export default function AdminEAssessments() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-            {[["leaderboard", "Leaderboard & Load"], ["option", "Marking Option"], ["remarks", `Remark Requests${pendingRemarks ? ` (${pendingRemarks})` : ""}`]].map(([k, label]) => (
+            {[["leaderboard", "Leaderboard & Load"], ["option", "Marking Option"], ["suggested", "Suggested Remarks"], ["remarks", `Remark Requests${pendingRemarks ? ` (${pendingRemarks})` : ""}`]].map(([k, label]) => (
               <button key={k} type="button" onClick={() => setMarkingView(k)}
                 style={{ padding: "8px 14px", borderRadius: 99, cursor: "pointer", fontWeight: 600, fontSize: 13,
                   border: `1px solid ${C.border}`, background: markingView === k ? C.accent : C.card, color: markingView === k ? "#fff" : C.textPri }}>{label}</button>
@@ -1780,6 +1903,7 @@ export default function AdminEAssessments() {
 
           {markingView === "leaderboard" && <MarkingLeaderboard />}
           {markingView === "option" && <MarkingOptionPanel teachers={teachers} showToast={showToast} />}
+          {markingView === "suggested" && <SuggestedRemarksPanel showToast={showToast} />}
 
           {markingView === "remarks" && (
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1939,6 +2063,10 @@ export default function AdminEAssessments() {
             saving={saving}
             onUnlock={unlockSession}
             onBulkUnlock={bulkUnlock}
+            onStop={stopSession}
+            onSubmit={submitSession}
+            onBulkStop={bulkStop}
+            onBulkSubmit={bulkSubmit}
             onCancelResit={cancelResit}
             onPhotos={(sess) => openPhotoModal(sess.e_assessment_id, sess.student_id, sess.student_name)}
           />
@@ -1955,17 +2083,27 @@ export default function AdminEAssessments() {
             </div>
           </div>
 
+          {resitSel.size > 0 && <ResitSelectionBar count={resitSel.size} onAllow={openBulkResit} onClear={() => setResitSel(new Map())} />}
+
           {unsubmitted.length === 0 ? (
             <EmptyState icon={<IconCheckCircle size={26} />} text="No students are missing a submission." />
           ) : (
             <div className="dash-card" style={sx.tableWrap}>
               <table style={sx.table}>
                 <thead>
-                  <tr>{["Student","Class","Assessment","Subject","Ended","Reason","Actions"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                  <tr>
+                    <Th>
+                      <input type="checkbox" aria-label="Select all for resit"
+                        checked={unsubmitted.length > 0 && unsubmitted.every((u) => resitSel.has(resitKey(u)))}
+                        onChange={(e) => setResitRows(unsubmitted, false, e.target.checked)} />
+                    </Th>
+                    {["Student","Class","Assessment","Subject","Ended","Reason","Actions"].map((h) => <Th key={h}>{h}</Th>)}
+                  </tr>
                 </thead>
                 <tbody>
                   {unsubmitted.map((u) => (
                     <tr key={u.id} className="row-hover">
+                      <Td><input type="checkbox" checked={resitSel.has(resitKey(u))} onChange={() => toggleResitRow(u, false)} aria-label={`Select ${u.student_name || u.student_id} for resit`} /></Td>
                       <Td><span style={{ fontWeight: 600, color: C.textPri }}>{u.student_name || `#${u.student_id}`}</span></Td>
                       <Td style={{ color: C.textSec, fontSize: 13 }}>{u.student_class || "—"}</Td>
                       <Td style={{ color: C.textSec, fontSize: 13 }}>{u.assessment_title || "—"}</Td>
@@ -2433,6 +2571,49 @@ export default function AdminEAssessments() {
           </div>
         </Modal>
       )}
+
+      {bulkResitOpen && (() => {
+        const items = [...resitSel.values()];
+        const anyPrev = items.some((i) => i.hasPrevious);
+        return (
+          <Modal title={`Grant Resit — ${items.length} student${items.length === 1 ? "" : "s"}`} onClose={() => !saving && setBulkResitOpen(false)}>
+            <div style={{ fontSize: 13, color: C.textSec, marginBottom: 14, lineHeight: 1.5 }}>
+              {items.slice(0, 6).map((i) => i.student_name).join(", ")}{items.length > 6 ? ` +${items.length - 6} more` : ""}
+            </div>
+            {anyPrev ? (
+              <>
+                <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: C.textPri }}>Which score should count?</p>
+                {[
+                  { v: "replace",   t: "Replace the old score",     d: "The resit result becomes the student's official mark, even if it is lower." },
+                  { v: "keep_best", t: "Keep the higher of the two", d: "The official mark is whichever of the original and the resit is higher." },
+                ].map((o) => (
+                  <label key={o.v} style={{
+                    display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", marginBottom: 8, borderRadius: 10, cursor: "pointer",
+                    border: `1px solid ${resitPolicy === o.v ? C.accent : C.border}`,
+                    background: resitPolicy === o.v ? "var(--primary-tint, transparent)" : "transparent",
+                  }}>
+                    <input type="radio" name="bulk-resit-policy" checked={resitPolicy === o.v} onChange={() => setResitPolicy(o.v)} style={{ marginTop: 3 }} />
+                    <span>
+                      <span style={{ display: "block", fontWeight: 700, fontSize: 13, color: C.textPri }}>{o.t}</span>
+                      <span style={{ display: "block", fontSize: 12, color: C.textMuted, marginTop: 2 }}>{o.d}</span>
+                    </span>
+                  </label>
+                ))}
+                <div style={{ ...sx.warningBox, marginTop: 4 }}>
+                  <IconAlert size={15} style={{ color: C.warning, flexShrink: 0 }} />
+                  Each student keeps their current result until they submit the resit. The old attempt is archived, not deleted. This applies to everyone ticked who already has a submission.
+                </div>
+              </>
+            ) : (
+              <div style={sx.warningBox}>
+                <IconAlert size={15} style={{ color: C.warning, flexShrink: 0 }} />
+                None of these students has a submission for their assessment. Each gets a fresh token and can sit it now.
+              </div>
+            )}
+            <SaveButton onClick={confirmBulkResit} loading={saving} label={`Grant resit to ${items.length}`} icon={<IconZap size={15} />} />
+          </Modal>
+        );
+      })()}
 
       {resitModal && (
         <Modal title="Grant Resit" onClose={() => setResitModal(null)}>
@@ -3328,7 +3509,7 @@ const ACTION_LABELS = {
   open_script_for_marking: "Opened script to mark", open_all_scripts_for_marking: "Opened all scripts to mark",
   save_marking: "Saved marking", save_marking_bulk: "Saved marking (bulk)",
   review_assessment: "Approved / rejected assessment", start_stop_assessment: "Started / stopped assessment",
-  set_student_access: "Trainee access / schedule", set_student_status: "Activated / deactivated students (all assessments)", set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", set_seb_settings: "Safe Exam Browser setting", unlock_device: "Unlocked device", grant_resit: "Granted resit",
+  set_student_access: "Trainee access / schedule", set_student_status: "Activated / deactivated students (all assessments)", set_desktop_only: "Desktop-only switch", set_security_settings: "Security switches", set_seb_settings: "Safe Exam Browser setting", unlock_device: "Unlocked device", admin_stop_exam: "Stopped a student's exam", admin_stop_exams_bulk: "Stopped exams (bulk)", admin_submit_exam: "Submitted a student's exam", admin_submit_exams_bulk: "Submitted exams (bulk)", grant_resit: "Granted resit",
   cancel_resit: "Cancelled resit", assign_teacher: "Assigned teacher", assign_submission: "Assigned script",
   bulk_assign_submissions: "Assigned scripts (bulk)", review_remark_request: "Reviewed remark request",
   release_marks: "Released marks", bulk_release_marks: "Released marks (bulk)", update_grading_system: "Updated grading system",
@@ -3605,12 +3786,13 @@ async function downloadSessionsPdf(rows, filename, title = "Device Sessions") {
   doc.save(filename);
 }
 
-function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCancelResit, onPhotos }) {
+function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onStop, onSubmit, onBulkStop, onBulkSubmit, onCancelResit, onPhotos }) {
   const C = useC();
   const [q, setQ] = useState("");
   const [assessmentId, setAssessmentId] = useState("");
     const [shown, setShown] = useState({});          // rows shown per group (paging)
   const [picked, setPicked] = useState(() => new Set()); // ticked locked session ids
+  const [watching, setWatching] = useState(null);   // session being watched live
 
   const assessmentOptions = useMemo(() => {
     const m = new Map();
@@ -3688,12 +3870,17 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
       return <span style={{ fontSize: 12, fontWeight: 600, color: up ? C.warning || C.danger : C.textSec }}>{up && s.group === "locked" ? "Time up — auto-submitting" : timeLeftText(s)}</span>;
     } };
 
+    const watchBtn = (s, label = "Watch") => <MiniBtn neutral icon={<Eye size={12} />} onClick={() => setWatching(s)} title="See this student's live activity and answers">{label}</MiniBtn>;
+    const stopBtn = (s) => <MiniBtn tone="warning" icon={<Pause size={12} />} disabled={saving} onClick={() => onStop(s)} title="Pause this exam — the student's screen locks; Unlock lets them continue">Stop</MiniBtn>;
+    const submitBtn = (s) => <MiniBtn tone="danger" icon={<Send size={12} />} disabled={saving} onClick={() => onSubmit(s)} title="Submit this student's last autosaved answers now (final)">Submit</MiniBtn>;
+
     if (key === "active") return [student, assessment, step, timeLeft,
       { label: "Connection", render: (s) => (
         <>
           <Chip text={s.connection === "online" ? "Online" : "No signal"} tone={s.connection === "online" ? "success" : "warning"} />
           <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>{lastSignalText(s)}</div>
-        </>) }, device, photos];
+        </>) }, device, photos,
+      { label: "Actions", render: (s) => <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{watchBtn(s)}{stopBtn(s)}{submitBtn(s)}</div> }];
     if (key === "locked") return [
       { label: <input type="checkbox" checked={allPicked} onChange={(e) => setPicked(e.target.checked ? new Set(lockedVisible.map((s) => s.id)) : new Set())} aria-label="Select all locked devices shown" />,
         render: (s) => <input type="checkbox" checked={picked.has(s.id)} aria-label={`Select ${s.student_name || s.student_id}`}
@@ -3705,7 +3892,12 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
           {s.locked_at ? <div style={{ fontWeight: 400, color: C.textMuted, marginTop: 2 }}>{fmtDateTime(s.locked_at)}</div> : null}
         </div>) },
       timeLeft, device, photos,
-      { label: "Actions", render: (s) => <MiniBtn tone="success" icon={<IconUnlock size={12} />} disabled={saving} onClick={() => onUnlock(s.id)}>Unlock</MiniBtn> }];
+      { label: "Actions", render: (s) => (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {watchBtn(s)}
+          <MiniBtn tone="success" icon={<IconUnlock size={12} />} disabled={saving} onClick={() => onUnlock(s.id)}>Unlock</MiniBtn>
+          {submitBtn(s)}
+        </div>) }];
     if (key === "not_started") return [student, assessment, token, step,
       { label: "Issued", render: (s) => <span style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(s.issued_at)}</span> },
       { label: "Actions", render: (s) => s.resit_allowed
@@ -3714,7 +3906,8 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
     return [student, assessment, step,
       { label: "Submitted", render: (s) => <span style={{ color: C.textMuted, fontSize: 12 }}>{fmtDateTime(s.submitted_at || s.ended_at)}</span> },
       { label: "How", render: (s) => <Chip text={s.auto_submitted ? "Auto-submitted" : "By student"} tone={s.auto_submitted ? "warning" : "success"} /> },
-      photos];
+      photos,
+      { label: "Actions", render: (s) => watchBtn(s, "View") }];
   };
 
   return (
@@ -3772,6 +3965,14 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
                   <MiniBtn tone="success" icon={<IconUnlock size={12} />} disabled={saving} onClick={() => confirmUnlock(lockedVisible, filterNote ? "all locked devices in this search" : "ALL locked devices")}>Unlock all ({lockedVisible.length})</MiniBtn>
                 </>
               )}
+              {(g.key === "active" || g.key === "locked") && rows.length > 0 && (
+                <>
+                  {g.key === "active" && (
+                    <MiniBtn tone="warning" icon={<Pause size={12} />} disabled={saving} onClick={() => onBulkStop(rows.map((r) => r.id), filterNote ? "all active exams in this search" : "ALL active exams")}>Stop all ({rows.length})</MiniBtn>
+                  )}
+                  <MiniBtn tone="danger" icon={<Send size={12} />} disabled={saving} onClick={() => onBulkSubmit(rows.map((r) => r.id), filterNote ? `all ${g.key} exams in this search` : `ALL ${g.key} exams`)}>Submit all ({rows.length})</MiniBtn>
+                </>
+              )}
               <MiniBtn neutral icon={<IconDownload size={12} />} disabled={!rows.length} title={`Download the ${g.title} group${filterNote}`}
                 onClick={() => downloadSessionsCsv(rows, `device-sessions-${g.key.replace("_", "-")}-${stamp}.csv`)}>Download CSV</MiniBtn>
               <MiniBtn neutral icon={<IconDownload size={12} />} disabled={!rows.length} title={`Download the ${g.title} group as PDF${filterNote}`}
@@ -3802,7 +4003,140 @@ function DeviceSessionsPanel({ sessions, saving, onUnlock, onBulkUnlock, onCance
           </div>
         );
       })}
+
+      {watching && (
+        <LiveActivityModal
+          sess={sessions.find((x) => x.id === watching.id) || watching}
+          saving={saving}
+          onClose={() => setWatching(null)}
+          onStop={onStop}
+          onSubmit={onSubmit}
+          onUnlock={onUnlock}
+        />
+      )}
     </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LiveActivityModal — watch ONE student's exam: connection, time left,
+   the answers saved so far, and their recent events. Refreshes every 5s
+   while open. Stop / Submit / Unlock work from here too.
+   Data: GET /e-assessments/admin/exam-sessions/:id/activity
+═══════════════════════════════════════════════════════════ */
+function LiveActivityModal({ sess, saving, onClose, onStop, onSubmit, onUnlock }) {
+  const C = useC();
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [tab, setTab] = useState("answers");
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await API.get(`/e-assessments/admin/exam-sessions/${sess.id}/activity`);
+        if (alive) { setData(r.data); setErr(""); }
+      } catch (e) {
+        if (alive) setErr(e?.response?.data?.message || "Could not load the live activity");
+      }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [sess.id, sess.status]);
+
+  const live = data?.session || sess;
+  const status = sess.status || live.status;
+  const secs = live.seconds_left;
+  const timeText = secs == null ? "—" : secs <= 0 ? "Time up" : `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, "0")}s left`;
+  const hb = live.last_heartbeat_age == null ? "—" : live.last_heartbeat_age < 60 ? `${live.last_heartbeat_age}s ago` : `${Math.floor(live.last_heartbeat_age / 60)} min ago`;
+  const statusTone = { active: "success", locked: "danger", ended: "accent", issued: "neutral" }[status] || "neutral";
+  const statusText = { active: "Active", locked: "Locked / stopped", ended: "Submitted", issued: "Not started" }[status] || status;
+  const stat = { padding: "9px 12px", background: C.bgAlt, borderRadius: 8, minWidth: 110 };
+  const statLabel = { fontSize: 10.5, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 };
+  const statVal = { fontSize: 14, fontWeight: 700, color: C.textPri, marginTop: 2 };
+  const tabBtn = (k, label) => (
+    <button onClick={() => setTab(k)} style={{ padding: "7px 14px", borderRadius: 7, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+      background: tab === k ? C.bgAlt : "transparent", color: tab === k ? C.textPri : C.textMuted }}>{label}</button>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)", padding: 12 }} onClick={onClose}>
+      <div style={{ background: C.card, border: `1px solid ${C.borderHi}`, borderRadius: 14, padding: "22px 22px 18px", width: "100%", maxWidth: 880, maxHeight: "92vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: C.textPri }}>{live.student_name || `Student #${live.student_id}`}</h2>
+            <div style={{ fontSize: 12.5, color: C.textMuted, marginTop: 3 }}>
+              {[live.student_class, live.assessment_title, live.subject_name].filter(Boolean).join(" · ")}
+            </div>
+          </div>
+          <button style={{ background: "none", border: `1px solid ${C.border}`, color: C.textMuted, cursor: "pointer", width: 30, height: 30, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose} aria-label="Close"><IconX size={14} /></button>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+          <div style={stat}><div style={statLabel}>Status</div><div style={statVal}><Chip text={statusText} tone={statusTone} /></div></div>
+          <div style={stat}><div style={statLabel}>Connection</div><div style={statVal}>{status === "active" ? (live.connection === "online" ? "Online" : "No signal") : "—"}</div></div>
+          <div style={stat}><div style={statLabel}>Last signal</div><div style={statVal}>{hb}</div></div>
+          <div style={stat}><div style={statLabel}>Time left</div><div style={statVal}>{status === "ended" ? "—" : timeText}</div></div>
+          <div style={stat}><div style={statLabel}>Answered</div><div style={statVal}>{data ? `${data.progress.answered} of ${data.progress.total}` : "…"}</div></div>
+          <div style={stat}><div style={statLabel}>Photos</div><div style={statVal}>{live.photo_count ?? 0}</div></div>
+        </div>
+
+        {status === "locked" && live.lock_reason && (
+          <div style={{ color: C.danger, fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>Lock reason: {live.lock_reason}</div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          {status === "active" && <MiniBtn tone="warning" icon={<Pause size={12} />} disabled={saving} onClick={() => onStop(live)}>Stop exam</MiniBtn>}
+          {status === "locked" && <MiniBtn tone="success" icon={<IconUnlock size={12} />} disabled={saving} onClick={() => onUnlock(live.id)}>Unlock</MiniBtn>}
+          {(status === "active" || status === "locked") && <MiniBtn tone="danger" icon={<Send size={12} />} disabled={saving} onClick={() => onSubmit(live)}>Submit now</MiniBtn>}
+          <span style={{ fontSize: 11.5, color: C.textMuted, alignSelf: "center" }}>Refreshes every 5 seconds</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>{tabBtn("answers", "Answers so far")}{tabBtn("events", `Activity (${data?.events?.length ?? 0})`)}</div>
+
+        {err && <div style={{ color: C.danger, fontSize: 13, marginBottom: 10 }}>{err}</div>}
+        {!data && !err && <div style={{ color: C.textMuted, fontSize: 13 }}>Loading…</div>}
+
+        {data && tab === "answers" && (
+          <>
+            <p style={{ margin: "0 0 10px", fontSize: 12, color: C.textMuted }}>
+              {data.progress.source === "autosave" ? `From the student's last autosave${data.progress.saved_at ? ` (${fmtDateTime(data.progress.saved_at)})` : ""} — the device syncs about every 30 seconds, so the newest typing may not show yet.`
+                : data.progress.source === "submission" ? "The submitted answers." : "Nothing has been saved yet."}
+            </p>
+            {data.answers.map((a, i) => (
+              <div key={a.question_id} style={{ border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 12px", marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Q{i + 1} · {a.type} · {a.marks} mark{a.marks === 1 ? "" : "s"} — {a.question}</div>
+                {a.answer
+                  ? <div style={{ fontSize: 13, color: C.textPri, wordBreak: "break-word" }} dangerouslySetInnerHTML={{ __html: answerToSafeHtml(a.answer) }} />
+                  : <div style={{ fontSize: 12.5, color: C.textMuted, fontStyle: "italic" }}>No answer yet</div>}
+              </div>
+            ))}
+          </>
+        )}
+
+        {data && tab === "events" && (
+          data.events.length === 0
+            ? <div style={{ color: C.textMuted, fontSize: 13 }}>No events recorded for this student on this exam yet.</div>
+            : <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+                  <thead><tr><Th>Time</Th><Th>Who</Th><Th>What</Th><Th>Result</Th><Th>Device / IP</Th></tr></thead>
+                  <tbody>
+                    {data.events.map((e, i) => (
+                      <tr key={i}>
+                        <Td><span style={{ fontSize: 12, color: C.textMuted }}>{fmtDateTime(e.created_at)}</span></Td>
+                        <Td><span style={{ fontSize: 12.5, color: C.textSec }}>{e.actor_role || "—"}</span></Td>
+                        <Td><span style={{ fontSize: 12.5, color: C.textPri, fontWeight: 600 }}>{String(e.action || "").replace(/_/g, " ")}</span></Td>
+                        <Td><Chip text={e.outcome || "—"} tone={e.outcome === "success" ? "success" : e.outcome ? "warning" : "neutral"} /></Td>
+                        <Td><span style={{ fontSize: 11.5, color: C.textMuted }}>{[e.device, e.ip].filter(Boolean).join(" · ") || "—"}</span></Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -3886,6 +4220,22 @@ function MiniBtn({ children, icon, onClick, tone, grow, full, neutral, title, st
     }}>
       {icon}{children}
     </button>
+  );
+}
+
+/* Shown above the lists that have resit checkboxes once at least one student is ticked. */
+function ResitSelectionBar({ count, onAllow, onClear }) {
+  const C = useC();
+  return (
+    <div role="region" aria-label="Bulk resit" style={{
+      display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14, padding: "10px 14px",
+      borderRadius: 12, border: `1px solid ${C.accent}`, background: "var(--primary-tint, transparent)",
+    }}>
+      <strong style={{ fontSize: 13.5, color: C.textPri }}>{count} selected</strong>
+      <span style={{ flex: 1 }} />
+      <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={onAllow}>Allow resit ({count})</MiniBtn>
+      <MiniBtn neutral onClick={onClear}>Clear</MiniBtn>
+    </div>
   );
 }
 

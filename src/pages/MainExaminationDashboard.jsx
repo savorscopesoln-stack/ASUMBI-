@@ -368,10 +368,18 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
     subject: "", class_id: "", e_assessment_id: "", exam_date: "", start_clock: "", end_clock: "",
     duration_minutes: "", venue: "", max_marks: "", instructions: "",
     allow_concurrent: false, paper_label: "",
+    status: "", // create only: "" = draft, "scheduled", or "done"
   };
   const [form, setForm] = useState(blank);
 
-  const openCreate = () => { setEditing(null); setForm(blank); setFormOpen(true); };
+  // A subject added once the timetable is already published would otherwise sit in draft
+  // (publishing only schedules what existed at that moment), so suggest "Scheduled" then.
+  const openCreate = () => {
+    const published = !!mainExam?.status && mainExam.status !== "draft";
+    setEditing(null);
+    setForm({ ...blank, status: published ? "scheduled" : "" });
+    setFormOpen(true);
+  };
   const openEdit = (s) => {
     const startSplit = splitDateTime(s.start_time);
     const endSplit = splitDateTime(s.end_time);
@@ -410,8 +418,8 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
         await API.put(`/main-exams/${id}/subjects/${editing.id}`, payload);
         showToast("Subject schedule updated");
       } else {
-        await API.post(`/main-exams/${id}/subjects`, payload);
-        showToast("Subject added");
+        await API.post(`/main-exams/${id}/subjects`, { ...payload, status: form.status || "draft" });
+        showToast(form.status === "scheduled" ? "Subject added and scheduled" : form.status === "done" ? "Subject added as done" : "Subject added");
       }
       setFormOpen(false);
       onChanged();
@@ -431,6 +439,21 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
       onChanged();
     } catch (err) {
       showToast(err?.response?.data?.message || "Failed to remove subject", "error");
+    }
+  };
+
+  // Draft -> Scheduled / Done, at any time (not only when the whole timetable is published)
+  const moveSubject = async (s, target) => {
+    const msg = target === "done"
+      ? `Mark "${s.subject}" as done?\n\nIt closes now: nobody can start it any more. Use this for a paper that was already sat (or won't run). You can still replay it for individual students.`
+      : `Schedule "${s.subject}"?\n\nIt opens automatically at its start time and closes at its end time.`;
+    if (!window.confirm(msg)) return;
+    try {
+      const r = await API.put(`/main-exams/${id}/subjects/${s.id}/status`, { status: target });
+      showToast(r.data?.message || (target === "done" ? "Marked as done" : "Scheduled"));
+      onChanged();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not move the subject", "error");
     }
   };
 
@@ -476,6 +499,7 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
               s={s}
               onEdit={() => openEdit(s)}
               onDelete={() => removeSubject(s)}
+              onMove={(target) => moveSubject(s, target)}
               assessmentOptions={assessmentOptions.filter((o) => o.value !== s.e_assessment_id)}
               onAttach={(eid) => attachAssessment(s, eid)}
               mainExamId={id}
@@ -495,6 +519,17 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
           )}
           <FieldLabel>Subject / Learning Area</FieldLabel>
           <ModalSelect value={form.subject} onChange={(v) => setForm((f) => ({ ...f, subject: v }))} options={subjectOptions} placeholder="Select a subject…" />
+
+          {!editing && (
+            <>
+              <FieldLabel>Add it as</FieldLabel>
+              <ModalSelect value={form.status} onChange={(v) => setForm((f) => ({ ...f, status: v }))}
+                options={[{ value: "scheduled", label: "Scheduled — opens automatically at its start time" }, { value: "done", label: "Done — already sat, closed now" }]}
+                placeholder="Draft — finish setting it up, schedule it later" />
+              {form.status === "scheduled" && <div style={{ margin: "-8px 0 12px", fontSize: 11.5, color: C.textMuted }}>Needs a date, start and end time (still in the future) and an approved paper.</div>}
+              {form.status === "done" && <div style={{ margin: "-8px 0 12px", fontSize: 11.5, color: C.textMuted }}>Records a paper that has already been sat. It is closed straight away; you can still replay it for students.</div>}
+            </>
+          )}
 
           <label style={{ display: "flex", alignItems: "flex-start", gap: 8, margin: "12px 0 4px", cursor: "pointer", fontSize: 13, color: C.textPri }}>
             <input
@@ -562,7 +597,7 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
   );
 }
 
-function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach, mainExamId, showToast, onChanged }) {
+function SubjectRow({ s, onEdit, onDelete, onMove, assessmentOptions, onAttach, mainExamId, showToast, onChanged }) {
   const C = useC();
   const [attaching, setAttaching] = useState(false);
   const [replayOpen, setReplayOpen] = useState(false);
@@ -614,6 +649,12 @@ function SubjectRow({ s, onEdit, onDelete, assessmentOptions, onAttach, mainExam
               <option value="">Select assessment…</option>
               {assessmentOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
+          )}
+          {s.status === "draft" && (
+            <>
+              <MiniBtn tone="success" icon={<Clock size={12} />} onClick={() => onMove("scheduled")} title="Schedule it: it opens and closes by itself at its set times">Schedule</MiniBtn>
+              <MiniBtn icon={<CheckCircle2 size={12} />} onClick={() => onMove("done")} title="Mark it done: it was already sat, or won't run">Mark done</MiniBtn>
+            </>
           )}
           {canAddTime && (
             <MiniBtn tone="warning" icon={<TimerReset size={12} />} onClick={() => setTimeOpen(true)} title="Give everyone sitting this exam extra minutes">Add time</MiniBtn>
@@ -680,55 +721,67 @@ function AddTimeModal({ mainExamId, s, onClose, onDone, showToast }) {
 function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
   const C = useC();
   const base = `/main-exams/${mainExamId}/subjects/${s.id}/replay`;
+  const [scope, setScope] = useState("sat"); // "sat" = students who sat the paper · "absent" = students who didn't
   const [q, setQ] = useState("");
   const [data, setData] = useState({ summary: null, students: [], searched: false });
   const [loading, setLoading] = useState(false);
-  const [picked, setPicked] = useState({}); // student_id -> name
+  const [picked, setPicked] = useState({}); // student_id -> { name, absent }
   const [policy, setPolicy] = useState("replace");
   const [saving, setSaving] = useState(false);
-  const [allMode, setAllMode] = useState(false); // true = everyone who sat the paper (resolved on the server)
+  const [allMode, setAllMode] = useState(false);     // everyone who sat the paper (resolved on the server)
+  const [allAbsent, setAllAbsent] = useState(false); // everyone who didn't sit it (resolved on the server)
 
   const load = useCallback(async (term) => {
     setLoading(true);
     try {
-      const r = await API.get(base, { params: { q: term } });
+      const r = await API.get(base, { params: { q: term, scope } });
       setData(r.data);
     } catch (err) {
       showToast(err?.response?.data?.message || "Could not load students", "error");
     } finally { setLoading(false); }
-  }, [base, showToast]);
+  }, [base, scope, showToast]);
 
-  // Summary on open; then a search (debounced) whenever the term changes.
+  // Summary on open; then a search (debounced) whenever the term or the list changes.
   useEffect(() => {
     const t = setTimeout(() => load(q.trim()), q.trim() ? 350 : 0);
     return () => clearTimeout(t);
   }, [q, load]);
 
+  const isAbsent = scope === "absent";
   const pickedIds = Object.keys(picked);
   const sm0 = data.summary;
   const allCount = sm0 ? Math.max(0, (sm0.sat || 0) - (sm0.pending || 0)) : 0;
-  const selectedCount = allMode ? allCount : pickedIds.length;
+  const absentCount = sm0?.absent || 0;
+  const selectedCount = (allMode ? allCount : 0) + (allAbsent ? absentCount : 0) + pickedIds.length;
   const visible = data.students.filter((st) => !(Number(st.resit_allowed) === 1 && st.session_status === "issued"));
+  const allOnForScope = isAbsent ? allAbsent : allMode;
   const allVisiblePicked = visible.length > 0 && visible.every((st) => picked[st.student_id]);
+  const nameOf = (st) => st.name || `#${st.student_id}`;
   const toggleVisible = () => setPicked((p) => {
     const n = { ...p };
     if (allVisiblePicked) visible.forEach((st) => delete n[st.student_id]);
-    else visible.forEach((st) => { n[st.student_id] = st.name || `#${st.student_id}`; });
+    else visible.forEach((st) => { n[st.student_id] = { name: nameOf(st), absent: isAbsent }; });
     return n;
   });
-  const toggle = (st) => setPicked((p) => { const n = { ...p }; n[st.student_id] ? delete n[st.student_id] : (n[st.student_id] = st.name || `#${st.student_id}`); return n; });
+  const toggle = (st) => setPicked((p) => { const n = { ...p }; n[st.student_id] ? delete n[st.student_id] : (n[st.student_id] = { name: nameOf(st), absent: isAbsent }); return n; });
+  // A "select all" covers its whole group, so individual ticks in that group are dropped.
+  const toggleAllSat = (on) => { setAllMode(on); if (on) setPicked((p) => Object.fromEntries(Object.entries(p).filter(([, v]) => v.absent))); };
+  const toggleAllAbsent = (on) => { setAllAbsent(on); if (on) setPicked((p) => Object.fromEntries(Object.entries(p).filter(([, v]) => !v.absent))); };
 
   const grant = async () => {
     if (!selectedCount) return;
-    if (!window.confirm(`Let ${allMode ? `all ${selectedCount}` : selectedCount} selected student${selectedCount === 1 ? "" : "s"} sit "${s.subject}" again?\n\nOnly they can enter; the paper stays closed to everyone else.`)) return;
+    const absentNote = (allAbsent || Object.values(picked).some((v) => v.absent)) ? "\n\nThose who never sat it get their first sitting." : "";
+    if (!window.confirm(`Let ${selectedCount} selected student${selectedCount === 1 ? "" : "s"} sit "${s.subject}"?${absentNote}\n\nOnly they can enter; the paper stays closed to everyone else.`)) return;
     setSaving(true);
     try {
-      const r = await API.post(base, allMode
-        ? { all: true, score_policy: policy }
-        : { student_ids: pickedIds.map(Number), score_policy: policy });
+      const body = { score_policy: policy, student_ids: pickedIds.map(Number) };
+      if (allMode) body.all = true;
+      if (allAbsent) body.all_absent = true;
+      const r = await API.post(base, body);
       showToast(r.data?.message || "Replay granted");
       setPicked({});
       setAllMode(false);
+      setAllAbsent(false);
       load(q.trim());
     } catch (err) {
       showToast(err?.response?.data?.message || "Could not grant the replay", "error");
@@ -746,28 +799,45 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
   };
 
   const sm = data.summary;
+  const tabBtn = (key, label) => (
+    <button type="button" onClick={() => { setScope(key); setData((d) => ({ ...d, students: [], searched: false })); }} aria-pressed={scope === key}
+      style={{ padding: "7px 14px", borderRadius: 99, cursor: "pointer", fontWeight: 600, fontSize: 12.5,
+        border: `1px solid ${C.border}`, background: scope === key ? C.accent : C.card, color: scope === key ? "#fff" : C.textPri }}>{label}</button>
+  );
   return (
     <Modal title={`Replay paper — ${s.subject}${s.paper_label ? ` (${s.paper_label})` : ""}`} onClose={onClose} maxWidth={720}>
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textSec, lineHeight: 1.5 }}>
-        Only the students you tick can sit this paper again — each gets a new token and the full duration. It stays closed to everyone else.
+        Only the students you tick can sit this paper — each gets a new token and the full duration. It stays closed to everyone else.
+        Pick students who sat it (to retake) or students who didn't sit it at all.
       </p>
       {sm && (
         <div style={{ display: "flex", gap: 28, marginBottom: 14, flexWrap: "wrap" }}>
-          {[["Sat the paper", sm.sat], ["Replay waiting", sm.pending], ["Already replayed", sm.replayed]].map(([label, n]) => (
+          {[["Sat the paper", sm.sat], ["Didn't sit", sm.absent ?? 0], ["Replay waiting", sm.pending], ["Already replayed", sm.replayed]].map(([label, n]) => (
             <div key={label}><div style={{ fontSize: 26, fontWeight: 900, color: C.textPri, lineHeight: 1 }}>{n}</div><div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 3 }}>{label}</div></div>
           ))}
         </div>
       )}
 
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        {tabBtn("sat", "Students who sat it")}
+        {tabBtn("absent", `Students who didn't sit it${sm ? ` (${absentCount})` : ""}`)}
+      </div>
+
       <ModalInput value={q} onChange={setQ} placeholder="Search a student's name, username or class (2+ letters)…" />
 
-      {allCount > 0 && (
+      {!isAbsent && allCount > 0 && (
         <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 0", fontSize: 13, fontWeight: 600, color: C.textPri, cursor: "pointer" }}>
-          <input type="checkbox" checked={allMode} onChange={(e) => { setAllMode(e.target.checked); if (e.target.checked) setPicked({}); }} />
+          <input type="checkbox" checked={allMode} onChange={(e) => toggleAllSat(e.target.checked)} />
           Select all {allCount} student{allCount === 1 ? "" : "s"} who sat this paper
         </label>
       )}
-      {!allMode && visible.length > 1 && (
+      {isAbsent && absentCount > 0 && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 0", fontSize: 13, fontWeight: 600, color: C.textPri, cursor: "pointer" }}>
+          <input type="checkbox" checked={allAbsent} onChange={(e) => toggleAllAbsent(e.target.checked)} />
+          Select all {absentCount} student{absentCount === 1 ? "" : "s"} who didn't sit this paper
+        </label>
+      )}
+      {!allOnForScope && visible.length > 1 && (
         <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 0", fontSize: 12.5, color: C.textSec, cursor: "pointer" }}>
           <input type="checkbox" checked={allVisiblePicked} onChange={toggleVisible} />
           Select all {visible.length} shown
@@ -777,17 +847,21 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
       <div style={{ margin: "10px 0", minHeight: 40 }}>
         {loading && <div style={{ fontSize: 12.5, color: C.textMuted }}>Searching…</div>}
         {!loading && !data.searched && <div style={{ fontSize: 12.5, color: C.textMuted }}>Students aren't listed until you search.</div>}
-        {!loading && data.searched && data.students.length === 0 && <div style={{ fontSize: 12.5, color: C.textMuted }}>No student who sat this paper matches that search.</div>}
+        {!loading && data.searched && data.students.length === 0 && (
+          <div style={{ fontSize: 12.5, color: C.textMuted }}>{isAbsent ? "No student who didn't sit this paper matches that search." : "No student who sat this paper matches that search."}</div>
+        )}
         {data.students.map((st) => {
           const pending = Number(st.resit_allowed) === 1 && st.session_status === "issued";
           return (
             <div key={st.student_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: `1px solid ${C.border}` }}>
-              <input type="checkbox" disabled={pending || allMode} checked={allMode ? !pending : !!picked[st.student_id]} onChange={() => toggle(st)} aria-label={`Select ${st.name}`} />
+              <input type="checkbox" disabled={pending || allOnForScope} checked={allOnForScope ? !pending : !!picked[st.student_id]} onChange={() => toggle(st)} aria-label={`Select ${st.name}`} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, color: C.textPri, fontSize: 13.5 }}>{st.name || `#${st.student_id}`}</div>
                 <div style={{ fontSize: 11.5, color: C.textMuted }}>{[st.class_name, st.username].filter(Boolean).join(" · ")}</div>
               </div>
-              <span style={{ fontSize: 12, color: C.textSec }}>{st.score != null ? `Score ${st.score}` : "No score"}{st.attempt_no > 1 ? ` · attempt ${st.attempt_no}` : ""}</span>
+              {isAbsent
+                ? <Chip text="Did not sit" tone="neutral" />
+                : <span style={{ fontSize: 12, color: C.textSec }}>{st.score != null ? `Score ${st.score}` : "No score"}{st.attempt_no > 1 ? ` · attempt ${st.attempt_no}` : ""}</span>}
               {pending && <><Chip text="Replay waiting" tone="warning" /><MiniBtn neutral onClick={() => cancelOne(st)}>Cancel</MiniBtn></>}
             </div>
           );
@@ -797,14 +871,17 @@ function ReplayPaperModal({ mainExamId, s, onClose, showToast }) {
       {allMode && (
         <div style={{ margin: "6px 0 10px", fontSize: 12.5, color: C.textSec }}>All {allCount} student{allCount === 1 ? "" : "s"} who sat this paper (except any with a replay already waiting) will be included.</div>
       )}
-      {!allMode && pickedIds.length > 0 && (
+      {allAbsent && (
+        <div style={{ margin: "6px 0 10px", fontSize: 12.5, color: C.textSec }}>All {absentCount} student{absentCount === 1 ? "" : "s"} who didn't sit this paper will get their first sitting.</div>
+      )}
+      {pickedIds.length > 0 && (
         <div style={{ margin: "6px 0 10px", fontSize: 12.5, color: C.textSec }}>
-          Selected ({pickedIds.length}): {Object.values(picked).slice(0, 6).join(", ")}{pickedIds.length > 6 ? ` +${pickedIds.length - 6} more` : ""}{" "}
+          Selected ({pickedIds.length}): {Object.values(picked).slice(0, 6).map((v) => v.name).join(", ")}{pickedIds.length > 6 ? ` +${pickedIds.length - 6} more` : ""}{" "}
           <button type="button" onClick={() => setPicked({})} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12.5 }}>Clear</button>
         </div>
       )}
 
-      <FieldLabel>Which mark counts</FieldLabel>
+      <FieldLabel>Which mark counts (for students who are retaking)</FieldLabel>
       <ModalSelect value={policy} onChange={setPolicy}
         options={[{ value: "replace", label: "The replay mark replaces the old one" }, { value: "keep_best", label: "Keep whichever mark is higher" }]} />
       <SaveButton onClick={grant} loading={saving} disabled={!selectedCount} label={`Allow replay for ${selectedCount || ""} selected`.trim()} icon={<RotateCw size={14} />} />

@@ -713,6 +713,13 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
   // several lines still gets one mark per line (see intersectRanges).
   const [pending, setPending] = useState(null); // { range, rect, text }
 
+  // React 19 rewrites innerHTML on every re-render when this object is new, which
+  // wiped the student's text (and the teacher's selection) the moment the ✓/✗
+  // popup appeared. Keep the object stable unless the HTML really changes.
+  const safeInner = useMemo(() => ({
+    __html: sanitizeHtml(html) || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>',
+  }), [html]);
+
   useEffect(() => { setPending(null); }, [answerId]);
 
   const captureSelection = useCallback(() => {
@@ -1013,7 +1020,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
           aria-label="Student's answer (read only)"
           onMouseUp={markingOption === 2 ? handleMouseUpOpt2 : () => setTimeout(captureSelection, 0)}
           onClick={handleContainerClick}
-          dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) || '<em style="color:var(--text-muted)">No answer was submitted for this question.</em>' }}
+          dangerouslySetInnerHTML={safeInner}
         />
       </RuledSheetFrame>
 
@@ -1185,6 +1192,9 @@ export default function Marking() {
               // present only if the backend query selects it — used to skip
               // questions that were already graded in a previous session
               marks_awarded: a.marks_awarded,
+              // Suggested Remarks: admin pushed this 0-mark back for another look
+              return_status: a.return_status || null,
+              return_note: a.return_note || null,
               remarks: a.remarks,
               // persisted highlight-to-mark data from a previous marking
               // session (see saveMarking) — a JSON array + the marked-up
@@ -1213,7 +1223,7 @@ export default function Marking() {
 
         for (const item of interleaved) {
           // already graded in an earlier session — surface it as done, don't re-queue it
-          if (item.marks_awarded != null) {
+          if (item.marks_awarded != null && item.return_status !== "pending") {
             // Prefer the teacher's actual saved highlights (real, editable
             // spans) over the old "Previously marked" placeholder — the
             // placeholder is only a fallback for answers that were graded
@@ -1996,6 +2006,13 @@ export default function Marking() {
           </div>
 
           <FieldLabel>Question</FieldLabel>
+          {current.return_status === "pending" && (
+            <div role="note" style={{ margin: "0 0 10px", padding: "10px 12px", borderRadius: 10,
+              border: "1px solid var(--warning, #f59e0b)", background: "rgba(245,158,11,.12)", fontSize: 13, lineHeight: 1.5 }}>
+              <strong>Returned by admin — you marked this 0. Please take another look.</strong>
+              {current.return_note ? <div style={{ marginTop: 4 }}>{current.return_note}</div> : null}
+            </div>
+          )}
           <div style={s.questionBox}>{current.question_text}</div>
 
           {/* ── Answer (left) · quick-mark stack (middle) · marking scheme (right) ── */}

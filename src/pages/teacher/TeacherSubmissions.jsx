@@ -153,9 +153,12 @@ export default function TeacherSubmissions() {
     sub.remark_requested == 1 && sub.remark_status === "pending";
 
   // Locked = marked but NOT yet approved for a remark
+  // (answers the admin pushed back for re-marking unlock it too)
+  const hasReturned = (sub) => Number(sub.returned_pending) > 0;
   const isLocked = (sub) =>
     isMarked(sub) &&
-    !isApproved(sub);
+    !isApproved(sub) &&
+    !hasReturned(sub);
 
   /* ─────────────────────────────────────────────
      Fetch — merges DB data with localStorage so
@@ -620,6 +623,8 @@ export default function TeacherSubmissions() {
                 let statusLabel;
                 if (!marked) {
                   statusLabel = sub.status || "Submitted";
+                } else if (hasReturned(sub)) {
+                  statusLabel = "Returned for re-mark";
                 } else if (approved) {
                   statusLabel = "Approved for remark";
                 } else if (pending) {
@@ -758,6 +763,7 @@ function StatusPill({ status }) {
     "Pending":               { filled: false, Icon: IconClock },
     "Remark requested":      { filled: false, Icon: IconClock },
     "Approved for remark":   { filled: true,  Icon: IconUnlock },
+    "Returned for re-mark":  { filled: true,  Icon: IconUnlock },
   };
   const t = map[status] || map["Submitted"];
   const { Icon: I, filled } = t;
