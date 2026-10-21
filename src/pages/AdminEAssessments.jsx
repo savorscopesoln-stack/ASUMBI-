@@ -305,6 +305,7 @@ export default function AdminEAssessments() {
   const [remarkModal,  setRemarkModal]  = useState(null);
   const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "option" | "suggested" | "remarks"
   const [releaseModal, setReleaseModal] = useState(null);
+  const [allocateModal, setAllocateModal] = useState(null); // { subjectName, teachers, assessments, total, teacherId, assessmentId, count }
   const [retrieveModal, setRetrieveModal] = useState(null); // { subjectName, rows:[{id,name,classes,count}], total, picked:Set, all:boolean }
   const [unsubmitted,    setUnsubmitted]    = useState([]);   // sat the exam, nothing submitted
   const [resitModal,     setResitModal]     = useState(null); // { student_id, e_assessment_id, student_name, assessment_title, hasPrevious }
@@ -996,6 +997,46 @@ export default function AdminEAssessments() {
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Could not retrieve the submissions", "error");
+    } finally { setSaving(false); }
+  };
+
+  // "Allocate": give a chosen NUMBER of the subject's unassigned submissions to one teacher
+  // (e.g. the 400 retrieved from teacher A -> teacher B). Optionally limited to one assessment.
+  const unassignedPool = (subjectName, assessmentId) => submissions.filter((sub) =>
+    String(sub.subject_name) === String(subjectName) && isUnassigned(sub) && !isMarkedState(sub) &&
+    (!assessmentId || String(sub.e_assessment_id) === String(assessmentId)));
+
+  const openAllocate = (subjectName) => {
+    const pool = unassignedPool(subjectName);
+    if (!pool.length) { showToast("No unassigned submissions for this subject — retrieve some first", "error"); return; }
+    const teachers = groupTeachersWithClasses(assignedTeachers.filter((t) => String(t.subject_name) === String(subjectName)));
+    if (!teachers.length) { showToast("No teachers assigned to this subject yet", "error"); return; }
+    const byAssessment = {};
+    pool.forEach((sub) => {
+      const k = String(sub.e_assessment_id);
+      (byAssessment[k] ||= { id: k, title: sub.assessment_title || `Assessment #${k}`, count: 0 }).count++;
+    });
+    setAllocateModal({ subjectName, teachers, assessments: Object.values(byAssessment), total: pool.length, teacherId: "", assessmentId: "", count: String(pool.length) });
+  };
+
+  const confirmAllocate = async () => {
+    const m = allocateModal;
+    if (!m) return;
+    const available = unassignedPool(m.subjectName, m.assessmentId).length;
+    const n = Math.min(Math.max(parseInt(m.count, 10) || 0, 0), available);
+    if (!m.teacherId) { showToast("Choose a teacher", "error"); return; }
+    if (!n) { showToast("Enter how many submissions to allocate", "error"); return; }
+    try {
+      setSaving(true);
+      const res = await API.post("/e-assessments/admin/allocate-submissions", {
+        teacher_id: Number(m.teacherId), subject_name: m.subjectName,
+        assessment_id: m.assessmentId ? Number(m.assessmentId) : undefined, limit: n,
+      });
+      showToast(res.data?.message || "Submissions allocated");
+      setAllocateModal(null);
+      loadAll();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not allocate the submissions", "error");
     } finally { setSaving(false); }
   };
 
@@ -1813,6 +1854,7 @@ export default function AdminEAssessments() {
                         <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
                         <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
                         <MiniBtn tone="danger" onClick={() => openRetrieve(subjectName)} icon={<IconRefresh size={12} />} title="Take unmarked submissions back from one, several or all teachers so they are unassigned again">Retrieve</MiniBtn>
+                        <MiniBtn tone="success" onClick={() => openAllocate(subjectName)} icon={<IconUsers size={12} />} title="Give a number of unassigned submissions to one teacher">Allocate</MiniBtn>
                         <MiniBtn icon={<IconUsers size={12} />} title="Give different parts of this paper to different teachers" onClick={() => setSplitFor({ assessmentId: String(subs[0]?.e_assessment_id || "") })}>Split marking</MiniBtn>
                         <MiniBtn neutral onClick={() => setSubSearch(subjectName)}>View records</MiniBtn>
                       </div>
@@ -1861,6 +1903,7 @@ export default function AdminEAssessments() {
                         <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
                         <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
                         <MiniBtn tone="danger" onClick={() => openRetrieve(subjectName)} icon={<IconRefresh size={12} />} title="Take unmarked submissions back from one, several or all teachers so they are unassigned again">Retrieve</MiniBtn>
+                        <MiniBtn tone="success" onClick={() => openAllocate(subjectName)} icon={<IconUsers size={12} />} title="Give a number of unassigned submissions to one teacher">Allocate</MiniBtn>
                       </div>
                     </div>
 
@@ -2713,6 +2756,54 @@ export default function AdminEAssessments() {
         </Modal>
       )}
 
+      {allocateModal && (() => {
+        const m = allocateModal;
+        const available = unassignedPool(m.subjectName, m.assessmentId).length;
+        const n = Math.min(Math.max(parseInt(m.count, 10) || 0, 0), available);
+        const target = m.teachers.find((g) => String(g.teacher_id) === String(m.teacherId));
+        const field = { padding: "9px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+        const lab = { display: "block", margin: "0 0 5px", fontSize: 12, fontWeight: 700, color: C.textMuted };
+        return (
+          <Modal title={`Allocate submissions — ${m.subjectName}`} onClose={() => setAllocateModal(null)}>
+            <p style={{ margin: "0 0 14px", fontSize: 13, color: C.textMuted, lineHeight: 1.5 }}>
+              Give unassigned, unmarked submissions to one teacher — for example the ones you just retrieved from another teacher. Oldest submissions go first.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 16 }}>
+              <div>
+                <label style={lab}>Give to teacher</label>
+                <select style={field} value={m.teacherId} onChange={(e) => setAllocateModal((x) => ({ ...x, teacherId: e.target.value }))}>
+                  <option value="">Choose a teacher…</option>
+                  {m.teachers.map((g) => <option key={g.teacher_id} value={g.teacher_id}>{teacherChipText(g)}</option>)}
+                </select>
+              </div>
+              {m.assessments.length > 1 && (
+                <div>
+                  <label style={lab}>From assessment</label>
+                  <select style={field} value={m.assessmentId}
+                    onChange={(e) => setAllocateModal((x) => { const a = e.target.value; const c = unassignedPool(x.subjectName, a).length; return { ...x, assessmentId: a, count: String(c) }; })}>
+                    <option value="">All assessments ({m.total} unassigned)</option>
+                    {m.assessments.map((a) => <option key={a.id} value={a.id}>{a.title} ({a.count} unassigned)</option>)}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label style={lab}>How many submissions (up to {available})</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input type="number" min={1} max={available} style={field} value={m.count}
+                    onChange={(e) => setAllocateModal((x) => ({ ...x, count: e.target.value }))} />
+                  <MiniBtn neutral onClick={() => setAllocateModal((x) => ({ ...x, count: String(available) }))}>All {available}</MiniBtn>
+                </div>
+              </div>
+            </div>
+            <SaveButton
+              onClick={confirmAllocate}
+              loading={saving}
+              label={n && target ? `Give ${n} submission${n === 1 ? "" : "s"} to ${target.teacher_name}` : "Allocate"}
+              icon={<IconUsers size={15} />}
+            />
+          </Modal>
+        );
+      })()}
       {retrieveModal && (
         <Modal title={`Retrieve submissions — ${retrieveModal.subjectName}`} onClose={() => setRetrieveModal(null)}>
           <p style={{ margin: "0 0 12px", fontSize: 13, color: C.textMuted, lineHeight: 1.5 }}>
