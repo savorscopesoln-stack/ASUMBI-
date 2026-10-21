@@ -960,6 +960,22 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
+  // "Retrieve": take the still-unmarked work of a subject back from every teacher so it is unassigned again.
+  // Anything a teacher has already marked stays with them.
+  const retrieveBySubject = async (subjectName) => {
+    const withTeacher = submissions.filter((sub) => String(sub.subject_name) === String(subjectName) && !isUnassigned(sub) && !isMarkedState(sub));
+    if (!withTeacher.length) { showToast("No unmarked submissions are assigned to a teacher for this subject", "error"); return; }
+    if (!window.confirm(`Take ${withTeacher.length} unmarked submission(s) for ${subjectName} back from the teachers?\n\nThey become unassigned so you can distribute them again. Work a teacher has already marked stays with them.`)) return;
+    try {
+      setSaving(true);
+      const res = await API.post("/e-assessments/admin/retrieve-submissions", { subject_name: subjectName });
+      showToast(res.data?.message || "Submissions retrieved");
+      loadAll();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not retrieve the submissions", "error");
+    } finally { setSaving(false); }
+  };
+
   const bulkAssignAll = async () => {
     const groups = {};
     submissions.filter(isUnassigned).forEach((sub) => {
@@ -1075,9 +1091,10 @@ export default function AdminEAssessments() {
     if (!window.confirm(`Remove ${ids.length} assignment(s)?`)) return;
     try {
       setSaving(true);
-      await API.delete("/e-assessments/admin/delete-assignments", { data: { ids } });
+      const res = await API.delete("/e-assessments/admin/delete-assignments", { data: { ids } });
       setSelAssignments([]);
-      showToast(`${ids.length} assignment(s) removed`);
+      const back = Number(res.data?.unassigned_submissions || 0) + Number(res.data?.unassigned_answers || 0);
+      showToast(`${ids.length} assignment(s) removed${back ? ` — ${res.data?.unassigned_submissions || 0} submission(s)${res.data?.unassigned_answers ? ` and ${res.data.unassigned_answers} answer(s)` : ""} went back to unassigned` : ""}`);
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Delete failed", "error");
@@ -1763,12 +1780,13 @@ export default function AdminEAssessments() {
                       </span>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {subjectTeachers.length > 0
-                          ? subjectTeachers.map((t) => <Chip key={t.id} icon={<IconUsers size={11} />} text={t.teacher_name} tone="success" />)
+                          ? groupTeachersWithClasses(subjectTeachers).map((g) => <Chip key={g.teacher_id} icon={<IconUsers size={11} />} text={teacherChipText(g)} tone="success" />)
                           : <Chip icon={<IconAlert size={11} />} text="No teacher assigned" tone="danger" />}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: "auto" }}>
                         <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
                         <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
+                        <MiniBtn tone="danger" onClick={() => retrieveBySubject(subjectName)} icon={<IconRefresh size={12} />} title="Take unmarked submissions back from the teachers so they are unassigned again">Retrieve</MiniBtn>
                         <MiniBtn icon={<IconUsers size={12} />} title="Give different parts of this paper to different teachers" onClick={() => setSplitFor({ assessmentId: String(subs[0]?.e_assessment_id || "") })}>Split marking</MiniBtn>
                         <MiniBtn neutral onClick={() => setSubSearch(subjectName)}>View records</MiniBtn>
                       </div>
@@ -1807,13 +1825,14 @@ export default function AdminEAssessments() {
                             {subs.length} submitted · {markedCount} marked · {releasedCount} released
                           </span>
                           {subjectTeachers.length > 0
-                            ? subjectTeachers.map((t) => <Chip key={t.id} icon={<IconUsers size={11} />} text={t.teacher_name} tone="success" />)
+                            ? groupTeachersWithClasses(subjectTeachers).map((g) => <Chip key={g.teacher_id} icon={<IconUsers size={11} />} text={teacherChipText(g)} tone="success" />)
                             : <Chip icon={<IconAlert size={11} />} text="No teacher assigned" tone="danger" />}
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
                         <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
+                        <MiniBtn tone="danger" onClick={() => retrieveBySubject(subjectName)} icon={<IconRefresh size={12} />} title="Take unmarked submissions back from the teachers so they are unassigned again">Retrieve</MiniBtn>
                       </div>
                     </div>
 
@@ -1855,7 +1874,7 @@ export default function AdminEAssessments() {
                                       onChange={(e) => { if (e.target.value) assignSubmissionToTeacher(sub.id, e.target.value); }}
                                     >
                                       <option value="">Assign…</option>
-                                      {subjectTeachers.map((t) => (
+                                      {groupTeachersWithClasses(subjectTeachers).map((t) => (
                                         <option key={t.teacher_id} value={t.teacher_id}>{t.teacher_name}</option>
                                       ))}
                                     </select>
@@ -3283,6 +3302,19 @@ function BlockedDevicesPanel({ rows, saving, onAllow, onRevoke }) {
     </>
   );
 }
+
+/* One entry per teacher with all their classes: [{ teacher_id, teacher_name, classes: [..] }].
+   assignedTeachers has a row per teacher+subject+class, so listing it directly repeats the name. */
+function groupTeachersWithClasses(rows = []) {
+  const map = new Map();
+  rows.forEach((r) => {
+    const g = map.get(r.teacher_id) || { teacher_id: r.teacher_id, teacher_name: r.teacher_name, classes: [] };
+    if (r.class_name && !g.classes.includes(r.class_name)) g.classes.push(r.class_name);
+    map.set(r.teacher_id, g);
+  });
+  return [...map.values()];
+}
+const teacherChipText = (g) => (g.classes.length ? `${g.teacher_name} · ${g.classes.join(", ")}` : g.teacher_name);
 
 function Chip({ text, tone = "neutral", icon, uppercase }) {
   const C = useC();
