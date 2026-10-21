@@ -758,7 +758,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
   // adjusted with handles and never fires mouseup, so watch the selection
   // itself and settle after it stops moving.
   useEffect(() => {
-    if ((markingOption === 2 || markingOption === 3) || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
+    if (markingOption === 2 || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
     let t;
     const onSelChange = () => {
       clearTimeout(t);
@@ -935,7 +935,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       const fullMark = Number(el.dataset.fullmark ?? el.dataset.mark ?? 1);
       const nowWrong = el.dataset.status !== "wrong";
       let newMark = nowWrong ? 0 : fullMark;
-      if ((markingOption !== 2 && markingOption !== 3)) {
+      if (markingOption !== 2) {
         // option 1: flipping ✗ back to ✓ can't push the question past its max marks
         const others = highlights.reduce((sum, h) => (h.id === hid ? sum : sum + (h.mark || 0)), 0);
         const cap = maxMarks != null ? Math.max(0, maxMarks - others) : fullMark;
@@ -1000,7 +1000,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       <div style={s.essayHeaderRow}>
         <div style={s.essayHint}>
           <Pencil size={13} color="var(--primary)" />
-          {(markingOption === 2 || markingOption === 3) ? "Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong (it turns red with a ✗). An answer you move on from with no highlights is marked wrong automatically." : "Highlight the words you want to mark — a ✓ / ✗ box pops up: ✓ gives the point, ✗ gives 0. Tap a badge later to switch it. Click the highlighted words to remove them. An answer you move on from with no highlights is marked wrong automatically."}
+          {markingOption === 2 ? "Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong (it turns red with a ✗). An answer you move on from with no highlights is marked wrong automatically." : "Highlight the words you want to mark — a ✓ / ✗ box pops up: ✓ gives the point, ✗ gives 0. Tap a badge later to switch it. Click the highlighted words to remove them. An answer you move on from with no highlights is marked wrong automatically."}
         </div>
         {maxMarks != null && (
           <div style={s.markMeter}>
@@ -1012,7 +1012,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         )}
       </div>
 
-      {(markingOption !== 2 && markingOption !== 3) && pending && <MarkChoicePopup rect={pending.rect} leaving={!!pending.leaving} onPick={applyChoice} />}
+      {markingOption !== 2 && pending && <MarkChoicePopup rect={pending.rect} leaving={!!pending.leaving} onPick={applyChoice} />}
 
       {/* Same ruled exercise-book paper the student typed on — read-only, highlight-only. */}
       <RuledSheetFrame html={html}>
@@ -1025,7 +1025,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
           role="document"
           aria-readonly="true"
           aria-label="Student's answer (read only)"
-          onMouseUp={(markingOption === 2 || markingOption === 3) ? handleMouseUpOpt2 : () => setTimeout(captureSelection, 0)}
+          onMouseUp={markingOption === 2 ? handleMouseUpOpt2 : () => setTimeout(captureSelection, 0)}
           onClick={handleContainerClick}
           dangerouslySetInnerHTML={safeInner}
         />
@@ -1068,7 +1068,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
 export default function Marking() {
   useGlobalMarkingStyles();
   const isPhone = useIsPhone();
-  const markingOption = useMarkingOption(); // 1 (default) or 2 — set per teacher by the admin
+  const markingOption = useMarkingOption(); // 1 (default), 2 or 3 — set per teacher by the admin; 3 behaves like 1 with a different layout
   const { id: assessmentId } = useParams();
 
   const [queue, setQueue]           = useState([]);

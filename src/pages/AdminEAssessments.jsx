@@ -5460,7 +5460,7 @@ const globalStyles = `
 /* Which highlight-to-mark style each teacher uses on the marking screens.
    Option 1 (default): select words, a ✓ / ✗ box pops up.
    Option 2: select words, a ✓ highlight is added straight away (tap ✓ to flip to ✗).
-   Option 3: works like option 2; the ✓ / ✗ buttons sit on top of the answer editor and there is no R button. */
+   Option 3: works like option 1; the ✓ / ✗ buttons sit on top of the answer editor and there is no R button. */
 function MarkingOptionPanel({ teachers, showToast }) {
   const [opts, setOpts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -5501,7 +5501,7 @@ function MarkingOptionPanel({ teachers, showToast }) {
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textMuted, lineHeight: 1.5 }}>
         <b>Option 1</b> (default): the teacher selects words and a ✓ / ✗ box pops up to give the point or 0.<br />
         <b>Option 2</b>: the teacher selects words and a ✓ highlight is added straight away; tapping the ✓ turns it into ✗.<br />
-        <b>Option 3</b>: works exactly like option 2; the only difference is the layout — the ✓ / ✗ buttons sit on top of the answer editor and the R button is removed.
+        <b>Option 3</b>: works exactly like option 1; the only difference is the layout — the ✓ / ✗ buttons sit on top of the answer editor and the R button is removed.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search teachers…" aria-label="Search teachers"
