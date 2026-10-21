@@ -314,6 +314,13 @@ function injectMarkingStyles() {
     }
 
     .mkp-triptych-controls { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 30px; }
+    /* option 3: ✓ / ✗ sit on top of the answer editor; no middle column, no R */
+    .mkp-triptych--opt3 { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 780px) { .mkp-triptych--opt3 { grid-template-columns: 1fr; } }
+    .mkp-opt3-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+    .mkp-opt3-bar .mkp-quickmark { width: auto; min-width: 64px; padding: 0 18px; }
+    .mkp-opt3-bar .mkp-score-fraction { margin-left: auto; width: 44px; height: 44px; font-size: 12px; }
+
     .mkp-quickmark {
       width: 44px; height: 44px; border-radius: 10px; font-size: 18px; font-weight: 800;
       display: flex; align-items: center; justify-content: center; border: 1px solid var(--border);
@@ -751,7 +758,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
   // adjusted with handles and never fires mouseup, so watch the selection
   // itself and settle after it stops moving.
   useEffect(() => {
-    if (markingOption === 2 || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
+    if ((markingOption === 2 || markingOption === 3) || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
     let t;
     const onSelChange = () => {
       clearTimeout(t);
@@ -928,7 +935,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       const fullMark = Number(el.dataset.fullmark ?? el.dataset.mark ?? 1);
       const nowWrong = el.dataset.status !== "wrong";
       let newMark = nowWrong ? 0 : fullMark;
-      if (markingOption !== 2) {
+      if ((markingOption !== 2 && markingOption !== 3)) {
         // option 1: flipping ✗ back to ✓ can't push the question past its max marks
         const others = highlights.reduce((sum, h) => (h.id === hid ? sum : sum + (h.mark || 0)), 0);
         const cap = maxMarks != null ? Math.max(0, maxMarks - others) : fullMark;
@@ -993,7 +1000,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
       <div style={s.essayHeaderRow}>
         <div style={s.essayHint}>
           <Pencil size={13} color="var(--primary)" />
-          {markingOption === 2 ? "Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong (it turns red with a ✗). An answer you move on from with no highlights is marked wrong automatically." : "Highlight the words you want to mark — a ✓ / ✗ box pops up: ✓ gives the point, ✗ gives 0. Tap a badge later to switch it. Click the highlighted words to remove them. An answer you move on from with no highlights is marked wrong automatically."}
+          {(markingOption === 2 || markingOption === 3) ? "Select exactly the words worth credit — a highlight is added automatically. Tap the ✓ to mark that point wrong (it turns red with a ✗). An answer you move on from with no highlights is marked wrong automatically." : "Highlight the words you want to mark — a ✓ / ✗ box pops up: ✓ gives the point, ✗ gives 0. Tap a badge later to switch it. Click the highlighted words to remove them. An answer you move on from with no highlights is marked wrong automatically."}
         </div>
         {maxMarks != null && (
           <div style={s.markMeter}>
@@ -1005,7 +1012,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
         )}
       </div>
 
-      {markingOption !== 2 && pending && <MarkChoicePopup rect={pending.rect} leaving={!!pending.leaving} onPick={applyChoice} />}
+      {(markingOption !== 2 && markingOption !== 3) && pending && <MarkChoicePopup rect={pending.rect} leaving={!!pending.leaving} onPick={applyChoice} />}
 
       {/* Same ruled exercise-book paper the student typed on — read-only, highlight-only. */}
       <RuledSheetFrame html={html}>
@@ -1018,7 +1025,7 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
           role="document"
           aria-readonly="true"
           aria-label="Student's answer (read only)"
-          onMouseUp={markingOption === 2 ? handleMouseUpOpt2 : () => setTimeout(captureSelection, 0)}
+          onMouseUp={(markingOption === 2 || markingOption === 3) ? handleMouseUpOpt2 : () => setTimeout(captureSelection, 0)}
           onClick={handleContainerClick}
           dangerouslySetInnerHTML={safeInner}
         />
@@ -2016,9 +2023,40 @@ export default function Marking() {
           <div style={s.questionBox}>{current.question_text}</div>
 
           {/* ── Answer (left) · quick-mark stack (middle) · marking scheme (right) ── */}
-          <div className="mkp-triptych">
+          <div className={`mkp-triptych${markingOption === 3 ? " mkp-triptych--opt3" : ""}`}>
             <div>
               <p className="mkp-answer-heading">answer</p>
+              {markingOption === 3 && (
+                <div className="mkp-opt3-bar">
+                  <button
+                    type="button"
+                    className="mkp-btn mkp-quickmark full"
+                    title="Lock in the marked points and move on"
+                    onClick={() => {
+                      const awarded = editableHlForCurrent.reduce((sum, h) => sum + (h.mark || 0), 0);
+                      handleScoreChange(current.id, awarded, current.max_marks);
+                      markAndAdvance();
+                    }}
+                  >
+                    ✓
+                  </button>
+                  <button
+                    type="button"
+                    className="mkp-btn mkp-quickmark zero"
+                    title="Award zero and move on"
+                    onClick={() => {
+                      handleScoreChange(current.id, 0, current.max_marks);
+                      markAndAdvance(true);
+                    }}
+                  >
+                    ✗
+                  </button>
+                  <div className="mkp-score-fraction">
+                    {scores[current.id] ?? editableHlForCurrent.reduce((sum, h) => sum + (h.mark || 0), 0)}/{current.max_marks ?? "–"}
+                  </div>
+                </div>
+              )}
+
               <RichEssayViewer
                 markingOption={markingOption}
                 answerId={current.id}
@@ -2058,6 +2096,7 @@ export default function Marking() {
               />
             </div>
 
+            {markingOption !== 3 && (
             <div className="mkp-triptych-controls">
               <button
                 type="button"
@@ -2103,6 +2142,7 @@ export default function Marking() {
                 {scores[current.id] ?? editableHlForCurrent.reduce((sum, h) => sum + (h.mark || 0), 0)}/{current.max_marks ?? "–"}
               </div>
             </div>
+            )}
 
             <div>
               <p className="mkp-scheme-heading">Marking scheme</p>

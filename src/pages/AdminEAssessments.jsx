@@ -305,6 +305,7 @@ export default function AdminEAssessments() {
   const [remarkModal,  setRemarkModal]  = useState(null);
   const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "option" | "suggested" | "remarks"
   const [releaseModal, setReleaseModal] = useState(null);
+  const [retrieveModal, setRetrieveModal] = useState(null); // { subjectName, rows:[{id,name,classes,count}], total, picked:Set, all:boolean }
   const [unsubmitted,    setUnsubmitted]    = useState([]);   // sat the exam, nothing submitted
   const [resitModal,     setResitModal]     = useState(null); // { student_id, e_assessment_id, student_name, assessment_title, hasPrevious }
   const [resitPolicy,    setResitPolicy]    = useState("replace");
@@ -960,16 +961,38 @@ export default function AdminEAssessments() {
     } finally { setSaving(false); }
   };
 
-  // "Retrieve": take the still-unmarked work of a subject back from every teacher so it is unassigned again.
-  // Anything a teacher has already marked stays with them.
-  const retrieveBySubject = async (subjectName) => {
-    const withTeacher = submissions.filter((sub) => String(sub.subject_name) === String(subjectName) && !isUnassigned(sub) && !isMarkedState(sub));
-    if (!withTeacher.length) { showToast("No unmarked submissions are assigned to a teacher for this subject", "error"); return; }
-    if (!window.confirm(`Take ${withTeacher.length} unmarked submission(s) for ${subjectName} back from the teachers?\n\nThey become unassigned so you can distribute them again. Work a teacher has already marked stays with them.`)) return;
+  // "Retrieve": take the still-unmarked work of a subject back from ONE teacher, SEVERAL teachers or ALL of them,
+  // so it is unassigned again. Anything a teacher has already marked stays with them.
+  const openRetrieve = (subjectName) => {
+    const pending = submissions.filter((sub) => String(sub.subject_name) === String(subjectName) && !isUnassigned(sub) && !isMarkedState(sub));
+    if (!pending.length) { showToast("No unmarked submissions are assigned to a teacher for this subject", "error"); return; }
+    const teachers = groupTeachersWithClasses(assignedTeachers.filter((t) => String(t.subject_name) === String(subjectName)));
+    // a teacher who still holds work here but is no longer assigned to the subject must be listed too
+    pending.forEach((sub) => {
+      if (sub.assigned_teacher_id && !teachers.some((g) => String(g.teacher_id) === String(sub.assigned_teacher_id))) {
+        teachers.push({ teacher_id: sub.assigned_teacher_id, teacher_name: sub.assigned_teacher_name || `Teacher #${sub.assigned_teacher_id}`, classes: [] });
+      }
+    });
+    const rows = teachers.map((g) => ({
+      id: g.teacher_id, name: g.teacher_name, classes: g.classes,
+      count: pending.filter((sub) =>
+        String(sub.assigned_teacher_id) === String(g.teacher_id) ||
+        (Number(sub.alloc_count) > 0 && String(sub.alloc_teachers || "").split(", ").includes(g.teacher_name))
+      ).length,
+    }));
+    setRetrieveModal({ subjectName, rows, total: pending.length, picked: new Set(), all: true });
+  };
+
+  const confirmRetrieve = async () => {
+    const m = retrieveModal;
+    if (!m) return;
+    const teacherIds = m.all ? [] : [...m.picked];
+    if (!m.all && !teacherIds.length) { showToast("Pick at least one teacher", "error"); return; }
     try {
       setSaving(true);
-      const res = await API.post("/e-assessments/admin/retrieve-submissions", { subject_name: subjectName });
+      const res = await API.post("/e-assessments/admin/retrieve-submissions", { subject_name: m.subjectName, teacher_ids: teacherIds });
       showToast(res.data?.message || "Submissions retrieved");
+      setRetrieveModal(null);
       loadAll();
     } catch (err) {
       showToast(err?.response?.data?.message || "Could not retrieve the submissions", "error");
@@ -1769,24 +1792,27 @@ export default function AdminEAssessments() {
                   const releasedCount = subs.filter((s) => s.status === "released").length;
                   const unassigned    = subs.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length;
                   return (
-                    <div key={subjectName} className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div key={subjectName} className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10, minWidth: 0, overflow: "hidden" }}>
                       <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.textPri }}>{subjectName}</p>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                        <span style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: C.textPri }}>{subs.length}</span>
-                        <span style={{ fontSize: 12, color: C.textMuted }}>submitted</span>
+                        <span style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: STAT_COLORS.submitted }}>{subs.length}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: STAT_COLORS.submitted }}>submitted</span>
                       </div>
-                      <span style={{ fontSize: 12, color: C.textMuted }}>
-                        {markedCount} marked · {releasedCount} released{unassigned ? ` · ${unassigned} unassigned` : ""}
-                      </span>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
+                        <StatPill kind="marked" count={markedCount} />
+                        <StatPill kind="released" count={releasedCount} />
+                        <StatPill kind="assigned" count={subs.length - unassigned} />
+                        <StatPill kind="unassigned" count={unassigned} />
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
                         {subjectTeachers.length > 0
-                          ? groupTeachersWithClasses(subjectTeachers).map((g) => <Chip key={g.teacher_id} icon={<IconUsers size={11} />} text={teacherChipText(g)} tone="success" />)
+                          ? groupTeachersWithClasses(subjectTeachers).map((g) => <Chip key={g.teacher_id} wrap icon={<IconUsers size={11} />} text={teacherChipText(g)} tone="success" />)
                           : <Chip icon={<IconAlert size={11} />} text="No teacher assigned" tone="danger" />}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: "auto" }}>
                         <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
                         <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
-                        <MiniBtn tone="danger" onClick={() => retrieveBySubject(subjectName)} icon={<IconRefresh size={12} />} title="Take unmarked submissions back from the teachers so they are unassigned again">Retrieve</MiniBtn>
+                        <MiniBtn tone="danger" onClick={() => openRetrieve(subjectName)} icon={<IconRefresh size={12} />} title="Take unmarked submissions back from one, several or all teachers so they are unassigned again">Retrieve</MiniBtn>
                         <MiniBtn icon={<IconUsers size={12} />} title="Give different parts of this paper to different teachers" onClick={() => setSplitFor({ assessmentId: String(subs[0]?.e_assessment_id || "") })}>Split marking</MiniBtn>
                         <MiniBtn neutral onClick={() => setSubSearch(subjectName)}>View records</MiniBtn>
                       </div>
@@ -1821,18 +1847,20 @@ export default function AdminEAssessments() {
                       <div>
                         <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.textPri }}>{subjectName}</p>
                         <div style={{ marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                          <span style={{ fontSize: 12, color: C.textMuted }}>
-                            {subs.length} submitted · {markedCount} marked · {releasedCount} released
-                          </span>
+                          <StatPill kind="submitted" count={subs.length} />
+                          <StatPill kind="marked" count={markedCount} />
+                          <StatPill kind="released" count={releasedCount} />
+                          <StatPill kind="assigned" count={subs.length - subs.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length} />
+                          <StatPill kind="unassigned" count={subs.filter((s) => !s.assigned_teacher_id && !(Number(s.alloc_count) > 0)).length} />
                           {subjectTeachers.length > 0
-                            ? groupTeachersWithClasses(subjectTeachers).map((g) => <Chip key={g.teacher_id} icon={<IconUsers size={11} />} text={teacherChipText(g)} tone="success" />)
+                            ? groupTeachersWithClasses(subjectTeachers).map((g) => <Chip key={g.teacher_id} wrap icon={<IconUsers size={11} />} text={teacherChipText(g)} tone="success" />)
                             : <Chip icon={<IconAlert size={11} />} text="No teacher assigned" tone="danger" />}
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <MiniBtn tone="warning" icon={<IconZap size={12} />} onClick={() => bulkAssignBySubject(subjectName)}>Distribute</MiniBtn>
                         <MiniBtn onClick={() => bulkReleaseMarks(subjectName)} icon={<IconRocket size={12} />}>Release All</MiniBtn>
-                        <MiniBtn tone="danger" onClick={() => retrieveBySubject(subjectName)} icon={<IconRefresh size={12} />} title="Take unmarked submissions back from the teachers so they are unassigned again">Retrieve</MiniBtn>
+                        <MiniBtn tone="danger" onClick={() => openRetrieve(subjectName)} icon={<IconRefresh size={12} />} title="Take unmarked submissions back from one, several or all teachers so they are unassigned again">Retrieve</MiniBtn>
                       </div>
                     </div>
 
@@ -2685,6 +2713,43 @@ export default function AdminEAssessments() {
         </Modal>
       )}
 
+      {retrieveModal && (
+        <Modal title={`Retrieve submissions — ${retrieveModal.subjectName}`} onClose={() => setRetrieveModal(null)}>
+          <p style={{ margin: "0 0 12px", fontSize: 13, color: C.textMuted, lineHeight: 1.5 }}>
+            Choose who to take unmarked work back from. It becomes unassigned so you can distribute it again. Work a teacher has already marked stays with them.
+          </p>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: `1px solid ${retrieveModal.all ? C.accent : C.border}`, borderRadius: 10, cursor: "pointer", marginBottom: 8, color: C.textPri, fontWeight: 700, fontSize: 13.5 }}>
+            <input type="checkbox" checked={retrieveModal.all}
+              onChange={(e) => setRetrieveModal((m) => ({ ...m, all: e.target.checked, picked: new Set() }))} />
+            <span style={{ flex: 1 }}>All teachers</span>
+            <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>{retrieveModal.total} unmarked</span>
+          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto", marginBottom: 16, opacity: retrieveModal.all ? 0.5 : 1 }}>
+            {retrieveModal.rows.map((r) => (
+              <label key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", border: `1px solid ${C.border}`, borderRadius: 10, cursor: retrieveModal.all || !r.count ? "not-allowed" : "pointer", color: C.textPri, fontSize: 13 }}>
+                <input type="checkbox" disabled={retrieveModal.all || !r.count}
+                  checked={retrieveModal.all || retrieveModal.picked.has(r.id)}
+                  onChange={(e) => setRetrieveModal((m) => {
+                    const picked = new Set(m.picked);
+                    if (e.target.checked) picked.add(r.id); else picked.delete(r.id);
+                    return { ...m, picked };
+                  })} />
+                <span style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 600 }}>{r.name}</span>
+                  {r.classes.length > 0 && <span style={{ color: C.textMuted }}> · {r.classes.join(", ")}</span>}
+                </span>
+                <span style={{ fontSize: 12, color: C.textMuted }}>{r.count} unmarked</span>
+              </label>
+            ))}
+          </div>
+          <SaveButton
+            onClick={confirmRetrieve}
+            loading={saving}
+            label={retrieveModal.all ? "Retrieve from all teachers" : `Retrieve from ${retrieveModal.picked.size} teacher${retrieveModal.picked.size === 1 ? "" : "s"}`}
+            icon={<IconRefresh size={15} />}
+          />
+        </Modal>
+      )}
       {releaseModal && (
         <Modal title="Confirm Mark Release" onClose={() => setReleaseModal(null)}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
@@ -3316,19 +3381,44 @@ function groupTeachersWithClasses(rows = []) {
 }
 const teacherChipText = (g) => (g.classes.length ? `${g.teacher_name} · ${g.classes.join(", ")}` : g.teacher_name);
 
-function Chip({ text, tone = "neutral", icon, uppercase }) {
+/* Colour-coded count used on the submission subject cards, so each state reads at a glance:
+   submitted = blue · marked = amber · released = green · assigned = theme colour · unassigned = red. */
+const STAT_COLORS = {
+  submitted:  "var(--info, #3b82f6)",
+  marked:     "var(--warning, #f59e0b)",
+  released:   "var(--success, #22c55e)",
+  assigned:   "var(--primary, #6366f1)",
+  unassigned: "var(--destructive, #ef4444)",
+};
+function StatPill({ kind, count, label }) {
+  const color = STAT_COLORS[kind];
+  return (
+    <span title={`${count} ${label || kind}`} style={{
+      display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 99,
+      color, background: `color-mix(in srgb, ${color} 13%, transparent)`, border: `1px solid color-mix(in srgb, ${color} 38%, transparent)`,
+      opacity: count ? 1 : 0.55, whiteSpace: "nowrap",
+    }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />
+      {count} {label || kind}
+    </span>
+  );
+}
+
+function Chip({ text, tone = "neutral", icon, uppercase, wrap }) {
   const C = useC();
   const color = tone === "neutral" ? C.textSec : C[tone] || C.textSec;
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: 5,
-      fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 99,
+      display: "inline-flex", alignItems: wrap ? "flex-start" : "center", gap: 5,
+      fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: wrap ? 12 : 99,
       background: C.bgAlt, color, border: `1px solid ${C.border}`,
       textTransform: uppercase ? "uppercase" : "none", letterSpacing: uppercase ? "0.05em" : 0,
-      whiteSpace: "nowrap",
+      // wrap: long text (a teacher with many classes) breaks onto more lines instead of running out of its card
+      whiteSpace: wrap ? "normal" : "nowrap",
+      ...(wrap ? { maxWidth: "100%", minWidth: 0, overflowWrap: "anywhere", lineHeight: 1.35, textAlign: "left" } : {}),
     }}>
       {icon || (tone !== "neutral" && <IconDot size={6} />)}
-      {text}
+      {wrap ? <span style={{ minWidth: 0 }}>{text}</span> : text}
     </span>
   );
 }
@@ -5278,7 +5368,8 @@ const globalStyles = `
 
 /* Which highlight-to-mark style each teacher uses on the marking screens.
    Option 1 (default): select words, a ✓ / ✗ box pops up.
-   Option 2: select words, a ✓ highlight is added straight away (tap ✓ to flip to ✗). */
+   Option 2: select words, a ✓ highlight is added straight away (tap ✓ to flip to ✗).
+   Option 3: works like option 2; the ✓ / ✗ buttons sit on top of the answer editor and there is no R button. */
 function MarkingOptionPanel({ teachers, showToast }) {
   const [opts, setOpts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -5318,7 +5409,8 @@ function MarkingOptionPanel({ teachers, showToast }) {
       <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 15, color: C.textPri }}>Marking option per teacher</p>
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textMuted, lineHeight: 1.5 }}>
         <b>Option 1</b> (default): the teacher selects words and a ✓ / ✗ box pops up to give the point or 0.<br />
-        <b>Option 2</b>: the teacher selects words and a ✓ highlight is added straight away; tapping the ✓ turns it into ✗.
+        <b>Option 2</b>: the teacher selects words and a ✓ highlight is added straight away; tapping the ✓ turns it into ✗.<br />
+        <b>Option 3</b>: works exactly like option 2; the only difference is the layout — the ✓ / ✗ buttons sit on top of the answer editor and the R button is removed.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search teachers…" aria-label="Search teachers"
@@ -5328,13 +5420,15 @@ function MarkingOptionPanel({ teachers, showToast }) {
           style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Set all to option 1</button>
         <button type="button" disabled={busy || !(teachers || []).length} onClick={() => save((teachers || []).map((t) => t.id), 2, "all")}
           style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Set all to option 2</button>
+        <button type="button" disabled={busy || !(teachers || []).length} onClick={() => save((teachers || []).map((t) => t.id), 3, "all")}
+          style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Set all to option 3</button>
       </div>
       {loading ? <p style={{ color: C.textMuted, fontSize: 13 }}>Loading…</p> : list.length === 0 ? (
         <p style={{ color: C.textMuted, fontSize: 13 }}>No teachers found.</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column" }}>
           {list.map((t) => {
-            const cur = Number(opts[t.id]) === 2 ? 2 : 1;
+            const cur = Number(opts[t.id]) === 3 ? 3 : Number(opts[t.id]) === 2 ? 2 : 1;
             return (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 4px", borderTop: `1px solid ${C.border}` }}>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: C.textPri }}>{t.name || `Teacher #${t.id}`}</span>
@@ -5342,6 +5436,7 @@ function MarkingOptionPanel({ teachers, showToast }) {
                   style={{ display: "inline-flex", border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", opacity: busy === t.id ? .6 : 1 }}>
                   <button type="button" disabled={!!busy} style={seg(cur === 1)} onClick={() => cur !== 1 && save([t.id], 1, t.id)}>Option 1</button>
                   <button type="button" disabled={!!busy} style={seg(cur === 2)} onClick={() => cur !== 2 && save([t.id], 2, t.id)}>Option 2</button>
+                  <button type="button" disabled={!!busy} style={seg(cur === 3)} onClick={() => cur !== 3 && save([t.id], 3, t.id)}>Option 3</button>
                 </div>
               </div>
             );
