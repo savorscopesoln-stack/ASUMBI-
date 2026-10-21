@@ -644,20 +644,6 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
   }), [html]);
 
 
-  // Mouse: after the drag ends. Touch screens (tablets): selection is
-  // adjusted with handles and never fires mouseup, so watch the selection
-  // itself and settle after it stops moving.
-  useEffect(() => {
-    if (markingOption === 2 || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
-    let t;
-    const onSelChange = () => {
-      clearTimeout(t);
-      t = setTimeout(autoMark, 450);
-    };
-    document.addEventListener("selectionchange", onSelChange);
-    return () => { clearTimeout(t); document.removeEventListener("selectionchange", onSelChange); };
-  }, [autoMark, markingOption]);
-
   // Highlights a selected range and credits it: ✓ = 1 point from what is left of the question's
   // marks, ✗ = 0. Within a single line the highlight is exactly the selected words; a drag
   // spanning several lines still gets one mark per line (see intersectRanges).
@@ -731,6 +717,20 @@ function RichEssayViewer({ answerId, html, highlights, maxMarks, onAdd, onRemove
     }
     applyRange(rawRange.cloneRange(), true);
   }, [applyRange]);
+
+  // Mouse: after the drag ends. Touch screens (tablets): selection is
+  // adjusted with handles and never fires mouseup, so watch the selection
+  // itself and settle after it stops moving.
+  useEffect(() => {
+    if (markingOption === 2 || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
+    let t;
+    const onSelChange = () => {
+      clearTimeout(t);
+      t = setTimeout(autoMark, 450);
+    };
+    document.addEventListener("selectionchange", onSelChange);
+    return () => { clearTimeout(t); document.removeEventListener("selectionchange", onSelChange); };
+  }, [autoMark, markingOption]);
 
   // ── MARKING OPTION 2 ─ select words and a correct (✓) highlight is added
   // straight away; tap its ✓ to flip it to wrong. (Option 1 = ✓/✗ popup.)
