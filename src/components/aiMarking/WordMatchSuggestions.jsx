@@ -45,9 +45,9 @@ function StrictnessSelect({ value, onChange }) {
   return (
     <label style={{ ...muted, display: "inline-flex", alignItems: "center", gap: 6 }}>
       Strictness
-      <select value={value} onChange={(e) => onChange(e.target.value)}
+      <select value={value} title={(STRICTNESS[value] || STRICTNESS.normal).hint} onChange={(e) => onChange(e.target.value)}
         style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 12 }}>
-        {Object.entries(STRICTNESS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        {Object.entries(STRICTNESS).map(([k, v]) => <option key={k} value={k} title={v.hint}>{v.label}</option>)}
       </select>
     </label>
   );

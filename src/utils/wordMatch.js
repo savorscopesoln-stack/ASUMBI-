@@ -12,17 +12,22 @@
         "is" are dropped; plurals and endings like -ing / -ed are ignored, so
         "reflecting" matches "reflection").
      3. A point is CREDITED when enough of its key words appear in the answer
-        (strictness decides how many); getting close to that earns half a point.
+        (strictness decides how many; "Basic" needs just one); getting close to
+        that earns half a point (not used by Basic).
      4. Suggested mark = max marks × credited points ÷ points, rounded.
 
    It cannot understand meaning — it only counts words — which is why the
    result is a suggestion for the teacher to approve, not a mark.
 ========================================================================= */
 
+// Listed from most lenient to strictest (the order the drop-down shows them).
+//   basic   — a point is credited as soon as AT LEAST ONE of its key words is found (no half points)
+//   others  — a point is credited when `threshold` of its key words are found
 export const STRICTNESS = {
-  strict:  { label: "Strict",  threshold: 0.7,  hint: "a point needs about 70% of its key words" },
-  normal:  { label: "Normal",  threshold: 0.5,  hint: "a point needs about half of its key words" },
+  basic:   { label: "Basic",   minWords: 1, hint: "a point is given if even one of its key words appears" },
   lenient: { label: "Lenient", threshold: 0.35, hint: "a point needs about a third of its key words" },
+  normal:  { label: "Normal",  threshold: 0.5,  hint: "a point needs about half of its key words" },
+  strict:  { label: "Strict",  threshold: 0.7,  hint: "a point needs about 70% of its key words" },
 };
 
 const STOP = new Set((
@@ -130,7 +135,8 @@ export function suggestFromGuide({ answerHtml, guideText, maxMarks, strictness =
   const answer = htmlToText(answerHtml);
   const answerTokens = tokens(answer);
   const answerStems = new Set(answerTokens.map(stem));
-  const { threshold } = STRICTNESS[strictness] || STRICTNESS.normal;
+  const level = STRICTNESS[strictness] || STRICTNESS.normal;
+  const { threshold } = level;
 
   const detail = points.map((text) => {
     const terms = keyWords(text);
@@ -138,7 +144,9 @@ export function suggestFromGuide({ answerHtml, guideText, maxMarks, strictness =
     const missing = [];
     for (const [s, original] of terms) (appearsIn(s, answerStems) ? matched : missing).push(original);
     const ratio = terms.size ? matched.length / terms.size : 0;
-    const credit = ratio >= threshold ? 1 : ratio >= threshold * 0.75 ? 0.5 : 0;
+    const credit = level.minWords
+      ? (matched.length >= Math.min(level.minWords, terms.size) && matched.length > 0 ? 1 : 0)
+      : ratio >= threshold ? 1 : ratio >= threshold * 0.75 ? 0.5 : 0;
     return { text, ratio, credit, matched, missing };
   });
 
