@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
    `api` is the app's axios instance (baseURL already ends in /api). */
 const box = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius, 14px)", padding: 16, marginBottom: 16 };
 const input = { padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%", boxSizing: "border-box" };
-const btn = { padding: "9px 16px", borderRadius: 8, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" };
+const btn = { padding: "9px 16px", borderRadius: 8, border: "none", background: "var(--primary)", color: "var(--on-primary, #fff)", fontWeight: 700, cursor: "pointer" };
 const lbl = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 const th = { textAlign: "left", padding: "6px 8px", fontSize: 12, color: "var(--text-muted)", borderBottom: "1px solid var(--border)" };
 const td = { padding: "6px 8px", fontSize: 13, borderBottom: "1px solid var(--border)" };

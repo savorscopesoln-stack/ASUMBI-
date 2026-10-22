@@ -5460,6 +5460,7 @@ const globalStyles = `
 /* Which highlight-to-mark style each teacher uses on the marking screens.
    Option 1 (default): select words, a ✓ point is added straight away (tap the ✓ to flip it to ✗).
    Option 2: select words, a ✓ highlight is added straight away (tap ✓ to flip to ✗).
+   Option 4: like option 1, with word-match suggested marks instead of the AI tools.
    Option 3: works like option 1; the ✓ / ✗ buttons sit inside the answer editor, beside the text, and there is no R button. */
 function MarkingOptionPanel({ teachers, showToast }) {
   const [opts, setOpts] = useState({});
@@ -5501,7 +5502,8 @@ function MarkingOptionPanel({ teachers, showToast }) {
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textMuted, lineHeight: 1.5 }}>
         <b>Option 1</b> (default): the teacher selects words and a ✓ point is added straight away; tapping the ✓ turns it into ✗.<br />
         <b>Option 2</b>: the teacher selects words and a ✓ highlight is added straight away; tapping the ✓ turns it into ✗.<br />
-        <b>Option 3</b>: works exactly like option 1; the only difference is the layout — the ✓ / ✗ buttons sit inside the answer editor, in a column beside the text so the mouse has less distance to travel, and the R button is removed.
+        <b>Option 3</b>: works exactly like option 1; the only difference is the layout — the ✓ / ✗ buttons sit inside the answer editor, in a column beside the text so the mouse has less distance to travel, and the R button is removed.<br />
+        <b>Option 4</b>: marks like option 1, and swaps the credit-based AI marking tools for simple word-match <i>suggested marks</i>: the answer is compared with the marking guide and a mark is suggested; nothing is marked until the teacher approves it.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search teachers…" aria-label="Search teachers"
@@ -5513,13 +5515,15 @@ function MarkingOptionPanel({ teachers, showToast }) {
           style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Set all to option 2</button>
         <button type="button" disabled={busy || !(teachers || []).length} onClick={() => save((teachers || []).map((t) => t.id), 3, "all")}
           style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Set all to option 3</button>
+        <button type="button" disabled={busy || !(teachers || []).length} onClick={() => save((teachers || []).map((t) => t.id), 4, "all")}
+          style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.textPri, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Set all to option 4</button>
       </div>
       {loading ? <p style={{ color: C.textMuted, fontSize: 13 }}>Loading…</p> : list.length === 0 ? (
         <p style={{ color: C.textMuted, fontSize: 13 }}>No teachers found.</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column" }}>
           {list.map((t) => {
-            const cur = Number(opts[t.id]) === 3 ? 3 : Number(opts[t.id]) === 2 ? 2 : 1;
+            const cur = [2, 3, 4].includes(Number(opts[t.id])) ? Number(opts[t.id]) : 1;
             return (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 4px", borderTop: `1px solid ${C.border}` }}>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: C.textPri }}>{t.name || `Teacher #${t.id}`}</span>
@@ -5528,6 +5532,7 @@ function MarkingOptionPanel({ teachers, showToast }) {
                   <button type="button" disabled={!!busy} style={seg(cur === 1)} onClick={() => cur !== 1 && save([t.id], 1, t.id)}>Option 1</button>
                   <button type="button" disabled={!!busy} style={seg(cur === 2)} onClick={() => cur !== 2 && save([t.id], 2, t.id)}>Option 2</button>
                   <button type="button" disabled={!!busy} style={seg(cur === 3)} onClick={() => cur !== 3 && save([t.id], 3, t.id)}>Option 3</button>
+                  <button type="button" disabled={!!busy} style={seg(cur === 4)} onClick={() => cur !== 4 && save([t.id], 4, t.id)}>Option 4</button>
                 </div>
               </div>
             );

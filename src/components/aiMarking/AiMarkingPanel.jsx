@@ -32,10 +32,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 ========================================================================= */
 
 const css = `
-.aim{--aim-bg:var(--surface,#fffdf8);--aim-card:var(--card,#fff);--aim-ink:var(--text,#2a1a1a);--aim-mute:var(--text-muted,#7a6a6a);
-  --aim-line:var(--border,#e6dcd0);--aim-maroon:var(--maroon,#7a1f2b);--aim-gold:var(--gold,#b8892b);--aim-warn:#a15c00;--aim-bad:#b3261e;--aim-ok:#1f6b3a;
+.aim{--aim-bg:var(--bg,#fffdf8);--aim-card:var(--card,#fff);--aim-ink:var(--text,#2a1a1a);--aim-mute:var(--text-muted,#7a6a6a);
+  --aim-line:var(--border,#e6dcd0);--aim-maroon:var(--primary,#7a1f2b);--aim-gold:var(--warning,#b8892b);--aim-warn:var(--warning,#a15c00);--aim-bad:var(--destructive,#b3261e);--aim-ok:var(--success,#1f6b3a);
   color:var(--aim-ink);font-family:inherit}
-@media (prefers-color-scheme:dark){.aim{--aim-bg:var(--surface,#1d1618);--aim-card:var(--card,#262022);--aim-ink:var(--text,#f3ebe6);--aim-mute:var(--text-muted,#b9aaa4);--aim-line:var(--border,#3b3134);--aim-gold:var(--gold,#d9a94a);--aim-warn:#e0a550;--aim-bad:#ff8a80;--aim-ok:#7ad39a}}
 .aim *{box-sizing:border-box}
 .aim-card{background:var(--aim-card);border:1px solid var(--aim-line);border-radius:10px;padding:16px;margin-bottom:14px}
 .aim-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--aim-mute);margin:0 0 10px}
@@ -54,7 +53,7 @@ const css = `
 .aim select,.aim input[type=text]{padding:7px 9px;border:1px solid var(--aim-line);border-radius:6px;background:var(--aim-card);color:inherit;font:inherit;max-width:100%}
 .aim-list{max-height:200px;overflow:auto;border:1px solid var(--aim-line);border-radius:8px;padding:6px 10px}
 .aim-list label{display:flex;gap:8px;padding:4px 0;font-size:14px;align-items:flex-start}
-.aim-btn{border:0;border-radius:8px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer;background:var(--aim-maroon);color:#fff}
+.aim-btn{border:0;border-radius:8px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer;background:var(--aim-maroon);color:var(--on-primary,#fff)}
 .aim-btn.ghost{background:transparent;color:var(--aim-maroon);border:1px solid var(--aim-maroon)}
 .aim-btn:disabled{opacity:.5;cursor:not-allowed}
 .aim table{width:100%;border-collapse:collapse;font-size:14px}

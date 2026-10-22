@@ -29,7 +29,7 @@ export default function AiMarkingTools({ assessmentId = null }) {
             {TABS.map((t) => (
               <button key={t} type="button" onClick={() => setTab(t)}
                 style={{ padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 13,
-                  border: "1px solid var(--border)", background: tab === t ? "var(--primary)" : "var(--card)", color: tab === t ? "#fff" : "var(--text)" }}>
+                  border: "1px solid var(--border)", background: tab === t ? "var(--primary)" : "var(--card)", color: tab === t ? "var(--on-primary, #fff)" : "var(--text)" }}>
                 {t}
               </button>
             ))}

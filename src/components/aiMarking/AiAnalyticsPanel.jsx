@@ -33,8 +33,7 @@ import { useCallback, useEffect, useState } from "react";
 ========================================================================= */
 
 const css = `
-.aia{--c-card:var(--card,#fff);--c-ink:var(--text,#2a1a1a);--c-mute:var(--text-muted,#7a6a6a);--c-line:var(--border,#e6dcd0);--c-maroon:var(--maroon,#7a1f2b);--c-gold:var(--gold,#b8892b);--c-warn:#a15c00;--c-bad:#b3261e;--c-ok:#1f6b3a;color:var(--c-ink);font-family:inherit}
-@media (prefers-color-scheme:dark){.aia{--c-card:var(--card,#262022);--c-ink:var(--text,#f3ebe6);--c-mute:var(--text-muted,#b9aaa4);--c-line:var(--border,#3b3134);--c-maroon:var(--maroon,#d9747f);--c-gold:var(--gold,#d8b25a);--c-warn:#e0a24a;--c-bad:#f08a82;--c-ok:#7cc79a}}
+.aia{--c-card:var(--card,#fff);--c-ink:var(--text,#2a1a1a);--c-mute:var(--text-muted,#7a6a6a);--c-line:var(--border,#e6dcd0);--c-maroon:var(--primary,#7a1f2b);--c-gold:var(--warning,#b8892b);--c-warn:var(--warning,#a15c00);--c-bad:var(--destructive,#b3261e);--c-ok:var(--success,#1f6b3a);color:var(--c-ink);font-family:inherit}
 .aia *{box-sizing:border-box}
 .aia-card{background:var(--c-card);border:1px solid var(--c-line);border-radius:10px;padding:16px;margin-bottom:14px}
 .aia-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--c-mute);margin:0 0 10px}

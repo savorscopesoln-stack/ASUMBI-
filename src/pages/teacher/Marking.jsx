@@ -12,6 +12,7 @@ import {
   applyPendingToRow, needsAutoWrong, buildAutoWrong, stripAutoWrongHtml, applyAutoWrong, isBigXId, stripAllMarksHtml, isBlankAnswerHtml,
 } from "../../utils/markingSync";
 import AiMarkingTools from "../../components/aiMarking/AiMarkingTools";
+import WordMatchSuggestions, { WordMatchHint } from "../../components/aiMarking/WordMatchSuggestions";
 import ReviewMarkedModal from "../../components/ReviewMarkedModal";
 import AllocationStatsPanel from "../../components/eassessment/AllocationStatsPanel";
 import { useIsPhone } from "../../utils/deviceType";
@@ -81,6 +82,7 @@ const injectStyles = () => {
       --destructive-tint: #FEF2F2;
       --info: #1D4ED8;
       --info-tint: #EFF6FF;
+      --on-primary: #FFFFFF;
       --shadow-sm: 0 1px 2px rgba(16,24,40,0.04);
       --shadow: 0 1px 3px rgba(16,24,40,0.06);
       --radius: 14px;
@@ -105,6 +107,7 @@ const injectStyles = () => {
       --destructive-tint: rgba(220,38,38,0.18);
       --info: #7DA6FF;
       --info-tint: rgba(37,99,235,0.18);
+      --on-primary: #3A0F16;
       --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
       --shadow: 0 1px 3px rgba(0,0,0,0.4);
     }
@@ -984,6 +987,7 @@ export default function Marking() {
   // music paper: marker's red-pen overlays per answer id (array, one PNG per drawing sheet)
   const [musicAnn, setMusicAnn]       = useState({});
   const [dismissed, setDismissed]   = useState(new Set());
+  const [wmStrictness, setWmStrictness] = useState("normal"); // word-match suggestion strictness
   const [flags, setFlags]           = useState({});
 
   const [submissions, setSubmissions] = useState([]);
@@ -1380,6 +1384,39 @@ export default function Marking() {
     setSaved(true);
     if (remaining.length <= 1) flushNow();
   }, [current, scores, remarks, highlights, essayHTML, musicAnn, assessmentId, remaining.length, flushNow]);
+
+  // Approving word-match suggestions: each [answerId, mark] is saved exactly like a manual mark
+  // (score + cached for the usual batched save). A suggestion of 0 gets the usual whole-answer ✗.
+  const approveMany = useCallback((pairs) => {
+    const idxOf = new Map(remaining.map((q, i) => [q.id, i]));
+    let before = 0;
+    pairs.forEach(([id, raw]) => {
+      const item = queue.find((q) => q.id === id);
+      if (!item || dismissed.has(id)) return;
+      if ((idxOf.get(id) ?? Infinity) < currentIdx) before += 1;
+      const mark = Math.max(0, Math.min(Number(raw) || 0, Number(item.max_marks) || 0));
+      let list = highlights[id] || [];
+      let html = essayHTML[id] || "";
+      if (mark === 0) {
+        list = [];
+        html = stripAllMarksHtml(html);
+        const auto = applyAutoWrong(id, html, list, 0, item.max_marks);
+        if (auto.changed) { list = auto.list; html = auto.html; }
+        setHighlights((prev) => ({ ...prev, [id]: list }));
+        setEssayHTML((prev) => ({ ...prev, [id]: html }));
+      }
+      setScores((prev) => ({ ...prev, [id]: mark }));
+      queuePending(assessmentId, id, {
+        score: mark, remark: remarks[id] || "", highlights: list, essayHTML: html,
+        ...(hasDrawing(item.essay_answer) ? { musicAnn: musicAnn[id] || [] } : {}),
+      });
+      setDismissed((prev) => new Set(prev).add(id));
+    });
+    // keep the teacher on the same answer when earlier ones in the list were approved
+    if (before) setCurrentIdx((i) => Math.max(0, i - before));
+    setSaved(true);
+    if (pairs.length > 1 || remaining.length <= pairs.length) flushNow();
+  }, [queue, remaining, dismissed, currentIdx, highlights, essayHTML, remarks, musicAnn, assessmentId, flushNow]);
 
   // Every 30s send whatever is cached to the database; on exit (tab close,
   // backgrounding, leaving the page) flush once more. The cache itself is
@@ -1870,6 +1907,9 @@ export default function Marking() {
                 <div style={s.guideEyebrow}><BookOpen size={13} /> What a full-marks answer looks like</div>
                 <div style={s.guideBody}>{current.marking_guide || "No marking guide was set for this question."}</div>
               </div>
+              {markingOption === 4 && (
+                <WordMatchHint item={current} strictness={wmStrictness} onStrictness={setWmStrictness} onApprove={approveMany} />
+              )}
             </div>
           </div>
 
@@ -1907,7 +1947,20 @@ export default function Marking() {
         </div>
       )}
 
-      <AiMarkingTools assessmentId={assessmentId} />
+      {markingOption === 4 ? (
+      <WordMatchSuggestions
+        items={remaining}
+        strictness={wmStrictness}
+        onStrictness={setWmStrictness}
+        onApprove={approveMany}
+        onOpen={(id) => {
+          const i = remaining.findIndex((q) => q.id === id);
+          if (i >= 0) { setCurrentIdx(i); window.scrollTo({ top: 0, behavior: "smooth" }); }
+        }}
+      />
+      ) : (
+        <AiMarkingTools assessmentId={assessmentId} />
+      )}
     </div>
   );
 }

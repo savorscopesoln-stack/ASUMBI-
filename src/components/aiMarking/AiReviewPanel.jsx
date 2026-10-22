@@ -41,17 +41,16 @@ import { evaluateDirectMark, evaluateEdits, errorMessage, highlightSegments } fr
 ========================================================================= */
 
 const css = `
-.air{--air-bg:var(--surface,#fffdf8);--air-card:var(--card,#fff);--air-ink:var(--text,#2a1a1a);--air-mute:var(--text-muted,#7a6a6a);
-  --air-line:var(--border,#e6dcd0);--air-maroon:var(--maroon,#7a1f2b);--air-gold:var(--gold,#b8892b);--air-paper:#fffaf0;--air-rule:#ecdcc4;
-  --air-warn:#a15c00;--air-bad:#b3261e;--air-ok:#1f6b3a;--air-hit:#ffe9a8;color:var(--air-ink);font-family:inherit}
-@media (prefers-color-scheme:dark){.air{--air-bg:var(--surface,#1d1618);--air-card:var(--card,#262022);--air-ink:var(--text,#f3ebe6);--air-mute:var(--text-muted,#b9aaa4);
-  --air-line:var(--border,#3b3134);--air-maroon:var(--maroon,#d9747f);--air-gold:var(--gold,#d6a94a);--air-paper:#2b2326;--air-rule:#3a2f33;--air-warn:#e0a24a;--air-bad:#f08a82;--air-ok:#7cc79a;--air-hit:#5b4a14}}
+.air{--air-bg:var(--bg,#fffdf8);--air-card:var(--card,#fff);--air-ink:var(--text,#2a1a1a);--air-mute:var(--text-muted,#7a6a6a);
+  --air-line:var(--border,#e6dcd0);--air-maroon:var(--primary,#7a1f2b);--air-gold:var(--warning,#b8892b);--air-paper:#fffaf0;--air-rule:#ecdcc4;
+  --air-warn:var(--warning,#a15c00);--air-bad:var(--destructive,#b3261e);--air-ok:var(--success,#1f6b3a);--air-hit:#ffe9a8;color:var(--air-ink);font-family:inherit}
+[data-theme='dark'] .air{--air-paper:#2b2326;--air-rule:#3a2f33;--air-hit:#5b4a14}
 .air *{box-sizing:border-box}
 .air-card{background:var(--air-card);border:1px solid var(--air-line);border-radius:10px;padding:16px;margin-bottom:14px}
 .air-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--air-mute);margin:0 0 10px}
 .air-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 .air-tab{border:1px solid var(--air-line);background:transparent;color:inherit;border-radius:999px;padding:6px 14px;font:inherit;cursor:pointer}
-.air-tab[aria-selected=true]{background:var(--air-maroon);border-color:var(--air-maroon);color:#fff}
+.air-tab[aria-selected=true]{background:var(--air-maroon);border-color:var(--air-maroon);color:var(--on-primary,#fff)}
 .air-list{list-style:none;margin:0;padding:0}
 .air-row{display:flex;gap:10px;align-items:flex-start;padding:9px 4px;border-bottom:1px dashed var(--air-line)}
 .air-row button.air-open{flex:1;text-align:left;background:transparent;border:0;color:inherit;font:inherit;cursor:pointer;padding:0}
@@ -60,7 +59,7 @@ const css = `
 .air-meta{font-size:12px;color:var(--air-mute)}
 .air-score{font-variant-numeric:tabular-nums;font-weight:700;color:var(--air-maroon);white-space:nowrap}
 .air-chip{display:inline-block;font-size:11px;border:1px solid var(--air-warn);color:var(--air-warn);border-radius:999px;padding:1px 8px;margin:2px 4px 0 0}
-.air-btn{border:0;border-radius:8px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer;background:var(--air-maroon);color:#fff}
+.air-btn{border:0;border-radius:8px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer;background:var(--air-maroon);color:var(--on-primary,#fff)}
 .air-btn.ghost{background:transparent;color:var(--air-maroon);border:1px solid var(--air-maroon)}
 .air-btn.quiet{background:transparent;color:var(--air-mute);border:1px solid var(--air-line);font-weight:500}
 .air-btn:disabled{opacity:.45;cursor:not-allowed}
@@ -72,7 +71,7 @@ const css = `
   background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 27px,var(--air-rule) 27px,var(--air-rule) 28px)}
 .air-paper mark{background:var(--air-hit);color:inherit;border-radius:2px;padding:0 1px}
 .air-q{font-family:Georgia,serif;white-space:pre-wrap;margin:0 0 4px}
-.air-badge{display:inline-block;background:var(--air-maroon);color:#fff;border-radius:6px;padding:2px 9px;font-size:13px;font-weight:700;margin-left:8px;vertical-align:middle}
+.air-badge{display:inline-block;background:var(--air-maroon);color:var(--on-primary,#fff);border-radius:6px;padding:2px 9px;font-size:13px;font-weight:700;margin-left:8px;vertical-align:middle}
 .air-crit{border:1px solid var(--air-line);border-radius:8px;padding:12px;margin-bottom:10px;background:var(--air-card)}
 .air-crit h4{margin:0 0 6px;font-size:15px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .air-crit blockquote{margin:6px 0;padding:4px 10px;border-left:3px solid var(--air-gold);font-family:Georgia,serif;font-size:14px;color:var(--air-ink)}

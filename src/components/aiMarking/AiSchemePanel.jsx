@@ -36,9 +36,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 ========================================================================= */
 
 const css = `
-.ais{--ais-bg:var(--surface,#fffdf8);--ais-card:var(--card,#fff);--ais-ink:var(--text,#2a1a1a);--ais-mute:var(--text-muted,#7a6a6a);
-  --ais-line:var(--border,#e6dcd0);--ais-maroon:var(--maroon,#7a1f2b);--ais-gold:var(--gold,#b8892b);--ais-warn:#a15c00;--ais-bad:#b3261e;--ais-ok:#1f6b3a;color:var(--ais-ink);font-family:inherit}
-@media (prefers-color-scheme:dark){.ais{--ais-bg:var(--surface,#1d1618);--ais-card:var(--card,#262022);--ais-ink:var(--text,#f3ebe6);--ais-mute:var(--text-muted,#b9aaa4);--ais-line:var(--border,#3b3134);--ais-maroon:var(--maroon,#d9747f);--ais-gold:var(--gold,#d6a94a);--ais-warn:#e0a24a;--ais-bad:#f08a82;--ais-ok:#7cc79a}}
+.ais{--ais-bg:var(--bg,#fffdf8);--ais-card:var(--card,#fff);--ais-ink:var(--text,#2a1a1a);--ais-mute:var(--text-muted,#7a6a6a);
+  --ais-line:var(--border,#e6dcd0);--ais-maroon:var(--primary,#7a1f2b);--ais-gold:var(--warning,#b8892b);--ais-warn:var(--warning,#a15c00);--ais-bad:var(--destructive,#b3261e);--ais-ok:var(--success,#1f6b3a);color:var(--ais-ink);font-family:inherit}
 .ais *{box-sizing:border-box}
 .ais-card{background:var(--ais-card);border:1px solid var(--ais-line);border-radius:10px;padding:16px;margin-bottom:14px}
 .ais-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ais-mute);margin:0 0 10px}
@@ -56,7 +55,7 @@ const css = `
 .ais label{display:block;font-size:12px;color:var(--ais-mute);margin:6px 0 2px}
 .ais input[type=text],.ais input[type=number],.ais textarea{width:100%;padding:7px 9px;border:1px solid var(--ais-line);border-radius:6px;background:var(--ais-card);color:inherit;font:inherit}
 .ais textarea{min-height:70px;resize:vertical}
-.ais-btn{border:0;border-radius:8px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer;background:var(--ais-maroon);color:#fff;margin:0 8px 8px 0}
+.ais-btn{border:0;border-radius:8px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer;background:var(--ais-maroon);color:var(--on-primary,#fff);margin:0 8px 8px 0}
 .ais-btn.ghost{background:transparent;color:var(--ais-maroon);border:1px solid var(--ais-maroon)}
 .ais-btn:disabled{opacity:.5;cursor:not-allowed}
 .ais-btn:focus-visible,.ais input:focus-visible,.ais textarea:focus-visible{outline:2px solid var(--ais-gold);outline-offset:2px}
