@@ -120,9 +120,9 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
     const sections = [];
     if (!onlyAssessment && allTime) {
       sections.push({
-        heading: "All-time finishes — in the order they were finished (earliest first)",
+        heading: "All-time finishes — each teacher's latest finish, earliest first",
         head: ["#", "Teacher", "Assessment", "Finished at"],
-        body: finishes.map((f) => [f.rank, f.teacher_name, f.assessment_title, fmtWhen(f.finished_at)]),
+        body: finishes.map((f) => [f.rank, f.teacher_name, f.total_finishes > 1 ? `${f.assessment_title} (latest of ${f.total_finishes})` : f.assessment_title, fmtWhen(f.finished_at)]),
       });
     } else if (!onlyAssessment) {
       sections.push({
@@ -224,6 +224,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{f.teacher_name}{f.teacher_id === data.me ? " (you)" : ""}</div>
                       <div style={css.muted}>{f.assessment_title}</div>
                       <div style={css.muted}>{fmtWhen(f.finished_at)}</div>
+                      {f.total_finishes > 1 && <div style={css.muted}>latest of {f.total_finishes} finishes</div>}
                     </div>
                   );
                 })}
@@ -244,7 +245,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
                         <tr key={`${f.teacher_id}:${f.e_assessment_id}`} style={f.teacher_id === data.me ? { background: "var(--primary-tint, #FBEAEC)" } : undefined}>
                           <td style={{ ...css.td, fontWeight: 700 }}>{f.rank <= 3 ? medal(f.rank) : `#${f.rank}`}</td>
                           <td style={{ ...css.td, fontWeight: 600 }}>{f.teacher_name}{f.teacher_id === data.me ? " (you)" : ""}</td>
-                          <td style={css.td}>{f.assessment_title}{f.subject ? <span style={css.muted}> · {f.subject}</span> : null}</td>
+                          <td style={css.td}>{f.assessment_title}{f.subject ? <span style={css.muted}> · {f.subject}</span> : null}{f.total_finishes > 1 ? <span style={css.muted}> · latest of {f.total_finishes} finishes</span> : null}</td>
                           <td style={css.td}>{fmtWhen(f.finished_at)}</td>
                         </tr>
                       ))}
@@ -252,7 +253,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
                   </table>
                 </div>
               )}
-              <div style={css.muted}>Every finished assessment across all time, in the order it was finished — the earliest finish is #1 and the latest is last. Speed plays no part. A finish is only recorded when every allocated response has a marking time, so work marked before time tracking began, and open marking, don't appear.</div>
+              <div style={css.muted}>One row per teacher across all time. A teacher who has finished more than one assessment is counted once, at their latest finish. Rows are ordered by that date and time — the earliest is #1 and the latest is last. Speed plays no part. A finish is only recorded when every allocated response has a marking time, so work marked before time tracking began, and open marking, don't appear.</div>
             </>
           ) : (
           <>
