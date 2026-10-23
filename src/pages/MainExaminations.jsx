@@ -157,6 +157,12 @@ export default function MainExaminations() {
      transcript download link on WhatsApp / SMS. */
   const [transcriptOpen, setTranscriptOpen] = useState(false);
 
+  /* ---------------- Send Report Links ----------------
+     "Send Report Links" opens SendReportLinksModal. This state was
+     previously missing, which crashed the page on load with
+     "ReferenceError: linksOpen is not defined". */
+  const [linksOpen, setLinksOpen] = useState(false);
+
   // "Show on Report Cards" (§ student report card exam selection) — picks
   // which Main Examination's marks/name students see on their report
   // card (StudentReport.jsx). Only one exam can be active at a time; the
