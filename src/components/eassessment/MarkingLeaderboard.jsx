@@ -32,11 +32,9 @@ const SORTS = {
   speed:    { label: "Speed",    fn: (a, b) => (b.items_per_hour ?? -1) - (a.items_per_hour ?? -1) || b.marked - a.marked },
   wins:     { label: "First finishes", fn: (a, b) => b.wins - a.wins || b.podiums - a.podiums || b.marked - a.marked },
   marked:   { label: "Most marked", fn: (a, b) => b.marked - a.marked || (b.percent ?? -1) - (a.percent ?? -1) },
-  // Always spans every assessment (the assessment picker is ignored): most 1st-place finishes,
-  // then 2nd, 3rd, then assessments finished, then the quicker average turnaround.
-  alltime:  { label: "All-time finishes", fn: (a, b) => (b.wins - a.wins) || ((b.seconds || 0) - (a.seconds || 0)) || ((b.thirds || 0) - (a.thirds || 0))
-    || (b.finished_assessments - a.finished_assessments)
-    || ((a.avg_turnaround_minutes ?? Infinity) - (b.avg_turnaround_minutes ?? Infinity)) || (b.marked - a.marked) },
+  // Not a teacher ranking: switches to the chronological list of finishes (see `finishes`) across
+  // every assessment — earliest finisher first, latest last. The assessment picker is ignored.
+  alltime:  { label: "All-time finishes", fn: () => 0 },
 };
 
 function Bar({ pct, done }) {
@@ -122,10 +120,9 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
     const sections = [];
     if (!onlyAssessment && allTime) {
       sections.push({
-        heading: "All-time finishes — who finished first, across every assessment",
-        head: ["Rank", "Teacher", "1st", "2nd", "3rd", "Assessments finished", "Fastest finish", "Avg finish time", "Latest 1st place"],
-        body: teachers.map((t) => [t.rank, t.teacher_name, t.wins, t.seconds || 0, t.thirds || 0, t.finished_assessments,
-          fmtDur(t.fastest_turnaround_minutes), fmtDur(t.avg_turnaround_minutes), fmtWhen(t.last_win_at)]),
+        heading: "All-time finishes — in the order they were finished (earliest first)",
+        head: ["#", "Teacher", "Assessment", "Finished at"],
+        body: finishes.map((f) => [f.rank, f.teacher_name, f.assessment_title, fmtWhen(f.finished_at)]),
       });
     } else if (!onlyAssessment) {
       sections.push({
@@ -157,8 +154,8 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
   if (!data) return null;
 
   // the top 3 stays blank until somebody has actually marked a response
-  // (in the all-time view it stays blank until somebody has actually placed in a finish)
-  const podium = teachers.filter((t) => (allTime ? t.wins + (t.seconds || 0) + (t.thirds || 0) > 0 : t.marked > 0)).slice(0, 3);
+  const finishes = data.finishes || [];
+  const podium = teachers.filter((t) => t.marked > 0).slice(0, 3);
   const s = data.summary;
 
   return (
@@ -207,6 +204,58 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
             ))}
           </div>
 
+          {allTime ? (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+                {[1, 2, 3].map((place) => {
+                  const f = finishes[place - 1];
+                  if (!f) {
+                    return (
+                      <div key={place} style={{ ...css.card, textAlign: "center", borderStyle: "dashed", background: "transparent" }}>
+                        <div style={{ fontSize: 34, opacity: 0.25 }}>{medal(place)}</div>
+                        <div style={{ ...css.muted, marginTop: 6 }}>—</div>
+                        <div style={css.muted}>Fills in as assessments are finished</div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={`${f.teacher_id}:${f.e_assessment_id}`} style={{ ...css.card, textAlign: "center", borderColor: place === 1 ? "var(--primary, #8B1E2D)" : undefined }}>
+                      <div style={{ fontSize: 34 }}>{medal(place)}</div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>{f.teacher_name}{f.teacher_id === data.me ? " (you)" : ""}</div>
+                      <div style={css.muted}>{f.assessment_title}</div>
+                      <div style={css.muted}>{fmtWhen(f.finished_at)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!finishes.length ? (
+                <div style={{ ...css.card, ...css.muted, textAlign: "center", padding: 30 }}>
+                  Nobody has finished an assessment yet.
+                </div>
+              ) : (
+                <div style={{ ...css.card, padding: 0, overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>
+                      {["Rank", "Teacher", "Assessment", "Finished at"].map((h) => <th key={h} style={css.th}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {finishes.map((f) => (
+                        <tr key={`${f.teacher_id}:${f.e_assessment_id}`} style={f.teacher_id === data.me ? { background: "var(--primary-tint, #FBEAEC)" } : undefined}>
+                          <td style={{ ...css.td, fontWeight: 700 }}>{f.rank <= 3 ? medal(f.rank) : `#${f.rank}`}</td>
+                          <td style={{ ...css.td, fontWeight: 600 }}>{f.teacher_name}{f.teacher_id === data.me ? " (you)" : ""}</td>
+                          <td style={css.td}>{f.assessment_title}{f.subject ? <span style={css.muted}> · {f.subject}</span> : null}</td>
+                          <td style={css.td}>{fmtWhen(f.finished_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div style={css.muted}>Every finished assessment across all time, in the order it was finished — the earliest finish is #1 and the latest is last. Speed plays no part. A finish is only recorded when every allocated response has a marking time, so work marked before time tracking began, and open marking, don't appear.</div>
+            </>
+          ) : (
+          <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
             {[1, 2, 3].map((place) => {
               const t = podium[place - 1];
@@ -223,17 +272,8 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
                 <div key={t.teacher_id} style={{ ...css.card, textAlign: "center", borderColor: place === 1 ? "var(--primary, #8B1E2D)" : undefined }}>
                   <div style={{ fontSize: 34 }}>{medal(place)}</div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{t.teacher_name}{t.teacher_id === data.me ? " (you)" : ""}</div>
-                  {allTime ? (
-                    <>
-                      <div style={css.muted}>🥇 {t.wins} · 🥈 {t.seconds || 0} · 🥉 {t.thirds || 0}</div>
-                      <div style={css.muted}>{t.finished_assessments} assessment{t.finished_assessments === 1 ? "" : "s"} finished{t.avg_turnaround_minutes != null ? ` · avg ${fmtDur(t.avg_turnaround_minutes)}` : ""}</div>
-                    </>
-                  ) : (
-                    <>
-                      <div style={css.muted}>{t.percent == null ? `${t.marked} marked (open marking)` : `${t.marked} of ${t.allocated} responses · ${t.percent}%`}</div>
-                      <div style={css.muted}>{t.items_per_hour != null ? `${t.items_per_hour}/hr` : "speed n/a"} · {t.wins} first finish{t.wins === 1 ? "" : "es"}</div>
-                    </>
-                  )}
+                  <div style={css.muted}>{t.percent == null ? `${t.marked} marked (open marking)` : `${t.marked} of ${t.allocated} responses · ${t.percent}%`}</div>
+                  <div style={css.muted}>{t.items_per_hour != null ? `${t.items_per_hour}/hr` : "speed n/a"} · {t.wins} first finish{t.wins === 1 ? "" : "es"}</div>
                 </div>
               );
             })}
@@ -242,25 +282,13 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
           <div style={{ ...css.card, padding: 0, overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
-                {(allTime
-                  ? ["Rank", "Teacher", "🥇 1st", "🥈 2nd", "🥉 3rd", "Assessments finished", "Fastest finish", "Avg finish time", "Latest 1st place"]
-                  : ["Rank", "Teacher", "Allocated", "Marked", "Remaining", "Progress", "Speed", "1st finishes", "Last activity"]
-                ).map((h) => <th key={h} style={css.th}>{h}</th>)}
+                {["Rank", "Teacher", "Allocated", "Marked", "Remaining", "Progress", "Speed", "1st finishes", "Last activity"].map((h) => <th key={h} style={css.th}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {teachers.map((t) => (
                   <tr key={t.teacher_id} style={t.teacher_id === data.me ? { background: "var(--primary-tint, #FBEAEC)" } : undefined}>
-                    <td style={{ ...css.td, fontWeight: 700 }}>{(allTime ? t.wins + (t.seconds || 0) + (t.thirds || 0) > 0 : t.marked > 0) && t.rank <= 3 ? medal(t.rank) : `#${t.rank}`}</td>
+                    <td style={{ ...css.td, fontWeight: 700 }}>{t.marked > 0 && t.rank <= 3 ? medal(t.rank) : `#${t.rank}`}</td>
                     <td style={{ ...css.td, fontWeight: 600 }}>{t.teacher_name}{t.teacher_id === data.me ? " (you)" : ""}</td>
-                    {allTime ? (<>
-                      <td style={{ ...css.td, fontWeight: 700 }}>{t.wins}</td>
-                      <td style={css.td}>{t.seconds || 0}</td>
-                      <td style={css.td}>{t.thirds || 0}</td>
-                      <td style={css.td}>{t.finished_assessments}</td>
-                      <td style={css.td}>{fmtDur(t.fastest_turnaround_minutes)}</td>
-                      <td style={css.td}>{fmtDur(t.avg_turnaround_minutes)}</td>
-                      <td style={css.td}>{fmtWhen(t.last_win_at)}</td>
-                    </>) : (<>
                     <td style={css.td}>{t.allocated ? t.allocated : "Open"}{t.allocated && t.open_marked ? ` +${t.open_marked} open` : ""}</td>
                     <td style={css.td}>{t.marked}</td>
                     <td style={css.td}>{t.allocated ? t.remaining : "—"}</td>
@@ -268,13 +296,11 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
                     <td style={css.td}>{t.items_per_hour != null ? `${t.items_per_hour}/hr` : "—"}</td>
                     <td style={css.td}>{t.wins}</td>
                     <td style={css.td}>{fmtWhen(t.last_activity)}</td>
-                    </>)}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {allTime && <div style={css.muted}>All-time finishes counts every assessment, ranked by 1st-place finishes, then 2nd, 3rd, then assessments finished and quickest average finish. A finish is only timed when every allocated response was marked after tracking began, so older work and open marking can't place.</div>}
           <div style={css.muted}>Open marking = work a teacher marked that was never assigned to them, so there is no fixed allocation to measure progress against. Speed is items marked per hour; for work marked before tracking began it is estimated from the teacher's marking session.</div>
 
           <h4 style={{ margin: "6px 0 0", fontSize: 15 }}>The race — who finished each assessment first</h4>
@@ -306,6 +332,8 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
               </div>
             ))}
           </div>
+          </>
+          )}
         </>
       )}
     </div>
