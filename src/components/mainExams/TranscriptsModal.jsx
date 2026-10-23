@@ -14,7 +14,7 @@ import LinksResult, { downloadBlob } from "./LinksResult";
        each student
    Send
      • texts every student in the selection their OWN transcript download link
-       (WhatsApp and/or SMS through the Twilio setup in Notification Settings), or
+       (WhatsApp through Twilio and/or SMS through Africa's Talking, as set up in Notification Settings), or
        only creates the links to copy / download as CSV / open in WhatsApp by hand.
        Only students who have released marks get a link.
    Backend: controllers/transcript.controller.js (download) and
@@ -227,7 +227,7 @@ export default function TranscriptsModal({ exams = [], onClose, onToast }) {
         </div>
         <p style={{ margin: "0 0 14px", fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
           {channels.length
-            ? "Uses the Twilio sender set up under Notification Settings."
+            ? "Uses the sender set up under Notification Settings (SMS: Africa's Talking, WhatsApp: Twilio)."
             : "Nothing ticked: the links are only created. You can copy them, download them, or open each student in WhatsApp yourself."}
         </p>
 

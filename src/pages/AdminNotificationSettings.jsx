@@ -11,8 +11,8 @@ import {
 /* ═══════════════════════════════════════════════════════════
    NOTIFICATION SETTINGS — admin-only configuration page for
    wiring up the API credentials the broadcast Notifications
-   feature sends through (SMTP for email, Twilio for SMS +
-   WhatsApp). Lets an admin plug these in from the browser
+   feature sends through (SMTP for email, Africa's Talking for
+   SMS, Twilio for WhatsApp and as an SMS fallback). Lets an admin plug these in from the browser
    instead of needing server/.env access.
 
    Deliberately not reachable by a sub_admin even if they were
@@ -108,7 +108,7 @@ export default function AdminNotificationSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState(null);
-  const [showSecrets, setShowSecrets] = useState({ emailPassword: false, twilioAuthToken: false });
+  const [showSecrets, setShowSecrets] = useState({ emailPassword: false, twilioAuthToken: false, atApiKey: false });
 
   /* form fields — mirrors NotificationSettings columns. Secret fields
      start blank; a blank secret on save means "leave whatever's
@@ -125,6 +125,12 @@ export default function AdminNotificationSettings() {
   const [twilioSmsFrom, setTwilioSmsFrom] = useState("");
   const [twilioWhatsappFrom, setTwilioWhatsappFrom] = useState("");
 
+  const [smsProvider, setSmsProvider] = useState("");
+  const [atUsername, setAtUsername] = useState("");
+  const [atApiKey, setAtApiKey] = useState("");
+  const [atSenderId, setAtSenderId] = useState("");
+  const [atSandbox, setAtSandbox] = useState(false);
+
   const [testTo, setTestTo] = useState({ email: "", sms: "", whatsapp: "" });
   const [testing, setTesting] = useState({ email: false, sms: false, whatsapp: false });
 
@@ -140,6 +146,10 @@ export default function AdminNotificationSettings() {
       setEmailFrom(res.data?.email?.from || "");
       setTwilioSmsFrom(res.data?.sms?.smsFrom || "");
       setTwilioWhatsappFrom(res.data?.whatsapp?.whatsappFrom || "");
+      setSmsProvider(res.data?.africastalking?.provider || "");
+      setAtUsername(res.data?.africastalking?.username || "");
+      setAtSenderId(res.data?.africastalking?.senderId || "");
+      setAtSandbox(!!res.data?.africastalking?.sandbox);
     } catch (err) {
       showToast("error", err?.response?.data?.message || "Failed to load notification settings");
     } finally {
@@ -181,11 +191,32 @@ export default function AdminNotificationSettings() {
       };
       if (twilioAuthToken.trim()) payload.twilioAuthToken = twilioAuthToken.trim();
       await API.put("/notification-settings", payload);
-      showToast("success", "SMS / WhatsApp settings saved");
+      showToast("success", "Twilio settings saved");
       setTwilioAuthToken("");
       loadSettings();
     } catch (err) {
-      showToast("error", err?.response?.data?.message || "Failed to save SMS/WhatsApp settings");
+      showToast("error", err?.response?.data?.message || "Failed to save Twilio settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAfricasTalking = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        smsProvider,
+        atUsername: atUsername.trim(),
+        atSenderId: atSenderId.trim(),
+        atSandbox,
+      };
+      if (atApiKey.trim()) payload.atApiKey = atApiKey.trim();
+      await API.put("/notification-settings", payload);
+      showToast("success", "Africa's Talking settings saved");
+      setAtApiKey("");
+      loadSettings();
+    } catch (err) {
+      showToast("error", err?.response?.data?.message || "Failed to save Africa's Talking settings");
     } finally {
       setSaving(false);
     }
@@ -304,10 +335,79 @@ export default function AdminNotificationSettings() {
             </div>
           </div>
 
+          {/* ══════════ SMS (AFRICA'S TALKING) ══════════ */}
+          <div style={sx.card}>
+            <div style={sx.cardHeader}>
+              <h2 style={sx.cardTitle}><MessageSquare size={17} /> SMS (Africa&apos;s Talking)</h2>
+              {settings && <SourceBadge source={settings.africastalking?.source || "none"} />}
+            </div>
+
+            <div style={sx.fieldWrap}>
+              <label style={sx.fieldLabel}>Send SMS using</label>
+              <select style={sx.input} value={smsProvider} onChange={(e) => setSmsProvider(e.target.value)}>
+                <option value="">Automatic (Africa&apos;s Talking if set up, otherwise Twilio)</option>
+                <option value="africastalking">Africa&apos;s Talking only</option>
+                <option value="twilio">Twilio only</option>
+              </select>
+            </div>
+
+            <div style={sx.fieldWrap}>
+              <label style={sx.fieldLabel}>Username</label>
+              <input style={sx.input} placeholder="Your Africa's Talking app username (or sandbox)" value={atUsername} onChange={(e) => setAtUsername(e.target.value)} />
+            </div>
+
+            <div style={sx.fieldWrap}>
+              <label style={sx.fieldLabel}>
+                API Key {settings?.africastalking?.apiKeySet && <span style={{ color: C.textMuted, fontWeight: 500 }}>(saved — leave blank to keep)</span>}
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  style={{ ...sx.input, paddingRight: 36 }}
+                  type={showSecrets.atApiKey ? "text" : "password"}
+                  placeholder={settings?.africastalking?.apiKeySet ? "•••••••• (leave blank to keep)" : "API key"}
+                  value={atApiKey}
+                  onChange={(e) => setAtApiKey(e.target.value)}
+                />
+                <button type="button" style={sx.eyeBtn} onClick={() => setShowSecrets((p) => ({ ...p, atApiKey: !p.atApiKey }))}>
+                  {showSecrets.atApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+
+            <div style={sx.fieldWrap}>
+              <label style={sx.fieldLabel}>Sender ID (optional)</label>
+              <input style={sx.input} placeholder="Approved sender ID, e.g. DORAVO — blank uses the default" value={atSenderId} onChange={(e) => setAtSenderId(e.target.value)} />
+            </div>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.textSec, marginBottom: 18, cursor: "pointer" }}>
+              <input type="checkbox" checked={atSandbox} onChange={(e) => setAtSandbox(e.target.checked)} />
+              Sandbox mode (testing only — username must be &quot;sandbox&quot;, no real SMS is delivered)
+            </label>
+
+            <button style={{ ...sx.primaryBtn, width: "100%", opacity: saving ? 0.7 : 1 }} onClick={saveAfricasTalking} disabled={saving}>
+              <Save size={14} /> Save Africa&apos;s Talking Settings
+            </button>
+
+            <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+              <label style={sx.fieldLabel}>Send a test SMS to…</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  style={sx.input}
+                  placeholder="+2547XXXXXXXX"
+                  value={testTo.sms}
+                  onChange={(e) => setTestTo((p) => ({ ...p, sms: e.target.value }))}
+                />
+                <button style={{ ...sx.secondaryBtn, flexShrink: 0 }} onClick={() => sendTest("sms")} disabled={testing.sms}>
+                  {testing.sms ? <RefreshCw size={14} className="dash-spin" /> : <Send size={14} />} Test
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* ══════════ SMS + WHATSAPP (TWILIO) ══════════ */}
           <div style={sx.card}>
             <div style={sx.cardHeader}>
-              <h2 style={sx.cardTitle}><MessageSquare size={17} /> SMS &amp; WhatsApp (Twilio)</h2>
+              <h2 style={sx.cardTitle}><Smartphone size={17} /> WhatsApp &amp; SMS fallback (Twilio)</h2>
               {settings && <SourceBadge source={settings.sms.source} />}
             </div>
 
@@ -335,7 +435,7 @@ export default function AdminNotificationSettings() {
             </div>
 
             <div style={sx.fieldWrap}>
-              <label style={sx.fieldLabel}>SMS sender number</label>
+              <label style={sx.fieldLabel}>SMS sender number (fallback only)</label>
               <input style={sx.input} placeholder="+15551234567" value={twilioSmsFrom} onChange={(e) => setTwilioSmsFrom(e.target.value)} />
             </div>
 
@@ -345,23 +445,10 @@ export default function AdminNotificationSettings() {
             </div>
 
             <button style={{ ...sx.primaryBtn, width: "100%", opacity: saving ? 0.7 : 1 }} onClick={saveTwilio} disabled={saving}>
-              <Save size={14} /> Save SMS / WhatsApp Settings
+              <Save size={14} /> Save Twilio Settings
             </button>
 
             <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
-              <label style={sx.fieldLabel}>Send a test SMS to…</label>
-              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                <input
-                  style={sx.input}
-                  placeholder="+2547XXXXXXXX"
-                  value={testTo.sms}
-                  onChange={(e) => setTestTo((p) => ({ ...p, sms: e.target.value }))}
-                />
-                <button style={{ ...sx.secondaryBtn, flexShrink: 0 }} onClick={() => sendTest("sms")} disabled={testing.sms}>
-                  {testing.sms ? <RefreshCw size={14} className="dash-spin" /> : <Send size={14} />} Test
-                </button>
-              </div>
-
               <label style={sx.fieldLabel}><Smartphone size={12} style={{ verticalAlign: "-2px" }} /> Send a test WhatsApp to…</label>
               <div style={{ display: "flex", gap: 8 }}>
                 <input

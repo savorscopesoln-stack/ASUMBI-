@@ -784,7 +784,7 @@ export default function App() {
 
       {/* Admin-only (never gated by page="Notifications" — a sub_admin
           granted the broadcast page still shouldn't be able to see/edit
-          the SMTP/Twilio API credentials this page manages). */}
+          the SMTP/Africa's Talking/Twilio API credentials this page manages). */}
       <Route
         path="/notification-settings"
         element={

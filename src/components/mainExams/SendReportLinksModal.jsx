@@ -9,7 +9,7 @@ import LinksResult from "./LinksResult";
    report form (backend: controllers/reportLink.controller.js).
 
    • choose a class (or everyone), how long the links stay valid, and how to send:
-     WhatsApp and/or SMS through the school's Twilio setup (Notification Settings),
+     WhatsApp (Twilio) and/or SMS (Africa's Talking) as set up in Notification Settings,
      or neither — the links are then only created, to copy / download / open one
      by one in WhatsApp.
    • a student's link opens their report form with no password; it expires, and
@@ -126,7 +126,7 @@ export default function SendReportLinksModal({ onClose, onToast }) {
       </div>
       <p style={{ margin: "0 0 14px", fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
         {channels.length
-          ? "Uses the Twilio sender set up under Notification Settings."
+          ? "Uses the sender set up under Notification Settings (SMS: Africa's Talking, WhatsApp: Twilio)."
           : "Nothing ticked: the links are only created. You can copy them, download them, or open each student in WhatsApp yourself."}
       </p>
 
