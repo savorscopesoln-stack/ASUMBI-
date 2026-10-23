@@ -10,6 +10,7 @@ import {
   Settings,
 } from "lucide-react";
 import NotificationInbox from "../components/NotificationInbox";
+import DirectSmsPanel from "../components/DirectSmsPanel";
 
 /* ═══════════════════════════════════════════════════════════
    DESIGN TOKENS — same stylesheet id as the rest of the app
@@ -148,10 +149,10 @@ export default function AdminNotifications() {
   const [inboxUnread, setInboxUnread] = useState(0);
 
   const [toast, setToast] = useState(null);
-  const showToast = (type, msg) => {
+  const showToast = useCallback((type, msg) => {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   /* ── compose form state ── */
   const [title, setTitle] = useState("");
@@ -333,6 +334,8 @@ export default function AdminNotifications() {
           <p style={sx.pageSub}>
             {tab === "inbox"
               ? "Notifications addressed to your account."
+              : tab === "sms"
+              ? "Send an SMS straight to any phone number, and keep a list of contacts."
               : "Send or schedule a broadcast to any group — in-system, email, SMS, and WhatsApp."}
           </p>
         </div>
@@ -366,10 +369,18 @@ export default function AdminNotifications() {
         >
           <Send size={14} /> Compose
         </button>
+        <button
+          style={sx.tabBtn(tab === "sms")}
+          onClick={() => setTab("sms")}
+        >
+          <MessageSquare size={14} /> Direct SMS
+        </button>
       </div>
 
       {tab === "inbox" ? (
         <NotificationInbox onCountChange={setInboxUnread} />
+      ) : tab === "sms" ? (
+        <DirectSmsPanel showToast={showToast} />
       ) : (
       <div className="notif-two-col" style={sx.twoCol}>
         {/* ══════════ COMPOSE ══════════ */}
