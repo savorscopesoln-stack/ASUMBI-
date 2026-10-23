@@ -5,8 +5,10 @@ import { useTheme } from "../context/ThemeContext";
 import {
   ArrowLeft, Plus, RefreshCw, CalendarRange, Users, BookOpenCheck,
   CheckCircle2, Archive, ClipboardList, ClipboardCheck, Download, GraduationCap,
-  Wallet, AlertTriangle,
+  Wallet, AlertTriangle, Send,
 } from "lucide-react";
+import SendReportLinksModal from "../components/mainExams/SendReportLinksModal";
+import TranscriptsModal from "../components/mainExams/TranscriptsModal";
 import {
   injectStyles, useC, extract, ThemeToggle, EmptyState, ActionButton,
   Modal, ModalInput, ModalSelect, ModalTextarea, SaveButton, FieldLabel,
@@ -21,17 +23,6 @@ import {
    an admin create a new one; clicking a card opens its dashboard at
    /main-exams/:id (MainExaminationDashboard.jsx).
 ═══════════════════════════════════════════════════════════ */
-function downloadBlob(blob, filename) {
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.URL.revokeObjectURL(url);
-}
-
 export default function MainExaminations() {
   injectStyles();
   const C = useC();
@@ -160,56 +151,11 @@ export default function MainExaminations() {
 
   useEffect(() => { load(); }, [load]);
 
-  /* ---------------- Transcripts (per class or all students; all exams
-     or one selected) ----------------
-     "Download Transcripts" opens a small picker, then GETs the PDF as
-     a blob and triggers a browser download — same pattern as the
-     Excel/PDF report downloads on the Main Examination dashboard
-     (MainExaminationDashboard.jsx's ReportsTab.download()). */
+  /* ---------------- Transcripts ----------------
+     "Download Transcripts" opens TranscriptsModal: download for everyone, a class or a single
+     student (one PDF, or a ZIP with a PDF per student), and send each student their own
+     transcript download link on WhatsApp / SMS. */
   const [transcriptOpen, setTranscriptOpen] = useState(false);
-  const [classOptions, setClassOptions] = useState([]);
-  const [classesLoading, setClassesLoading] = useState(false);
-  const [tScope, setTScope] = useState("class"); // "class" | "all"
-  const [tClassName, setTClassName] = useState("");
-  const [tExamId, setTExamId] = useState("all"); // "all" | examination id
-  const [downloadingTranscripts, setDownloadingTranscripts] = useState(false);
-
-  const openTranscriptModal = async () => {
-    setTranscriptOpen(true);
-    if (classOptions.length) return;
-    try {
-      setClassesLoading(true);
-      const res = await API.get("/meta/classes");
-      const rows = extract(res);
-      setClassOptions(rows.map((r) => r.class_name || r).filter(Boolean));
-    } catch (err) {
-      console.error(err);
-      showToast("Failed to load classes", "error");
-    } finally {
-      setClassesLoading(false);
-    }
-  };
-
-  const downloadTranscripts = async () => {
-    if (tScope === "class" && !tClassName) return showToast("Choose a class first", "error");
-    try {
-      setDownloadingTranscripts(true);
-      const res = await API.get("/main-exams/transcripts/download", {
-        params: { scope: tScope, className: tScope === "class" ? tClassName : undefined, examId: tExamId },
-        responseType: "blob",
-      });
-      const disposition = res.headers?.["content-disposition"] || "";
-      const match = /filename="?([^"]+)"?/i.exec(disposition);
-      const filename = match?.[1] || "transcripts.pdf";
-      downloadBlob(new Blob([res.data], { type: "application/pdf" }), filename);
-      setTranscriptOpen(false);
-    } catch (err) {
-      console.error(err);
-      showToast("No transcripts found for this selection, or the download failed", "error");
-    } finally {
-      setDownloadingTranscripts(false);
-    }
-  };
 
   // "Show on Report Cards" (§ student report card exam selection) — picks
   // which Main Examination's marks/name students see on their report
@@ -300,7 +246,8 @@ export default function MainExaminations() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
-          <ActionButton icon={<GraduationCap size={14} />} onClick={openTranscriptModal}>Download Transcripts</ActionButton>
+          <ActionButton icon={<GraduationCap size={14} />} onClick={() => setTranscriptOpen(true)}>Download Transcripts</ActionButton>
+          <ActionButton icon={<Send size={14} />} onClick={() => setLinksOpen(true)}>Send Report Links</ActionButton>
           <ActionButton
             primary
             icon={<Plus size={14} />}
@@ -353,6 +300,8 @@ export default function MainExaminations() {
           ))}
         </div>
       )}
+
+      {linksOpen && <SendReportLinksModal onClose={() => setLinksOpen(false)} onToast={showToast} />}
 
       {createOpen && (
         <Modal title="Create Main Examination" onClose={() => setCreateOpen(false)}>
@@ -490,53 +439,7 @@ export default function MainExaminations() {
         </Modal>
       )}
 
-      {transcriptOpen && (
-        <Modal title="Download Transcripts" onClose={() => setTranscriptOpen(false)}>
-          <FieldLabel>Students</FieldLabel>
-          <ModalSelect
-            value={tScope}
-            onChange={(v) => setTScope(v)}
-            placeholder="Choose students…"
-            options={[
-              { value: "class", label: "A specific class" },
-              { value: "all", label: "All students" },
-            ]}
-          />
-
-          {tScope === "class" && (
-            <>
-              <FieldLabel>Class</FieldLabel>
-              <ModalSelect
-                value={tClassName}
-                onChange={(v) => setTClassName(v)}
-                placeholder={classesLoading ? "Loading classes…" : "Select a class…"}
-                options={classOptions.map((c) => ({ value: c, label: c }))}
-              />
-            </>
-          )}
-
-          <FieldLabel>Exam</FieldLabel>
-          <ModalSelect
-            value={tExamId}
-            onChange={(v) => setTExamId(v)}
-            placeholder="Choose an exam…"
-            options={[
-              { value: "all", label: "All exams the student has done" },
-              ...list.map((exam) => ({ value: String(exam.id), label: exam.name })),
-            ]}
-          />
-          <p style={{ margin: "-6px 0 14px", fontSize: 12, color: C.textMuted }}>
-            Only exams with released marks show on a transcript — a student with none yet is skipped rather than given a blank page.
-          </p>
-
-          <SaveButton
-            onClick={downloadTranscripts}
-            loading={downloadingTranscripts}
-            label="Download PDF"
-            icon={<Download size={14} style={{ marginRight: 4 }} />}
-          />
-        </Modal>
-      )}
+      {transcriptOpen && <TranscriptsModal exams={list} onClose={() => setTranscriptOpen(false)} onToast={showToast} />}
     </div>
   );
 }

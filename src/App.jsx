@@ -61,6 +61,8 @@ import StudentDashboard from "./pages/Student/StudentDashboard";
 import StudentMarks from "./pages/Student/StudentMarks";
 import StudentProfile from "./pages/Student/StudentProfile";
 import StudentReport from "./pages/Student/StudentReport";
+import ReportLink from "./pages/ReportLink";
+import TranscriptLink from "./pages/TranscriptLink";
 import StudentMainExamTimetable from "./pages/Student/StudentMainExamTimetable";
 import StudentNotifications from "./pages/Student/StudentNotifications";
 import StudentMealCard from "./pages/Student/StudentMealCard";
@@ -359,6 +361,11 @@ export default function App() {
           </PublicRoute>
         }
       />
+
+      {/* REPORT LINK — a student opens their report form from the link the school sent (no login) */}
+      <Route path="/r/:token" element={<ReportLink />} />
+      {/* TRANSCRIPT LINK — a student downloads their own transcript PDF from the link the school sent */}
+      <Route path="/t/:token" element={<TranscriptLink />} />
 
       {/* UNAUTHORIZED */}
       <Route

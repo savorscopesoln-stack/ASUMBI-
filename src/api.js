@@ -81,7 +81,10 @@ const clientDeviceHeader = () => {
 
 API.interceptors.request.use(
   (req) => {
-    const token = localStorage.getItem("token");
+    // On a student link page (/r/… report form, /t/… transcript) use ONLY that page's own report-only session, kept in
+    // sessionStorage — never the normal login in localStorage (see pages/ReportLink.jsx).
+    const onReportLink = typeof window !== "undefined" && /^\/(r|t)\//.test(window.location.pathname);
+    const token = onReportLink ? sessionStorage.getItem("report_link_token") : localStorage.getItem("token");
 
     if (token) {
       req.headers.Authorization = `Bearer ${token}`;
@@ -105,6 +108,12 @@ API.interceptors.response.use(
   (res) => res,
   (error) => {
     const status = error.response?.status;
+
+    // A report link has its own throw-away session: never wipe the normal login
+    // (localStorage) or redirect to /login because of it — the page shows its own message.
+    if (typeof window !== "undefined" && /^\/(r|t)\//.test(window.location.pathname)) {
+      return Promise.reject(error);
+    }
 
     // ============================
     // MANDATORY PASSWORD CHANGE

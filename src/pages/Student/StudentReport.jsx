@@ -301,7 +301,12 @@ export default function StudentReport() {
   const dean = getOfficial("dean");
   const principal = getOfficial("principal");
 
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  // On a report link (/r/…) the student is the one named by that link's own session
+  // (see pages/ReportLink.jsx); everywhere else it is the logged-in student.
+  const user = JSON.parse(
+    (window.location.pathname.startsWith("/r/") && sessionStorage.getItem("report_link_user")) ||
+    localStorage.getItem("user") || "{}"
+  );
   const admissionNo = user.admissionNo || user.id;
 
   const [marks, setMarks] = useState([]);
