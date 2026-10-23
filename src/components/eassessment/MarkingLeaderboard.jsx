@@ -32,6 +32,9 @@ const SORTS = {
   speed:    { label: "Speed",    fn: (a, b) => (b.items_per_hour ?? -1) - (a.items_per_hour ?? -1) || b.marked - a.marked },
   wins:     { label: "First finishes", fn: (a, b) => b.wins - a.wins || b.podiums - a.podiums || b.marked - a.marked },
   marked:   { label: "Most marked", fn: (a, b) => b.marked - a.marked || (b.percent ?? -1) - (a.percent ?? -1) },
+  // Not a teacher ranking: switches to the chronological list of finishes (see `finishes`) across
+  // every assessment — earliest finisher first, latest last. The assessment picker is ignored.
+  alltime:  { label: "All-time finishes", fn: () => 0 },
 };
 
 function Bar({ pct, done }) {
@@ -74,13 +77,15 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
   const [assessmentId, setAssessmentId] = useState("");
   const [sortKey, setSortKey] = useState("marked");
   const inFlight = useRef(false);
+  const allTime = sortKey === "alltime";
+  const scopeId = allTime ? "" : assessmentId; // all-time ranking is never narrowed to one assessment
 
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (silent = false, fresh = false) => {
     if (inFlight.current) return; // never stack requests on a slow database
     inFlight.current = true;
     if (!silent) setLoading(true);
     try {
-      const r = await API.get("/e-assessments/marking-leaderboard", { params: assessmentId ? { assessmentId } : {} });
+      const r = await API.get("/e-assessments/marking-leaderboard", { params: { ...(scopeId ? { assessmentId: scopeId } : {}), ...(fresh ? { fresh: 1 } : {}) } });
       setData(r.data);
       setErr("");
     } catch (e) {
@@ -89,7 +94,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
       inFlight.current = false;
       setLoading(false);
     }
-  }, [assessmentId]);
+  }, [scopeId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -100,10 +105,10 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
   // the assessment picker must keep listing every assessment even while one is selected
   const [allAssessments, setAllAssessments] = useState([]);
   useEffect(() => {
-    if (!assessmentId && data?.assessments) {
+    if (!scopeId && data?.assessments) {
       setAllAssessments(data.assessments.map((a) => ({ id: a.e_assessment_id, title: a.title })));
     }
-  }, [data, assessmentId]);
+  }, [data, scopeId]);
 
   const teachers = useMemo(() => {
     const list = [...(data?.teachers || [])].sort(SORTS[sortKey].fn);
@@ -113,7 +118,13 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
   const exportPdf = (onlyAssessment) => {
     const as = onlyAssessment ? [onlyAssessment] : (data?.assessments || []);
     const sections = [];
-    if (!onlyAssessment) {
+    if (!onlyAssessment && allTime) {
+      sections.push({
+        heading: "All-time finishes — in the order they were finished (earliest first)",
+        head: ["#", "Teacher", "Assessment", "Finished at"],
+        body: finishes.map((f) => [f.rank, f.teacher_name, f.assessment_title, fmtWhen(f.finished_at)]),
+      });
+    } else if (!onlyAssessment) {
       sections.push({
         heading: `Overall ranking — by ${SORTS[sortKey].label.toLowerCase()}`,
         head: ["Rank", "Teacher", "Allocated", "Marked", "Remaining", "Progress", "Speed (per hr)", "First finishes", "Last activity"],
@@ -143,6 +154,7 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
   if (!data) return null;
 
   // the top 3 stays blank until somebody has actually marked a response
+  const finishes = data.finishes || [];
   const podium = teachers.filter((t) => t.marked > 0).slice(0, 3);
   const s = data.summary;
 
@@ -154,12 +166,13 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
           <div style={css.muted}>Load allocation, marking progress and who marks fastest · updates every 30s</div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <select value={assessmentId} onChange={(e) => setAssessmentId(e.target.value)}
-            style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid var(--border, #E2E5EA)", background: "var(--card, #fff)", color: "var(--text, #0B0F19)", fontSize: 13, maxWidth: 240 }}>
+          <select value={scopeId} onChange={(e) => setAssessmentId(e.target.value)} disabled={allTime}
+            title={allTime ? "All-time finishes always cover every assessment" : undefined}
+            style={{ opacity: allTime ? 0.5 : 1, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--border, #E2E5EA)", background: "var(--card, #fff)", color: "var(--text, #0B0F19)", fontSize: 13, maxWidth: 240 }}>
             <option value="">All assessments</option>
             {allAssessments.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
           </select>
-          <Btn onClick={() => load()} icon={<RefreshCw size={14} />}>Refresh</Btn>
+          <Btn onClick={() => load(false, true)} icon={<RefreshCw size={14} />}>Refresh</Btn>
           <Btn onClick={() => exportPdf()} icon={<Download size={14} />} disabled={!teachers.length}>Download PDF</Btn>
         </div>
       </div>
@@ -191,6 +204,58 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
             ))}
           </div>
 
+          {allTime ? (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+                {[1, 2, 3].map((place) => {
+                  const f = finishes[place - 1];
+                  if (!f) {
+                    return (
+                      <div key={place} style={{ ...css.card, textAlign: "center", borderStyle: "dashed", background: "transparent" }}>
+                        <div style={{ fontSize: 34, opacity: 0.25 }}>{medal(place)}</div>
+                        <div style={{ ...css.muted, marginTop: 6 }}>—</div>
+                        <div style={css.muted}>Fills in as assessments are finished</div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={`${f.teacher_id}:${f.e_assessment_id}`} style={{ ...css.card, textAlign: "center", borderColor: place === 1 ? "var(--primary, #8B1E2D)" : undefined }}>
+                      <div style={{ fontSize: 34 }}>{medal(place)}</div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>{f.teacher_name}{f.teacher_id === data.me ? " (you)" : ""}</div>
+                      <div style={css.muted}>{f.assessment_title}</div>
+                      <div style={css.muted}>{fmtWhen(f.finished_at)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!finishes.length ? (
+                <div style={{ ...css.card, ...css.muted, textAlign: "center", padding: 30 }}>
+                  Nobody has finished an assessment yet.
+                </div>
+              ) : (
+                <div style={{ ...css.card, padding: 0, overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>
+                      {["Rank", "Teacher", "Assessment", "Finished at"].map((h) => <th key={h} style={css.th}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {finishes.map((f) => (
+                        <tr key={`${f.teacher_id}:${f.e_assessment_id}`} style={f.teacher_id === data.me ? { background: "var(--primary-tint, #FBEAEC)" } : undefined}>
+                          <td style={{ ...css.td, fontWeight: 700 }}>{f.rank <= 3 ? medal(f.rank) : `#${f.rank}`}</td>
+                          <td style={{ ...css.td, fontWeight: 600 }}>{f.teacher_name}{f.teacher_id === data.me ? " (you)" : ""}</td>
+                          <td style={css.td}>{f.assessment_title}{f.subject ? <span style={css.muted}> · {f.subject}</span> : null}</td>
+                          <td style={css.td}>{fmtWhen(f.finished_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div style={css.muted}>Every finished assessment across all time, in the order it was finished — the earliest finish is #1 and the latest is last. Speed plays no part. A finish is only recorded when every allocated response has a marking time, so work marked before time tracking began, and open marking, don't appear.</div>
+            </>
+          ) : (
+          <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
             {[1, 2, 3].map((place) => {
               const t = podium[place - 1];
@@ -267,6 +332,8 @@ export default function MarkingLeaderboard({ title = "Marking Leaderboard" }) {
               </div>
             ))}
           </div>
+          </>
+          )}
         </>
       )}
     </div>
