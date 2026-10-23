@@ -13,6 +13,7 @@ import LocalSyncPanel from "../components/eassessment/LocalSyncPanel";
 import { fmtDateTime } from "../components/mainExams/shared";
 import MarkingLeaderboard from "../components/eassessment/MarkingLeaderboard";
 import SuggestedRemarksPanel from "../components/eassessment/SuggestedRemarksPanel";
+import MarkingDeadlinePanel from "../components/eassessment/MarkingDeadlinePanel";
 import { downloadTablesPdf } from "../utils/pdfExport";
 import { getSchoolInfo, drawSchoolHeader } from "../utils/schoolInfo";
 import EvidenceGallery from "../components/eassessment/EvidenceGallery";
@@ -303,7 +304,7 @@ export default function AdminEAssessments() {
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [selected,     setSelected]     = useState(null);
   const [remarkModal,  setRemarkModal]  = useState(null);
-  const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "option" | "suggested" | "remarks"
+  const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "option" | "deadline" | "suggested" | "remarks"
   const [releaseModal, setReleaseModal] = useState(null);
   const [allocateModal, setAllocateModal] = useState(null); // { subjectName, teachers, assessments, total, teacherId, assessmentId, count }
   const [retrieveModal, setRetrieveModal] = useState(null); // { subjectName, rows:[{id,name,classes,count}], total, picked:Set, all:boolean }
@@ -1984,7 +1985,7 @@ export default function AdminEAssessments() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-            {[["leaderboard", "Leaderboard & Load"], ["option", "Marking Option"], ["suggested", "Suggested Remarks"], ["remarks", `Remark Requests${pendingRemarks ? ` (${pendingRemarks})` : ""}`]].map(([k, label]) => (
+            {[["leaderboard", "Leaderboard & Load"], ["option", "Marking Option"], ["deadline", "Deadline"], ["suggested", "Suggested Remarks"], ["remarks", `Remark Requests${pendingRemarks ? ` (${pendingRemarks})` : ""}`]].map(([k, label]) => (
               <button key={k} type="button" onClick={() => setMarkingView(k)}
                 style={{ padding: "8px 14px", borderRadius: 99, cursor: "pointer", fontWeight: 600, fontSize: 13,
                   border: `1px solid ${C.border}`, background: markingView === k ? C.accent : C.card, color: markingView === k ? "#fff" : C.textPri }}>{label}</button>
@@ -1993,6 +1994,7 @@ export default function AdminEAssessments() {
 
           {markingView === "leaderboard" && <MarkingLeaderboard />}
           {markingView === "option" && <MarkingOptionPanel teachers={teachers} showToast={showToast} />}
+          {markingView === "deadline" && <MarkingDeadlinePanel showToast={showToast} C={C} />}
           {markingView === "suggested" && <SuggestedRemarksPanel showToast={showToast} />}
 
           {markingView === "remarks" && (

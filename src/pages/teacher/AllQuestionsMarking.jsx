@@ -16,6 +16,7 @@ import ReviewMarkedModal from "../../components/ReviewMarkedModal";
 import AllocationStatsPanel from "../../components/eassessment/AllocationStatsPanel";
 import { useIsPhone } from "../../utils/deviceType";
 import useMarkingOption from "../../hooks/useMarkingOption";
+import MarkingDeadlineBanner from "../../components/eassessment/MarkingDeadlineBanner";
 import {
   ClipboardCheck,
   AlertTriangle,
@@ -1931,6 +1932,7 @@ export default function Marking() {
   /* ══════════════════════════════════════════ RENDER: Live Marking — active queue ══ */
   const liveMarkingActiveView = (
     <>
+      <MarkingDeadlineBanner assessmentId={assessmentId} />
       <div className="mkp-topbar">
         <div style={s.headingRow}>
           <ClipboardCheck size={20} color="var(--primary)" />

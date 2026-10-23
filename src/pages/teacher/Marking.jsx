@@ -17,6 +17,7 @@ import ReviewMarkedModal from "../../components/ReviewMarkedModal";
 import AllocationStatsPanel from "../../components/eassessment/AllocationStatsPanel";
 import { useIsPhone } from "../../utils/deviceType";
 import useMarkingOption from "../../hooks/useMarkingOption";
+import MarkingDeadlineBanner from "../../components/eassessment/MarkingDeadlineBanner";
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS  (unchanged logic)
@@ -1680,6 +1681,8 @@ export default function Marking() {
         />
       )}
       <MarkingTabStrip />
+
+      <MarkingDeadlineBanner assessmentId={assessmentId} />
 
       <div className="mkp-topbar">
         <div>
