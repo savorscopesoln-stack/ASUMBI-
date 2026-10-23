@@ -242,7 +242,14 @@ export default function MainExaminations() {
         </div>
       )}
 
-      <div style={sx.header}>
+      <div style={{
+        ...sx.header,
+        background: `linear-gradient(120deg, ${C.accent}26 0%, ${C.info}14 55%, transparent 100%)`,
+        border: `1px solid ${C.accent}33`,
+        borderLeft: `5px solid ${C.accent}`,
+        borderRadius: 14,
+        padding: "18px 22px",
+      }}>
         <div>
           <button style={sx.backBtn} className="dash-icon-btn" onClick={() => navigate("/e-assessments")}>
             <ArrowLeft size={14} /> Back to E-Assessments
@@ -456,9 +463,18 @@ export default function MainExaminations() {
 function ExamCard({ exam, onClick, onSetReportExam, settingReportExam }) {
   const C = useC();
   const statusTone = { draft: "neutral", published: "info", ongoing: "success", completed: "neutral", archived: "neutral" }[exam.status] || "neutral";
+  // Each status gets its own colour so the list reads at a glance.
+  const statusColor = {
+    draft: C.warning, published: C.info, ongoing: C.success, completed: C.accent, archived: C.textMuted,
+  }[exam.status] || C.accent;
+  const edge = exam.is_report_exam ? C.success : statusColor;
   return (
     <div className="dash-card" onClick={onClick} style={{
-      background: C.card, border: `1px solid ${exam.is_report_exam ? C.success : C.border}`, borderRadius: 12, padding: 20, cursor: "pointer",
+      background: `linear-gradient(160deg, ${edge}1F 0%, ${C.card} 48%)`,
+      border: `1px solid ${edge}55`,
+      borderTop: `5px solid ${edge}`,
+      borderRadius: 14, padding: 20, cursor: "pointer",
+      boxShadow: `0 6px 18px -10px ${edge}99`,
       display: "flex", flexDirection: "column", gap: 14,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
@@ -469,13 +485,17 @@ function ExamCard({ exam, onClick, onSetReportExam, settingReportExam }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-        <MiniStat icon={<BookOpenCheck size={14} />} label="Subjects" value={exam.subject_count ?? 0} />
-        <MiniStat icon={<CheckCircle2 size={14} />} label="Completed" value={exam.completed_subject_count ?? 0} />
-        <MiniStat icon={<Users size={14} />} label="Active" value={exam.active_subject_count ?? 0} />
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        <MiniStat icon={<BookOpenCheck size={14} />} label="Subjects" value={exam.subject_count ?? 0} color={C.accent} />
+        <MiniStat icon={<CheckCircle2 size={14} />} label="Completed" value={exam.completed_subject_count ?? 0} color={C.success} />
+        <MiniStat icon={<Users size={14} />} label="Active" value={exam.active_subject_count ?? 0} color={C.info} />
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.textMuted }}>
+      <div style={{
+        display: "inline-flex", alignItems: "center", gap: 6, alignSelf: "flex-start",
+        fontSize: 12, fontWeight: 600, color: statusColor,
+        background: `${statusColor}1A`, border: `1px solid ${statusColor}40`, borderRadius: 99, padding: "4px 10px",
+      }}>
         <CalendarRange size={13} />
         {fmtDate(exam.start_date)} — {fmtDate(exam.end_date)}
       </div>
@@ -491,7 +511,7 @@ function ExamCard({ exam, onClick, onSetReportExam, settingReportExam }) {
           doesn't also trigger the card's onClick navigation. */}
       <MiniBtn
         icon={<ClipboardCheck size={13} />}
-        tone={exam.is_report_exam ? "success" : undefined}
+        tone={exam.is_report_exam ? "success" : "accent"}
         disabled={settingReportExam}
         onClick={(e) => { e.stopPropagation(); onSetReportExam(); }}
       >
@@ -501,12 +521,16 @@ function ExamCard({ exam, onClick, onSetReportExam, settingReportExam }) {
   );
 }
 
-function MiniStat({ icon, label, value }) {
+function MiniStat({ icon, label, value, color }) {
   const C = useC();
+  const tint = color || C.textMuted;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.textSec }}>
-      <span style={{ color: C.textMuted }}>{icon}</span>
-      <strong style={{ color: C.textPri, fontSize: 14 }}>{value}</strong> {label}
+    <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: C.textSec }}>
+      <span style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: 26, height: 26, borderRadius: 8, color: tint, background: `${tint}24`,
+      }}>{icon}</span>
+      <span><strong style={{ color: tint, fontSize: 15 }}>{value}</strong> {label}</span>
     </div>
   );
 }
