@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import ChatAssistant, { WaIcon } from "../components/ChatAssistant";
+import LampPreloader from "../components/LampPreloader";
 import { SITE, waLink } from "../config/site";
 import Preview from "../components/LandingPreviews";
 
@@ -11,10 +12,11 @@ import Preview from "../components/LandingPreviews";
    e-assessment spotlight, drawer, FAQ and chat assistant all
    come from the full landing page.
 
-   Motion comes from the "Orbid" remake: session preloader with
-   percentage counter, drifting reeded-glass gradient hero,
-   tapered funnel bars, barcode stats and an animated gradient
-   chip in the big serif statement.
+   Motion comes from the "Orbid" remake: lamp-reveal preloader
+   (see components/LampPreloader.jsx) with percentage counter,
+   drifting reeded-glass gradient hero, tapered funnel bars,
+   barcode stats and an animated gradient chip in the big serif
+   statement.
 
    Styles are injected once as a single <style> tag. Selectors
    are written with a § placeholder that becomes .doravo-landing.
@@ -882,7 +884,7 @@ export default function Landing() {
   const statsRef = useReveal();
   const barsRef = useReveal();
 
-  // Preloader: counts to 100, then lifts away.
+  // Lamp reveal: counts to 100, flashes, then hands over to the hero.
   useEffect(() => {
     if (skipPre) return undefined;
     document.body.style.overflow = "hidden";
@@ -899,7 +901,7 @@ export default function Landing() {
           setLoaded(true);
           document.body.style.overflow = "";
           try { sessionStorage.setItem("dv-pre", "1"); } catch { /* storage unavailable */ }
-        }, 250);
+        }, 700);
       }
     };
     raf = requestAnimationFrame(tick);
@@ -980,12 +982,9 @@ export default function Landing() {
   }, [menuOpen]);
 
   return (
-    <div className="doravo-landing">
-      {/* PRELOADER */}
-      <div className={`pre ${loaded ? "done" : ""}`} aria-hidden="true">
-        <div className="beam a" /><div className="beam b" /><div className="desk" />
-        <div className="count">{pct}%</div>
-      </div>
+    <div className={`doravo-landing ${loaded ? "lamp-on" : "lamp-off"}`}>
+      {/* LAMP REVEAL PRELOADER */}
+      <LampPreloader pct={pct} loaded={loaded} />
 
       <header>
         <div className="wrap nav">
@@ -1455,4 +1454,7 @@ export default function Landing() {
      and the JSON-LD omits aggregateRating, because none exist
      to report honestly. The barcode stats count the product's
      own modules, portals and controls.
+   - The lamp-reveal preloader lives in components/LampPreloader.jsx.
+     The old .pre / .beam / .desk / .count CSS above is unused and
+     can be deleted.
 ========================================================= */
