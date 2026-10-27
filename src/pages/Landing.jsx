@@ -1,853 +1,13 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import ChatAssistant, { WaIcon } from "../components/ChatAssistant";
 import { SITE, waLink } from "../config/site";
-import Preview from "../components/LandingPreviews";
 
-/* =========================================================
-   LANDING
-   Doravo Core's marketing landing page, living at the app's
-   own "/" route. Shown to anyone who isn't logged in yet;
-   logged-in users are bounced straight to their dashboard
-   from App.jsx.
+/* Doravo Core landing, remade after the "Orbid" reference video:
+   preloader counter -> drifting reeded-glass gradient hero -> funnel bars
+   -> black serif sections -> barcode stats -> white closing sections.
+   Copy, SEO, sign-in routing, FAQ and WhatsApp links are unchanged. */
 
-   This is a commercial SaaS marketing page for an EXISTING
-   product — it sells what Doravo Core does for an institution
-   rather than explaining how it's built underneath. Brand
-   (Doravo, "Moving Education Forward", the maroon/ink identity,
-   existing logo assets) is unchanged from what's already
-   shipped; only the landing page's structure and copy have
-   been reworked.
-
-   No customer counts, testimonials, logos or ratings are
-   included below because none exist yet to report honestly —
-   see the note at the bottom of this file for what to wire up
-   once that information is available.
-
-   Styles are injected the same way Login.jsx injects its own
-   design tokens (a single <style> tag, added once) rather than
-   a new global CSS file — keeps this page self-contained and
-   doesn't touch any other page's styling.
-========================================================= */
-
-const injectLandingStyles = () => {
-  if (document.getElementById("landing-tokens")) return;
-  const el = document.createElement("style");
-  el.id = "landing-tokens";
-  el.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Manrope:wght@400;500;600;700&display=swap');
-
-    .doravo-landing{
-      --maroon:#7A1B36;
-      --maroon-deep:#3E0F1E;
-      --maroon-ink:#2A0A15;
-      --ink:#221A16;
-      --paper:#FAF8F4;
-      --paper-dim:#EFE9DC;
-      --white:#FFFDF8;
-      --brass:#9C7A3C;
-      --line: rgba(34,26,22,0.14);
-      --line-on-dark: rgba(255,253,248,0.18);
-
-      margin:0;
-      background:var(--paper);
-      color:var(--ink);
-      font-family:'Manrope', sans-serif;
-      font-size:16px;
-      line-height:1.6;
-      -webkit-font-smoothing:antialiased;
-      scroll-behavior:smooth;
-    }
-    .doravo-landing *{ box-sizing:border-box; }
-    .doravo-landing h1,.doravo-landing h2,.doravo-landing h3,.doravo-landing h4,.doravo-landing .serif{
-      font-family:'Fraunces', serif;
-      font-weight:500;
-      letter-spacing:-0.01em;
-      margin:0;
-      color:var(--maroon-ink);
-    }
-    .doravo-landing p{ margin:0; }
-    .doravo-landing a{ color:inherit; }
-    .doravo-landing img{ display:block; max-width:100%; }
-    .doravo-landing button{ font-family:inherit; }
-    .doravo-landing .wrap{ width:100%; max-width:1280px; margin:0 auto; padding:0 clamp(20px, 4vw, 56px); }
-    .doravo-landing :focus-visible{ outline:2px solid var(--maroon); outline-offset:3px; }
-
-    /* ---------- header ---------- */
-    .doravo-landing header{
-      position:sticky; top:0; z-index:50;
-      background:rgba(239,233,220,0.94);
-      backdrop-filter:blur(6px);
-      border-bottom:1px solid var(--line);
-    }
-    .doravo-landing .nav{ display:flex; align-items:center; justify-content:space-between; padding:14px 0; }
-    .doravo-landing .brand{ display:flex; align-items:center; gap:11px; text-decoration:none; }
-    .doravo-landing .brand img{ height:32px; width:auto; }
-    .doravo-landing .brand span{ font-family:'Fraunces', serif; font-weight:500; font-size:19px; color:var(--maroon-ink); letter-spacing:0.01em; }
-    .doravo-landing .navlinks{ display:flex; gap:30px; }
-    .doravo-landing .navlinks a{ text-decoration:none; font-size:14.5px; color:var(--ink); opacity:0.78; padding:6px 0; border-bottom:1px solid transparent; background:none; border-left:none; border-right:none; border-top:none; cursor:pointer; transition:opacity 0.2s cubic-bezier(0.16,1,0.3,1), border-color 0.2s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .navlinks a:hover{ opacity:1; border-color:var(--maroon); }
-    .doravo-landing .navcta{ display:inline-block; text-decoration:none; background:var(--maroon); color:var(--white); font-size:14px; font-weight:600; padding:10px 20px; border-radius:3px; white-space:nowrap; transition:background 0.25s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .navcta:hover{ background:var(--maroon-deep); transform:translateY(-1px); }
-    .doravo-landing .nav-right{ display:flex; align-items:center; gap:16px; }
-
-    /* ---------- sign-in button ---------- */
-    .doravo-landing .navlogin{
-      position:relative;
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      text-decoration:none;
-      font-size:14.5px;
-      font-weight:700;
-      color:var(--maroon-ink);
-      background:var(--white);
-      border:1.5px solid var(--maroon);
-      padding:9px 20px;
-      border-radius:999px;
-      transition:transform 0.3s cubic-bezier(0.16,1,0.3,1), background 0.3s cubic-bezier(0.16,1,0.3,1), color 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s cubic-bezier(0.16,1,0.3,1);
-      box-shadow:0 0 0 0 rgba(122,27,54,0.35);
-      animation:navlogin-pulse 3.4s ease-in-out infinite;
-      white-space:nowrap;
-    }
-    .doravo-landing .navlogin:hover{
-      background:var(--maroon);
-      color:var(--white);
-      transform:translateY(-1px);
-      box-shadow:0 6px 14px -8px rgba(122,27,54,0.5);
-      animation-play-state:paused;
-    }
-    .doravo-landing .navlogin svg{ width:13px; height:13px; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .navlogin:hover svg{ transform:translateX(2px); }
-    @keyframes navlogin-pulse{
-      0%, 100%{ box-shadow:0 0 0 0 rgba(122,27,54,0.22); }
-      50%{ box-shadow:0 0 0 5px rgba(122,27,54,0); }
-    }
-    @media (prefers-reduced-motion: reduce){
-      .doravo-landing .navlogin{ animation:none; }
-      .doravo-landing .reveal{ opacity:1 !important; transform:none !important; }
-    }
-
-    /* ---------- mobile nav ---------- */
-    .doravo-landing .hamburger{
-      display:none; background:none; border:1px solid var(--line); border-radius:4px;
-      width:40px; height:40px; align-items:center; justify-content:center; cursor:pointer;
-    }
-    .doravo-landing .hamburger svg{ width:18px; height:18px; color:var(--maroon-ink); }
-    .doravo-landing .mobile-menu{
-      display:none; flex-direction:column; gap:2px; border-top:1px solid var(--line);
-      background:var(--paper); padding:10px 0 18px;
-    }
-    .doravo-landing .mobile-menu.open{ display:flex; }
-    .doravo-landing .mobile-menu a{ text-decoration:none; color:var(--ink); font-size:15px; padding:12px 0; border-bottom:1px solid var(--line); }
-    .doravo-landing .mobile-menu .mobile-ctas{ display:flex; gap:10px; margin-top:14px; }
-    .doravo-landing .mobile-menu .mobile-ctas > *{ flex:1; text-align:center; }
-
-    @media (max-width:860px){
-      .doravo-landing .navlinks{ display:none; }
-      .doravo-landing .hamburger{ display:flex; }
-      .doravo-landing .nav-right .navlogin span.label-full{ display:none; }
-    }
-    @media (min-width:861px){ .doravo-landing .mobile-menu{ display:none !important; } }
-
-    /* ---------- reveal-on-scroll (single, restrained) ---------- */
-    .doravo-landing .reveal{ opacity:0; transform:translateY(10px); transition:opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .reveal.in{ opacity:1; transform:none; }
-
-    /* ---------- hero ---------- */
-    .doravo-landing .hero{ padding:80px 0 64px; }
-    .doravo-landing .eyebrow{ font-size:13.5px; font-weight:600; color:var(--maroon); margin-bottom:14px; letter-spacing:0.01em; }
-    .doravo-landing .hero-grid{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:60px; align-items:center; }
-    @media (max-width:900px){ .doravo-landing .hero-grid{ grid-template-columns:1fr; gap:44px; } }
-    .doravo-landing .hero h1{ font-size:clamp(32px, 4.4vw, 50px); line-height:1.1; max-width:16ch; }
-    .doravo-landing .hero .lede{ margin-top:20px; max-width:48ch; font-size:17px; color:var(--ink); opacity:0.86; }
-    .doravo-landing .hero-ctas{ display:flex; gap:14px; margin-top:30px; flex-wrap:wrap; }
-    .doravo-landing .btn-primary{ background:var(--maroon); color:var(--white); text-decoration:none; padding:13px 24px; border-radius:3px; font-weight:600; font-size:15px; display:inline-block; border:1px solid var(--maroon); transition:background 0.25s cubic-bezier(0.16,1,0.3,1), border-color 0.25s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .btn-primary:hover{ background:var(--maroon-deep); border-color:var(--maroon-deep); transform:translateY(-1px); }
-    .doravo-landing .btn-ghost{ border:1px solid var(--ink); color:var(--ink); text-decoration:none; padding:12px 24px; border-radius:3px; font-weight:600; font-size:15px; display:inline-block; transition:background 0.25s cubic-bezier(0.16,1,0.3,1), color 0.25s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .btn-ghost:hover{ background:var(--ink); color:var(--white); transform:translateY(-1px); }
-    .doravo-landing .hero-note{ margin-top:18px; font-size:13.5px; opacity:0.6; }
-
-    /* ---------- hero product visual ---------- */
-    .doravo-landing .product-frame{
-      background:var(--white); border:1px solid var(--line); border-radius:10px;
-      box-shadow:0 30px 60px -34px rgba(42,10,21,0.4);
-      overflow:hidden;
-    }
-    .doravo-landing .product-frame .pf-bar{
-      display:flex; align-items:center; gap:6px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--paper);
-    }
-    .doravo-landing .pf-dot{ width:8px; height:8px; border-radius:50%; background:var(--line); }
-    .doravo-landing .pf-title{ margin-left:8px; font-size:12px; opacity:0.55; }
-    .doravo-landing .product-frame .pf-body{ padding:22px 22px 26px; }
-    .doravo-landing .pf-stat-row{ display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
-    .doravo-landing .pf-stat{ flex:1; min-width:110px; border:1px solid var(--line); border-radius:6px; padding:12px 14px; }
-    .doravo-landing .pf-stat .pf-label{ font-size:11.5px; opacity:0.55; margin-bottom:6px; }
-    .doravo-landing .pf-stat .pf-bar-track{ height:6px; border-radius:3px; background:var(--paper-dim); overflow:hidden; }
-    .doravo-landing .pf-stat .pf-bar-fill{ height:100%; background:var(--maroon); border-radius:3px; }
-    .doravo-landing .pf-row{ display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); }
-    .doravo-landing .pf-row:last-child{ border-bottom:none; }
-    .doravo-landing .pf-avatar{ width:26px; height:26px; border-radius:50%; background:var(--paper-dim); flex:none; }
-    .doravo-landing .pf-line{ height:8px; border-radius:2px; background:var(--paper-dim); flex:1; }
-    .doravo-landing .pf-tag{ font-size:11px; padding:3px 9px; border-radius:999px; background:rgba(122,27,54,0.1); color:var(--maroon); font-weight:600; flex:none; }
-
-    /* ---------- trust bar ---------- */
-    .doravo-landing .trust-bar{ padding:34px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
-    .doravo-landing .trust-bar .trust-label{ font-size:13px; opacity:0.6; margin-bottom:18px; text-align:center; }
-    .doravo-landing .trust-items{ display:flex; justify-content:center; gap:0; flex-wrap:wrap; }
-    .doravo-landing .trust-items span{ font-size:14px; font-weight:600; color:var(--maroon-ink); padding:6px 22px; border-left:1px solid var(--line); }
-    .doravo-landing .trust-items span:first-child{ border-left:none; }
-    @media (max-width:760px){ .doravo-landing .trust-items span{ border-left:none; padding:4px 14px; } }
-
-    /* ---------- section shell ---------- */
-    .doravo-landing section{ padding:72px 0; }
-    .doravo-landing .sec-head{ max-width:640px; margin-bottom:44px; }
-    .doravo-landing .sec-head.center{ margin-left:auto; margin-right:auto; text-align:center; }
-    .doravo-landing .sec-head h2{ font-size:clamp(26px, 3vw, 34px); }
-    .doravo-landing .sec-head p{ margin-top:14px; font-size:16px; opacity:0.82; }
-    .doravo-landing .divider{ border:none; border-top:1px solid var(--line); margin:0; }
-
-    /* ---------- problem / solution ---------- */
-    .doravo-landing .ps-grid{ display:grid; grid-template-columns:1fr 1fr; gap:40px; }
-    @media (max-width:800px){ .doravo-landing .ps-grid{ grid-template-columns:1fr; } }
-    .doravo-landing .ps-card{ padding:30px 28px; border-radius:8px; }
-    .doravo-landing .ps-card.problem{ background:var(--white); border:1px solid var(--line); }
-    .doravo-landing .ps-card.solution{ background:var(--maroon); color:var(--white); }
-    .doravo-landing .ps-card h3{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; font-family:'Manrope',sans-serif; font-weight:700; opacity:0.65; margin-bottom:16px; }
-    .doravo-landing .ps-card.solution h3{ color:var(--white); }
-    .doravo-landing .ps-card p{ font-size:15.5px; opacity:0.9; }
-    .doravo-landing .ps-card.solution p{ opacity:0.92; }
-
-    /* ---------- feature grid ---------- */
-    .doravo-landing .feature-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
-    @media (max-width:920px){ .doravo-landing .feature-grid{ grid-template-columns:repeat(2, 1fr); } }
-    @media (max-width:560px){ .doravo-landing .feature-grid{ grid-template-columns:1fr; } }
-    .doravo-landing .feature-card{ background:var(--white); padding:26px 24px; display:flex; flex-direction:column; gap:12px; transition:background 0.3s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .feature-card:hover{ background:var(--paper); }
-    .doravo-landing .feature-card .fi{ width:34px; height:34px; border-radius:7px; background:rgba(122,27,54,0.08); display:flex; align-items:center; justify-content:center; }
-    .doravo-landing .feature-card svg{ width:17px; height:17px; color:var(--maroon); }
-    .doravo-landing .feature-card h4{ font-size:16px; }
-    .doravo-landing .feature-card p{ font-size:13.5px; opacity:0.75; line-height:1.55; }
-
-    /* ---------- product experience tabs ---------- */
-    .doravo-landing .tabs-section{ background:var(--maroon-deep); color:var(--paper); }
-    .doravo-landing .tabs-section .sec-head p{ color:var(--paper); opacity:0.78; }
-    .doravo-landing .tabs-section h2{ color:var(--paper); }
-    .doravo-landing .tabs-bar{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:30px; }
-    .doravo-landing .tab-btn{
-      background:transparent; border:1px solid var(--line-on-dark); color:var(--paper);
-      padding:9px 18px; border-radius:999px; font-size:14px; cursor:pointer; opacity:0.72;
-      transition:opacity 0.25s cubic-bezier(0.16,1,0.3,1), background 0.25s cubic-bezier(0.16,1,0.3,1), border-color 0.25s cubic-bezier(0.16,1,0.3,1), color 0.25s cubic-bezier(0.16,1,0.3,1);
-    }
-    .doravo-landing .tab-btn:hover{ opacity:1; }
-    .doravo-landing .tab-btn.active{ background:var(--paper); color:var(--maroon-ink); opacity:1; border-color:var(--paper); font-weight:700; }
-    .doravo-landing .tab-panel{ display:grid; grid-template-columns:0.95fr 1.05fr; gap:48px; align-items:center; }
-    .doravo-landing .tab-fade{ animation:tab-fade-in 0.35s cubic-bezier(0.16,1,0.3,1); }
-    @keyframes tab-fade-in{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
-    @media (prefers-reduced-motion: reduce){ .doravo-landing .tab-fade{ animation:none; } }
-    @media (max-width:860px){ .doravo-landing .tab-panel{ grid-template-columns:1fr; gap:32px; } }
-    .doravo-landing .tab-copy h3{ color:var(--paper); font-size:22px; margin-bottom:12px; }
-    .doravo-landing .tab-copy p{ font-size:15px; opacity:0.8; margin-bottom:18px; }
-    .doravo-landing .tab-copy ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
-    .doravo-landing .tab-copy li{ font-size:14.5px; opacity:0.85; padding-left:20px; position:relative; }
-    .doravo-landing .tab-copy li::before{ content:""; position:absolute; left:0; top:8px; width:7px; height:7px; border-radius:50%; background:var(--brass); }
-    .doravo-landing .tab-visual{ background:var(--paper); border-radius:8px; padding:22px; box-shadow:0 26px 50px -30px rgba(0,0,0,0.5); }
-    .doravo-landing .tab-visual .pf-title{ opacity:0.6; }
-    .doravo-landing .tab-visual img{ border-radius:6px; border:1px solid var(--line); }
-
-    /* ---------- role-based value ---------- */
-    .doravo-landing .role-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:24px; }
-    @media (max-width:920px){ .doravo-landing .role-grid{ grid-template-columns:repeat(2, 1fr); } }
-    @media (max-width:560px){ .doravo-landing .role-grid{ grid-template-columns:1fr; } }
-    .doravo-landing .role-card{ border:1px solid var(--line); border-radius:8px; padding:26px 22px; background:var(--white); transition:border-color 0.3s cubic-bezier(0.16,1,0.3,1), transform 0.3s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .role-card:hover{ border-color:var(--maroon); transform:translateY(-2px); }
-    .doravo-landing .role-card .role-tag{ font-size:12px; font-weight:700; color:var(--maroon); margin-bottom:12px; }
-    .doravo-landing .role-card p{ font-size:14.5px; opacity:0.82; }
-
-    /* ---------- built for your institution ---------- */
-    .doravo-landing .institution-section{ display:grid; grid-template-columns:0.9fr 1.1fr; gap:60px; align-items:center; }
-    @media (max-width:900px){ .doravo-landing .institution-section{ grid-template-columns:1fr; gap:40px; } }
-    .doravo-landing .institution-copy p{ font-size:15.5px; opacity:0.85; margin-top:16px; }
-    .doravo-landing .institution-copy p + p{ margin-top:12px; }
-    .doravo-landing .mock{ background:var(--white); border:1px solid var(--line); border-radius:8px; padding:26px; box-shadow:0 26px 50px -30px rgba(42,10,21,0.35); }
-    .doravo-landing .mock-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
-    .doravo-landing .mock-head .tag{ font-size:12px; letter-spacing:0.03em; opacity:0.55; }
-    .doravo-landing .mock-slot{ height:64px; border-radius:4px; background:repeating-linear-gradient(135deg, var(--paper-dim), var(--paper-dim) 8px, var(--paper) 8px, var(--paper) 16px); display:flex; align-items:center; justify-content:center; margin-bottom:16px; border:1px dashed var(--line); }
-    .doravo-landing .mock-slot span{ font-size:12px; opacity:0.55; }
-    .doravo-landing .mock-line{ height:9px; background:var(--paper-dim); border-radius:2px; margin-bottom:9px; }
-    .doravo-landing .mock-line.w60{ width:60%; }
-    .doravo-landing .mock-line.w80{ width:80%; }
-    .doravo-landing .mock-line.w40{ width:40%; }
-    .doravo-landing .mock-caption{ margin-top:18px; font-size:13px; opacity:0.6; text-align:center; }
-
-    /* ---------- why doravo ---------- */
-    .doravo-landing .why-list{ display:grid; grid-template-columns:1fr 1fr; gap:16px 40px; }
-    @media (max-width:700px){ .doravo-landing .why-list{ grid-template-columns:1fr; } }
-    .doravo-landing .why-item{ display:flex; gap:14px; align-items:flex-start; padding:16px 0; border-bottom:1px solid var(--line); }
-    .doravo-landing .why-item svg{ width:15px; height:15px; color:var(--maroon); flex:none; margin-top:4px; }
-    .doravo-landing .why-item p{ font-size:15px; opacity:0.85; }
-    .doravo-landing .why-item strong{ display:block; color:var(--maroon-ink); font-size:15px; margin-bottom:2px; font-weight:700; }
-
-    /* ---------- CTA ---------- */
-    .doravo-landing .cta-band{ background:var(--maroon); color:var(--white); border-radius:8px; padding:56px 50px; display:flex; align-items:center; justify-content:space-between; gap:32px; flex-wrap:wrap; }
-    .doravo-landing .cta-band h2{ color:var(--white); font-size:clamp(24px,3vw,32px); max-width:22ch; }
-    .doravo-landing .cta-band p{ color:var(--paper); opacity:0.85; margin-top:10px; font-size:15px; max-width:40ch; }
-    .doravo-landing .cta-band .cta-buttons{ display:flex; gap:12px; flex-wrap:wrap; }
-    .doravo-landing .cta-band .btn-primary{ background:var(--white); color:var(--maroon); border-color:var(--white); }
-    .doravo-landing .cta-band .btn-primary:hover{ background:var(--paper); }
-    .doravo-landing .cta-band .btn-ghost{ border-color:var(--white); color:var(--white); }
-    .doravo-landing .cta-band .btn-ghost:hover{ background:var(--white); color:var(--maroon); }
-
-    /* ---------- footer ---------- */
-    .doravo-landing footer{ border-top:1px solid var(--line); padding:50px 0 36px; }
-    .doravo-landing .foot-grid{ display:flex; justify-content:space-between; gap:40px; flex-wrap:wrap; }
-    .doravo-landing .foot-brand img{ height:28px; margin-bottom:14px; }
-    .doravo-landing .foot-brand p{ font-size:13.5px; opacity:0.6; max-width:32ch; }
-    .doravo-landing .foot-cols{ display:flex; gap:56px; flex-wrap:wrap; }
-    .doravo-landing .foot-col h5{ font-size:12.5px; text-transform:uppercase; letter-spacing:0.06em; opacity:0.55; margin-bottom:14px; font-weight:700; font-family:'Manrope',sans-serif; }
-    .doravo-landing .foot-col a{ display:block; text-decoration:none; font-size:14px; opacity:0.8; margin-bottom:10px; background:none; border:none; padding:0; cursor:pointer; text-align:left; }
-    .doravo-landing .foot-col a:hover{ opacity:1; text-decoration:underline; }
-    .doravo-landing .foot-bottom{ margin-top:42px; padding-top:22px; border-top:1px solid var(--line); font-size:13px; opacity:0.55; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
-
-    /* ---------- WhatsApp buttons (primary demo action) ---------- */
-    .doravo-landing .btn-wa{ display:inline-flex; align-items:center; gap:9px; background:#25D366; color:#06260F; border:1px solid #25D366; text-decoration:none; padding:13px 24px; border-radius:3px; font-weight:700; font-size:15px; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s cubic-bezier(0.16,1,0.3,1), background 0.25s; box-shadow:0 10px 26px -12px rgba(37,211,102,0.7); }
-    .doravo-landing .btn-wa:hover{ background:#1fbd5a; border-color:#1fbd5a; transform:translateY(-2px); }
-    .doravo-landing .btn-wa.pulse{ animation:dvPulse 2.6s 3 1.2s; }
-    .doravo-landing .navcta.wa{ display:inline-flex; align-items:center; gap:7px; background:#25D366; color:#06260F; }
-    .doravo-landing .navcta.wa:hover{ background:#1fbd5a; }
-    @keyframes dvPulse{ 0%{ box-shadow:0 0 0 0 rgba(37,211,102,0.5); } 70%{ box-shadow:0 0 0 16px rgba(37,211,102,0); } 100%{ box-shadow:0 0 0 0 rgba(37,211,102,0); } }
-    .doravo-landing .cta-band .btn-wa{ background:#25D366; color:#06260F; border-color:#25D366; }
-    .doravo-landing .cta-band .cta-alt{ margin-top:0; font-size:13.5px; color:var(--paper); opacity:0.85; flex-basis:100%; max-width:none; }
-    .doravo-landing .cta-band .cta-alt a{ color:var(--white); }
-    .doravo-landing .hero-contact{ margin-top:16px; font-size:13.5px; opacity:0.7; }
-    .doravo-landing .hero-contact a{ color:var(--maroon); font-weight:600; }
-
-    /* ---------- hero motion ---------- */
-    .doravo-landing .hero{ position:relative; overflow:hidden; }
-    .doravo-landing .product-frame{ transition:transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);  }
-    .doravo-landing .feature-card{ transition:background 0.3s cubic-bezier(0.16,1,0.3,1), transform 0.3s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .feature-card:hover{ transform:translateY(-3px); }
-    @media (prefers-reduced-motion: reduce){
-      .doravo-landing .btn-wa.pulse{ animation:none; }
-    }
-
-    /* ---------- how it works ---------- */
-    .doravo-landing .how-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
-    @media (max-width:800px){ .doravo-landing .how-grid{ grid-template-columns:1fr; } }
-    .doravo-landing .how-card{ background:var(--white); border:1px solid var(--line); border-radius:8px; padding:28px 24px; transition:transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s; }
-    .doravo-landing .how-card:hover{ transform:translateY(-3px); border-color:var(--maroon); }
-    .doravo-landing .how-num{ width:38px; height:38px; border-radius:50%; background:var(--maroon); color:var(--white); display:flex; align-items:center; justify-content:center; font-weight:700; margin-bottom:14px; }
-    .doravo-landing .how-card h4{ font-size:17px; margin-bottom:6px; }
-    .doravo-landing .how-card p{ font-size:14.5px; opacity:0.8; }
-
-    /* ---------- FAQ ---------- */
-    .doravo-landing .faq-list{ max-width:820px; margin:0 auto; }
-    .doravo-landing .faq-item{ border-bottom:1px solid var(--line); }
-    .doravo-landing .faq-q{ width:100%; display:flex; justify-content:space-between; align-items:center; gap:16px; padding:20px 0; background:none; border:none; cursor:pointer; text-align:left; font-family:'Fraunces', serif; font-size:18px; color:var(--maroon-ink); }
-    .doravo-landing .faq-q span{ font-family:'Manrope',sans-serif; font-size:22px; color:var(--maroon); transition:transform 0.25s; }
-    .doravo-landing .faq-item.open .faq-q span{ transform:rotate(45deg); }
-    .doravo-landing .faq-a{ overflow:hidden; max-height:0; transition:max-height 0.35s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .faq-item.open .faq-a{ max-height:300px; }
-    .doravo-landing .faq-a p{ padding:0 0 20px; font-size:15.5px; opacity:0.85; max-width:70ch; }
-
-    /* ---------- floating WhatsApp + chat assistant ---------- */
-    .doravo-landing .dv-wa-float{ position:fixed; left:18px; bottom:18px; z-index:60; width:56px; height:56px; border-radius:50%; background:#25D366; color:#06260F; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 26px rgba(37,211,102,0.5); transition:transform 0.25s; }
-    .doravo-landing .dv-wa-float:hover{ transform:scale(1.07); }
-    .doravo-landing .dv-wa-float svg{ width:28px; height:28px; }
-    .doravo-landing .dv-chat-fab{ position:fixed; right:18px; bottom:18px; z-index:60; width:56px; height:56px; border-radius:50%; border:none; cursor:pointer; background:var(--maroon); color:var(--white); font-size:28px; line-height:1; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 26px rgba(122,27,54,0.45); transition:transform 0.25s, background 0.25s; }
-    .doravo-landing .dv-chat-fab:hover{ background:var(--maroon-deep); transform:scale(1.07); }
-    .doravo-landing .dv-chat{ position:fixed; right:18px; bottom:86px; z-index:61; width:min(370px, calc(100vw - 36px)); height:min(520px, calc(100vh - 120px)); display:flex; flex-direction:column; background:var(--white); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 26px 60px -20px rgba(42,10,21,0.45); animation:dvChatIn 0.3s cubic-bezier(0.16,1,0.3,1); }
-    @keyframes dvChatIn{ from{ opacity:0; transform:translateY(12px) scale(0.98); } to{ opacity:1; transform:none; } }
-    .doravo-landing .dv-chat-head{ display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:var(--maroon); color:var(--white); font-family:'Fraunces',serif; }
-    .doravo-landing .dv-chat-head button{ background:none; border:none; color:var(--white); font-size:24px; cursor:pointer; line-height:1; }
-    .doravo-landing .dv-chat-body{ flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; background:var(--paper); }
-    .doravo-landing .dv-msg{ max-width:86%; padding:10px 13px; border-radius:10px; font-size:14px; line-height:1.5; }
-    .doravo-landing .dv-msg.bot{ background:var(--white); border:1px solid var(--line); align-self:flex-start; }
-    .doravo-landing .dv-msg.me{ background:var(--maroon); color:var(--white); align-self:flex-end; }
-    .doravo-landing .dv-chips{ display:flex; flex-wrap:wrap; gap:8px; }
-    .doravo-landing .dv-chips button{ background:var(--white); border:1px solid var(--maroon); color:var(--maroon); border-radius:999px; padding:6px 12px; font-size:12.5px; font-weight:600; cursor:pointer; transition:background 0.2s, color 0.2s; }
-    .doravo-landing .dv-chips button:hover{ background:var(--maroon); color:var(--white); }
-    .doravo-landing .dv-chat-wa{ display:flex; align-items:center; justify-content:center; gap:8px; padding:11px; background:#25D366; color:#06260F; font-weight:700; font-size:13.5px; text-decoration:none; }
-    .doravo-landing .dv-chat-input{ display:flex; gap:8px; padding:10px; border-top:1px solid var(--line); background:var(--white); }
-    .doravo-landing .dv-chat-input input{ flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font:inherit; font-size:14px; background:var(--white); color:var(--ink); }
-    .doravo-landing .dv-chat-input button{ padding:0 16px; border:none; border-radius:6px; background:var(--maroon); color:var(--white); font-weight:600; cursor:pointer; }
-    @media (max-width:560px){ .doravo-landing .dv-chat{ right:10px; bottom:80px; width:calc(100vw - 20px); } }
-
-    /* ---------- polish: white + maroon + gold, subtle motion ---------- */
-    .doravo-landing .eyebrow{ color:var(--brass); text-transform:uppercase; letter-spacing:0.12em; font-size:12px; display:flex; align-items:center; gap:10px; }
-    .doravo-landing .eyebrow::before{ content:""; width:26px; height:1px; background:var(--brass); }
-    .doravo-landing .sec-head h2::before{ content:""; display:block; width:34px; height:2px; background:var(--brass); margin-bottom:16px; }
-    .doravo-landing .sec-head.center h2::before{ margin-left:auto; margin-right:auto; }
-    .doravo-landing .tabs-section .sec-head h2::before, .doravo-landing .spot .sec-head h2::before{ background:var(--brass); }
-    .doravo-landing .hero{ background:linear-gradient(180deg, var(--white) 0%, var(--paper) 100%); }
-    .doravo-landing header{ background:rgba(255,255,255,0.94) !important; }
-    .doravo-landing .hero-visual{ min-width:0; }
-    .doravo-landing .hero h1 em{ font-style:normal; color:var(--maroon); }
-    .doravo-landing .trust-items span{ font-weight:600; }
-    @media (max-width:900px){ .doravo-landing .brand span{ display:none; } }
-    @media (max-width:560px){ .doravo-landing .navlogin .label-full{ display:inline !important; } .doravo-landing .navcta.wa{ padding:9px 12px; } }
-
-    .doravo-landing [data-rv]{ opacity:0; transform:translateY(18px); transition:opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing [data-rv].rv-in{ opacity:1; transform:none; }
-    @media (prefers-reduced-motion: reduce){ .doravo-landing [data-rv]{ opacity:1; transform:none; transition:none; } }
-
-    .doravo-landing .feature-card{ position:relative; }
-    .doravo-landing .feature-card::after{ content:""; position:absolute; left:0; top:0; height:2px; width:0; background:var(--brass); transition:width 0.4s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .feature-card:hover::after{ width:100%; }
-    .doravo-landing .feature-card .fprob{ font-size:12px; font-weight:700; letter-spacing:0.02em; color:var(--brass); opacity:1; line-height:1.4; }
-
-    .doravo-landing .tab-visual{ background:none; padding:0; box-shadow:none; min-width:0; }
-    .doravo-landing .tabs-section .pv-cap, .doravo-landing .spot .pv-cap{ color:var(--paper); opacity:0.7; }
-    .doravo-landing .tab-btn{ position:relative; overflow:hidden; }
-    .doravo-landing .tab-btn.active.auto::after{ content:""; position:absolute; left:0; bottom:0; height:2px; width:100%; background:var(--brass); transform-origin:left; animation:dvTabBar 8s linear both; }
-    @keyframes dvTabBar{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
-    @media (prefers-reduced-motion: reduce){ .doravo-landing .tab-btn.active.auto::after{ animation:none; transform:scaleX(1); } }
-
-    /* e-assessment spotlight */
-    .doravo-landing .spot{ background:var(--white); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
-    .doravo-landing .spot-grid{ display:grid; grid-template-columns:0.95fr 1.05fr; gap:56px; align-items:start; }
-    @media (max-width:920px){ .doravo-landing .spot-grid{ grid-template-columns:1fr; gap:36px; } }
-    .doravo-landing .spot-steps{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
-    .doravo-landing .spot-step{ display:flex; gap:16px; padding:18px 0; border-top:1px solid var(--line); }
-    .doravo-landing .spot-step:first-child{ border-top:none; padding-top:0; }
-    .doravo-landing .spot-n{ flex:none; width:30px; height:30px; border-radius:50%; border:1px solid var(--brass); color:var(--brass); font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; transition:background 0.3s, color 0.3s; }
-    .doravo-landing .spot-step:hover .spot-n{ background:var(--brass); color:var(--white); }
-    .doravo-landing .spot-step h4{ font-size:17px; margin-bottom:3px; color:var(--maroon-ink); }
-    .doravo-landing .spot-step p{ font-size:14.5px; opacity:0.8; }
-    .doravo-landing .spot-switch{ display:inline-flex; border:1px solid var(--line); border-radius:999px; padding:3px; margin-bottom:16px; background:var(--paper); }
-    .doravo-landing .spot-switch button{ border:none; background:none; padding:7px 16px; border-radius:999px; font-weight:600; font-size:13px; cursor:pointer; color:var(--ink); transition:background 0.25s, color 0.25s; }
-    .doravo-landing .spot-switch button.on{ background:var(--maroon); color:var(--white); }
-    .doravo-landing .spot-visual{ position:sticky; top:96px; min-width:0; }
-    .doravo-landing .spot .pv-cap{ color:var(--ink); opacity:0.58; }
-
-    /* role + trust cards */
-    .doravo-landing .role-grid{ grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); }
-    .doravo-landing .role-card .role-tag{ color:var(--brass); letter-spacing:0.04em; text-transform:uppercase; }
-    .doravo-landing .trust-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:20px; }
-    .doravo-landing .trust-card{ background:var(--white); border:1px solid var(--line); border-top:2px solid var(--maroon); border-radius:6px; padding:24px 22px; }
-    .doravo-landing .trust-card h4{ font-size:16px; margin-bottom:6px; }
-    .doravo-landing .trust-card p{ font-size:14px; opacity:0.8; }
-    .doravo-landing .trust-note{ margin-top:22px; font-size:13.5px; opacity:0.65; max-width:70ch; }
-    .doravo-landing .how-num{ background:var(--white); color:var(--maroon); border:1px solid var(--brass); }
-    .doravo-landing .how-card:hover .how-num{ background:var(--brass); color:var(--white); }
-    .doravo-landing .how-card{ border-radius:6px; }
-    .doravo-landing .why-item svg{ color:var(--brass); }
-
-    /* ---------- responsive layout + more readable typography ---------- */
-    .doravo-landing{ font-size:17px; }
-    .doravo-landing .wrap{ width:100%; max-width:1480px; padding-left:clamp(24px,4.2vw,76px); padding-right:clamp(24px,4.2vw,76px); }
-    .doravo-landing section{ padding-top:clamp(76px,6vw,100px); padding-bottom:clamp(76px,6vw,100px); }
-    .doravo-landing .hero{ padding-top:clamp(76px,7vw,112px); padding-bottom:clamp(68px,6vw,96px); }
-    .doravo-landing .hero-grid{ grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr); gap:clamp(44px,5vw,88px); }
-    .doravo-landing .hero h1{ font-size:clamp(44px,4.1vw,68px); line-height:1.08; max-width:17ch; }
-    .doravo-landing .hero .lede{ font-size:clamp(18px,1.25vw,21px); line-height:1.75; max-width:52ch; }
-    .doravo-landing .eyebrow{ font-size:14px; }
-    .doravo-landing .hero-note,.doravo-landing .hero-contact{ font-size:15px; }
-    .doravo-landing .btn-primary,.doravo-landing .btn-ghost,.doravo-landing .btn-wa{ font-size:16px; padding:15px 25px; }
-    .doravo-landing .navlinks{ gap:clamp(18px,2vw,32px); }
-    .doravo-landing .navlinks a,.doravo-landing .navlogin{ font-size:15.5px; }
-    .doravo-landing .navcta{ font-size:15px; padding:12px 20px; }
-    .doravo-landing .brand img{ height:38px; }
-    .doravo-landing .brand span{ font-size:22px; }
-    .doravo-landing .sec-head{ max-width:780px; margin-bottom:clamp(36px,4vw,54px); }
-    .doravo-landing .sec-head h2{ font-size:clamp(34px,3.1vw,48px); line-height:1.15; }
-    .doravo-landing .sec-head p{ font-size:clamp(17px,1.15vw,19px); line-height:1.75; }
-    .doravo-landing .ps-grid{ gap:clamp(24px,3vw,44px); }
-    .doravo-landing .ps-card{ padding:clamp(28px,2.5vw,40px); }
-    .doravo-landing .ps-card h3{ font-size:15px; }
-    .doravo-landing .ps-card p,.doravo-landing .institution-copy p{ font-size:17px; line-height:1.8; }
-    .doravo-landing .feature-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); }
-    .doravo-landing .feature-card{ padding:clamp(24px,2vw,34px); gap:15px; }
-    .doravo-landing .feature-card h4,.doravo-landing .trust-card h4{ font-size:19px; line-height:1.35; }
-    .doravo-landing .feature-card p{ font-size:15.5px; line-height:1.7; }
-    .doravo-landing .feature-card .fprob{ font-size:14px; }
-    .doravo-landing .trust-items span{ font-size:16px; padding:8px 24px; }
-    .doravo-landing .tab-btn{ font-size:15.5px; padding:11px 20px; }
-    .doravo-landing .tab-copy h3{ font-size:clamp(26px,2.2vw,34px); line-height:1.25; }
-    .doravo-landing .tab-copy p{ font-size:17px; line-height:1.8; }
-    .doravo-landing .tab-copy li{ font-size:16px; line-height:1.65; }
-    .doravo-landing .role-grid{ grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:22px; }
-    .doravo-landing .role-card{ padding:30px 26px; }
-    .doravo-landing .role-card .role-tag{ font-size:13px; }
-    .doravo-landing .role-card p,.doravo-landing .trust-card p{ font-size:16px; line-height:1.75; }
-    .doravo-landing .spot-grid{ grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr); gap:clamp(34px,4.5vw,72px); align-items:start; }
-    /* Keep the product preview in normal document flow so it cannot sit over
-       the middle of the page while the visitor scrolls. */
-    .doravo-landing .spot-visual{ position:relative; top:auto; min-width:0; }
-    .doravo-landing .spot-step{ gap:18px; padding:22px 0; }
-    .doravo-landing .spot-step h4,.doravo-landing .how-card h4{ font-size:19px; line-height:1.4; }
-    .doravo-landing .spot-step p,.doravo-landing .how-card p,.doravo-landing .why-item p{ font-size:16px; line-height:1.75; }
-    .doravo-landing .spot-n{ width:36px; height:36px; font-size:15px; }
-    .doravo-landing .institution-section{ gap:clamp(36px,5vw,80px); }
-    .doravo-landing .mock{ padding:clamp(24px,2.5vw,38px); }
-    .doravo-landing .mock-caption,.doravo-landing .trust-note{ font-size:15px; line-height:1.7; }
-    .doravo-landing .trust-grid{ grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:22px; }
-    .doravo-landing .trust-card{ padding:28px; }
-    .doravo-landing .how-grid{ gap:26px; }
-    .doravo-landing .how-card{ padding:32px 28px; }
-    .doravo-landing .faq-q{ font-size:21px; line-height:1.5; }
-    .doravo-landing .faq-a p{ font-size:17px; line-height:1.8; }
-    .doravo-landing .cta-band{ padding:clamp(36px,4vw,64px); gap:28px; }
-    .doravo-landing .cta-band h2{ font-size:clamp(32px,3vw,44px); }
-    .doravo-landing .cta-band p{ font-size:17px; line-height:1.75; }
-    .doravo-landing .cta-band .cta-alt{ font-size:15px; }
-    .doravo-landing .foot-brand p,.doravo-landing .foot-col a{ font-size:15px; line-height:1.7; }
-    .doravo-landing .foot-col h5{ font-size:14px; }
-    .doravo-landing .foot-bottom{ font-size:14px; }
-
-    @media (max-width:1100px){
-      .doravo-landing .wrap{ padding-left:28px; padding-right:28px; }
-      .doravo-landing .hero-grid{ gap:36px; }
-      .doravo-landing .hero h1{ font-size:clamp(40px,5vw,54px); }
-      .doravo-landing .feature-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
-      .doravo-landing .navlinks{ gap:16px; }
-      .doravo-landing .navlinks a{ font-size:14px; }
-    }
-    @media (max-width:860px){
-      .doravo-landing .wrap{ padding-left:24px; padding-right:24px; }
-      .doravo-landing .hero-grid,.doravo-landing .spot-grid,.doravo-landing .institution-section{ grid-template-columns:minmax(0,1fr); }
-      .doravo-landing .hero-grid{ gap:42px; }
-      .doravo-landing .hero h1{ max-width:19ch; }
-      .doravo-landing .spot-grid{ gap:34px; }
-      .doravo-landing .spot-visual{ width:100%; }
-      .doravo-landing .role-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
-      .doravo-landing .cta-band{ align-items:flex-start; flex-direction:column; }
-      .doravo-landing .foot-cols{ gap:32px; }
-    }
-    @media (max-width:560px){
-      .doravo-landing{ font-size:16px; }
-      .doravo-landing .wrap{ padding-left:18px; padding-right:18px; }
-      .doravo-landing section{ padding-top:58px; padding-bottom:58px; }
-      .doravo-landing .hero{ padding-top:54px; padding-bottom:52px; }
-      .doravo-landing .hero h1{ font-size:clamp(36px,10vw,46px); }
-      .doravo-landing .hero .lede{ font-size:17px; }
-      .doravo-landing .hero-ctas,.doravo-landing .cta-band .cta-buttons{ width:100%; }
-      .doravo-landing .hero-ctas > a,.doravo-landing .cta-band .cta-buttons > a{ width:100%; justify-content:center; text-align:center; }
-      .doravo-landing .feature-grid,.doravo-landing .role-grid,.doravo-landing .how-grid{ grid-template-columns:minmax(0,1fr); }
-      .doravo-landing .sec-head h2{ font-size:clamp(30px,8vw,38px); }
-      .doravo-landing .sec-head p{ font-size:16px; }
-      .doravo-landing .trust-items span{ font-size:14px; padding:5px 10px; }
-      .doravo-landing .ps-card{ padding:24px 20px; }
-      .doravo-landing .spot-switch{ max-width:100%; }
-      .doravo-landing .spot-switch button{ padding:8px 12px; font-size:12.5px; }
-      .doravo-landing .cta-band{ padding:28px 22px; }
-      .doravo-landing .foot-grid,.doravo-landing .foot-cols{ flex-direction:column; gap:28px; }
-      .doravo-landing .foot-bottom{ flex-direction:column; }
-      .doravo-landing .dv-wa-float{ left:12px; bottom:12px; width:50px; height:50px; }
-      .doravo-landing .dv-chat-fab{ right:12px; bottom:12px; width:50px; height:50px; }
-    }
-
-    /* ---------- laptops / desktops: wider layout, no more narrow centre column ---------- */
-    @media (min-width:1280px){
-      .doravo-landing .wrap{ max-width:1480px; padding:0 clamp(40px, 4vw, 80px); }
-      .doravo-landing{ font-size:18px; }
-      .doravo-landing section{ padding:96px 0; }
-      .doravo-landing .hero{ padding:112px 0 88px; }
-      .doravo-landing .hero-grid{ gap:84px; }
-      .doravo-landing .hero h1{ font-size:clamp(52px, 4.4vw, 68px); }
-      .doravo-landing .hero .lede{ font-size:21px; }
-      .doravo-landing .sec-head{ max-width:820px; margin-bottom:56px; }
-      .doravo-landing .sec-head h2{ font-size:clamp(38px, 3.2vw, 48px); }
-      .doravo-landing .sec-head p{ font-size:20px; }
-      .doravo-landing .navlinks a{ font-size:17px; }
-      .doravo-landing .nav{ padding:18px 0; }
-      .doravo-landing .btn-primary, .doravo-landing .btn-ghost, .doravo-landing .btn-wa{ font-size:17.5px; padding:17px 32px; }
-      .doravo-landing .ps-card{ padding:40px 38px; }
-      .doravo-landing .ps-card p{ font-size:19px; }
-      .doravo-landing .feature-card{ padding:36px 30px; }
-      .doravo-landing .feature-card h4{ font-size:21px; }
-      .doravo-landing .feature-card p{ font-size:16.5px; }
-      .doravo-landing .tab-copy h3{ font-size:32px; }
-      .doravo-landing .tab-copy p{ font-size:19px; }
-      .doravo-landing .tab-copy li{ font-size:17.5px; }
-      .doravo-landing .tab-panel, .doravo-landing .spot-grid, .doravo-landing .institution-section{ gap:72px; }
-      .doravo-landing .role-card p{ font-size:17.5px; }
-      .doravo-landing .spot-step h4, .doravo-landing .how-card h4{ font-size:22px; }
-      .doravo-landing .spot-step p, .doravo-landing .how-card p{ font-size:17.5px; }
-      .doravo-landing .trust-card h4{ font-size:21px; }
-      .doravo-landing .trust-card p{ font-size:17px; }
-      .doravo-landing .institution-copy p{ font-size:19.5px; }
-      .doravo-landing .faq-list{ max-width:980px; }
-      .doravo-landing .faq-q{ font-size:22px; padding:24px 0; }
-      .doravo-landing .faq-a p{ font-size:18.5px; }
-      .doravo-landing .cta-band{ padding:72px 72px; }
-      .doravo-landing .cta-band p{ font-size:19px; }
-      .doravo-landing .foot-col a{ font-size:16px; }
-    }
-
-    /* ---------- large monitors / TVs ---------- */
-    @media (min-width:1700px){
-      .doravo-landing .wrap{ max-width:1760px; }
-      .doravo-landing{ font-size:20px; }
-      .doravo-landing section{ padding:120px 0; }
-      .doravo-landing .hero{ padding:136px 0 104px; }
-      .doravo-landing .hero h1{ font-size:clamp(64px, 4vw, 80px); }
-      .doravo-landing .hero .lede{ font-size:24px; }
-      .doravo-landing .sec-head{ max-width:940px; }
-      .doravo-landing .sec-head h2{ font-size:clamp(46px, 2.8vw, 56px); }
-      .doravo-landing .sec-head p{ font-size:22px; }
-      .doravo-landing .brand span{ font-size:24px; }
-      .doravo-landing .brand img{ height:42px; }
-      .doravo-landing .navlinks a{ font-size:18.5px; }
-      .doravo-landing .navcta, .doravo-landing .navlogin{ font-size:17px; }
-      .doravo-landing .btn-primary, .doravo-landing .btn-ghost, .doravo-landing .btn-wa{ font-size:19px; padding:19px 36px; }
-      .doravo-landing .ps-card p{ font-size:21px; }
-      .doravo-landing .feature-card h4{ font-size:23px; }
-      .doravo-landing .feature-card p{ font-size:18px; }
-      .doravo-landing .feature-card .fprob{ font-size:15px; }
-      .doravo-landing .tab-btn{ font-size:17.5px; }
-      .doravo-landing .tab-copy h3{ font-size:36px; }
-      .doravo-landing .tab-copy p{ font-size:21px; }
-      .doravo-landing .tab-copy li{ font-size:19px; }
-      .doravo-landing .role-card p{ font-size:19px; }
-      .doravo-landing .spot-step h4, .doravo-landing .how-card h4, .doravo-landing .trust-card h4{ font-size:24px; }
-      .doravo-landing .spot-step p, .doravo-landing .how-card p, .doravo-landing .trust-card p{ font-size:19px; }
-      .doravo-landing .institution-copy p{ font-size:21px; }
-      .doravo-landing .faq-list{ max-width:1100px; }
-      .doravo-landing .faq-q{ font-size:24px; }
-      .doravo-landing .faq-a p{ font-size:20px; }
-      .doravo-landing .cta-band h2{ font-size:clamp(40px, 2.8vw, 52px); }
-      .doravo-landing .cta-band p{ font-size:21px; }
-      .doravo-landing .foot-brand p, .doravo-landing .foot-col a{ font-size:17px; }
-      .doravo-landing .foot-bottom{ font-size:15.5px; }
-    }
-
-    /* =========================================================
-       CORPORATE THEME
-       Clean white / cool-grey surfaces, charcoal text, deep maroon
-       as the single brand accent, gold used sparingly. Placed last
-       so it overrides the earlier warm cream palette.
-    ========================================================= */
-    .doravo-landing{
-      --maroon:#7A1B36;
-      --maroon-deep:#4A0E22;
-      --maroon-ink:#161A26;      /* headings: charcoal navy */
-      --ink:#1E2433;             /* body text */
-      --muted:#4A5266;           /* secondary text, solid (no opacity) */
-      --paper:#F4F6F9;           /* alternate section surface */
-      --paper-dim:#E4E8EF;
-      --white:#FFFFFF;
-      --brass:#8C6B2A;
-      --line:rgba(22,26,38,0.12);
-      --line-on-dark:rgba(255,255,255,0.2);
-      background:#FFFFFF;
-      color:var(--ink);
-    }
-
-    /* header: white bar with a thin brand rule on top */
-    .doravo-landing header{
-      background:rgba(255,255,255,0.96) !important;
-      border-top:3px solid var(--maroon);
-      border-bottom:1px solid var(--line);
-      box-shadow:0 1px 0 rgba(22,26,38,0.03), 0 8px 24px -18px rgba(22,26,38,0.25);
-    }
-    .doravo-landing .navlinks a{ color:#2A3042; opacity:1; font-weight:500; }
-    .doravo-landing .navlinks a:hover{ color:var(--maroon); }
-    .doravo-landing .mobile-menu{ background:#FFFFFF; }
-
-    /* secondary text: solid colour instead of faded opacity */
-    .doravo-landing .hero .lede,
-    .doravo-landing .hero-note,
-    .doravo-landing .hero-contact,
-    .doravo-landing .trust-bar .trust-label,
-    .doravo-landing .sec-head p,
-    .doravo-landing .ps-card.problem p,
-    .doravo-landing .feature-card p,
-    .doravo-landing .role-card p,
-    .doravo-landing .institution-copy p,
-    .doravo-landing .spot-step p,
-    .doravo-landing .trust-card p,
-    .doravo-landing .trust-note,
-    .doravo-landing .how-card p,
-    .doravo-landing .faq-a p,
-    .doravo-landing .mock-caption,
-    .doravo-landing .mock-head .tag,
-    .doravo-landing .mock-slot span,
-    .doravo-landing .foot-brand p,
-    .doravo-landing .foot-col a,
-    .doravo-landing .foot-col h5,
-    .doravo-landing .foot-bottom{ color:var(--muted); opacity:1; }
-    .doravo-landing .ps-card.problem h3{ color:var(--maroon); opacity:1; }
-    .doravo-landing .hero-contact a{ color:var(--maroon); }
-    .doravo-landing .foot-col a:hover{ color:var(--maroon); }
-
-    /* section rhythm: white and cool grey alternate, one dark band */
-    .doravo-landing .divider{ display:none; }
-    .doravo-landing .hero{ background:linear-gradient(180deg, #FFFFFF 0%, #F4F6F9 100%); }
-    .doravo-landing .trust-bar{ background:#FFFFFF; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
-    .doravo-landing .trust-items span{ color:var(--maroon-ink); }
-    .doravo-landing main > section:nth-of-type(3){ background:#FFFFFF; }   /* problem / solution */
-    .doravo-landing #features{ background:var(--paper); }
-    .doravo-landing .spot{ background:#FFFFFF; border-top:none; border-bottom:none; }
-    .doravo-landing #about{ background:#FFFFFF; }
-    .doravo-landing main > section:nth-of-type(7){ background:var(--paper); } /* roles */
-    .doravo-landing #trust{ background:var(--paper); }
-    .doravo-landing #how-it-works{ background:#FFFFFF; }
-    .doravo-landing #faq{ background:var(--paper); }
-    .doravo-landing #contact{ background:#FFFFFF; }
-    .doravo-landing footer{ background:var(--paper); border-top:1px solid var(--line); }
-
-    /* dark band: deep maroon with a soft depth gradient */
-    .doravo-landing .tabs-section{ background:linear-gradient(135deg, #4A0E22 0%, #2A0813 100%); }
-    .doravo-landing .tabs-section h2,
-    .doravo-landing .tab-copy h3{ color:#FFFFFF; }
-    .doravo-landing .tabs-section .sec-head p{ color:#E9DDE2; opacity:1; }
-    .doravo-landing .tab-copy p{ color:#E9DDE2; opacity:1; }
-    .doravo-landing .tab-copy li{ color:#F3EAEE; opacity:1; }
-    .doravo-landing .tab-btn{ color:#F3EAEE; opacity:0.85; }
-    .doravo-landing .tab-btn.active{ background:#FFFFFF; color:var(--maroon); opacity:1; }
-
-    /* cards and surfaces */
-    .doravo-landing .product-frame{ box-shadow:0 30px 70px -36px rgba(22,26,38,0.45); border-color:var(--line); }
-    .doravo-landing .ps-card.problem{ background:var(--paper); border:1px solid var(--line); }
-    .doravo-landing .ps-card.solution{ background:linear-gradient(135deg, #7A1B36 0%, #4A0E22 100%); }
-    .doravo-landing .ps-card.solution p{ color:#FFFFFF; opacity:0.95; }
-    .doravo-landing .feature-grid{ border-color:var(--line); }
-    .doravo-landing .feature-card{ background:#FFFFFF; }
-    .doravo-landing .feature-card:hover{ background:#FBFCFD; }
-    .doravo-landing .role-card{
-      background:#FFFFFF; border:1px solid var(--line); border-top:3px solid var(--maroon);
-      box-shadow:0 12px 28px -22px rgba(22,26,38,0.35);
-    }
-    .doravo-landing .trust-card{ box-shadow:0 12px 28px -22px rgba(22,26,38,0.35); }
-    .doravo-landing .how-card{ background:var(--paper); }
-    .doravo-landing .how-num{ background:#FFFFFF; color:var(--maroon); }
-    .doravo-landing .mock{ background:#FFFFFF; box-shadow:0 30px 60px -36px rgba(22,26,38,0.4); }
-    .doravo-landing .mock-slot{ background:repeating-linear-gradient(135deg, #EEF1F5, #EEF1F5 8px, #F8F9FB 8px, #F8F9FB 16px); }
-    .doravo-landing .spot-switch{ background:var(--paper); }
-    .doravo-landing .spot-visual .pv-cap{ color:var(--muted); opacity:1; }
-
-    /* headings and accents */
-    .doravo-landing .sec-head h2::before{ background:var(--maroon); }
-    .doravo-landing .tabs-section .sec-head h2::before{ background:#C9A25A; }
-    .doravo-landing .eyebrow{ color:var(--maroon); }
-    .doravo-landing .eyebrow::before{ background:var(--maroon); }
-    .doravo-landing .faq-item{ border-bottom-color:var(--line); }
-    .doravo-landing .faq-q{ color:var(--maroon-ink); }
-    .doravo-landing .btn-ghost{ border-color:var(--maroon-ink); color:var(--maroon-ink); }
-    .doravo-landing .btn-ghost:hover{ background:var(--maroon-ink); color:#FFFFFF; }
-
-    /* call-to-action band */
-    .doravo-landing .cta-band{ background:linear-gradient(120deg, #7A1B36 0%, #4A0E22 100%); box-shadow:0 30px 60px -36px rgba(74,14,34,0.6); }
-    .doravo-landing .cta-band p{ color:#F3EAEE; opacity:1; }
-    .doravo-landing .cta-band .cta-alt{ color:#F3EAEE; }
-
-    /* =========================================================
-       HEADER: left menu button, high-visibility Sign In, side drawer
-    ========================================================= */
-    .doravo-landing .nav{ gap:16px; }
-    .doravo-landing .nav-left{ display:flex; align-items:center; gap:14px; min-width:0; }
-    .doravo-landing .menu-btn{
-      display:inline-flex; align-items:center; gap:9px; height:46px; padding:0 16px;
-      background:#FFFFFF; color:var(--maroon-ink); font-size:15.5px; font-weight:700;
-      border:1.5px solid rgba(22,26,38,0.3); border-radius:8px; cursor:pointer;
-      transition:border-color 0.2s, color 0.2s, background 0.2s;
-    }
-    .doravo-landing .menu-btn svg{ width:22px; height:22px; flex:none; }
-    .doravo-landing .menu-btn:hover{ border-color:var(--maroon); color:var(--maroon); background:#FBF6F8; }
-
-    /* Sign In: solid brand button, large target, strong contrast (white on #7A1B36 is about 9:1) */
-    .doravo-landing .navlogin{
-      display:inline-flex; align-items:center; justify-content:center; gap:9px;
-      min-height:46px; padding:10px 24px;
-      background:var(--maroon); color:#FFFFFF;
-      border:2px solid var(--maroon); border-radius:8px;
-      font-size:16px; font-weight:700; letter-spacing:0.01em; white-space:nowrap;
-      box-shadow:0 8px 18px -10px rgba(122,27,54,0.7);
-      animation:none;
-      transition:background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
-    }
-    .doravo-landing .navlogin svg{ width:19px; height:19px; flex:none; transform:none; }
-    .doravo-landing .navlogin .label-full{ display:inline !important; }
-    .doravo-landing .navlogin:hover{
-      background:var(--maroon-deep); border-color:var(--maroon-deep); color:#FFFFFF;
-      transform:translateY(-1px); box-shadow:0 10px 20px -10px rgba(74,14,34,0.8);
-    }
-    .doravo-landing .navlogin:hover svg{ transform:none; }
-    .doravo-landing .navlogin:focus-visible,
-    .doravo-landing .menu-btn:focus-visible{ outline:3px solid #1E2433; outline-offset:3px; }
-    .doravo-landing .navcta.wa{ min-height:46px; align-items:center; border-radius:8px; font-size:15px; }
-
-    @media (max-width:1100px){ .doravo-landing .navlinks{ display:none; } }
-    @media (max-width:560px){
-      .doravo-landing .menu-label{ display:none; }
-      .doravo-landing .menu-btn{ width:46px; padding:0; justify-content:center; }
-      .doravo-landing .navcta.wa{ display:none; }
-      .doravo-landing .nav{ gap:10px; }
-      .doravo-landing .nav-left{ gap:10px; }
-      .doravo-landing .navlogin{ padding:10px 18px; }
-    }
-
-    /* side drawer */
-    .doravo-landing .dv-overlay{
-      position:fixed; inset:0; z-index:70; background:rgba(15,18,30,0.55);
-      opacity:0; visibility:hidden; transition:opacity 0.25s, visibility 0s 0.25s;
-    }
-    .doravo-landing .dv-overlay.open{ opacity:1; visibility:visible; transition:opacity 0.25s; }
-    .doravo-landing .dv-drawer{
-      position:fixed; top:0; left:0; bottom:0; z-index:71; width:min(400px, 90vw);
-      display:flex; flex-direction:column; background:#FFFFFF;
-      border-top:3px solid var(--maroon);
-      box-shadow:24px 0 60px -20px rgba(15,18,30,0.45);
-      transform:translateX(-100%); visibility:hidden;
-      transition:transform 0.3s cubic-bezier(0.16,1,0.3,1), visibility 0s 0.3s;
-    }
-    .doravo-landing .dv-drawer.open{ transform:none; visibility:visible; transition:transform 0.3s cubic-bezier(0.16,1,0.3,1); }
-    .doravo-landing .dv-drawer-head{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--line); }
-    .doravo-landing .dv-drawer-head .brand span{ display:inline; }
-    .doravo-landing .dv-drawer-close{
-      width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center;
-      background:#FFFFFF; color:var(--maroon-ink); border:1.5px solid rgba(22,26,38,0.3); border-radius:8px; cursor:pointer;
-    }
-    .doravo-landing .dv-drawer-close svg{ width:22px; height:22px; }
-    .doravo-landing .dv-drawer-close:hover{ border-color:var(--maroon); color:var(--maroon); }
-    .doravo-landing .dv-drawer-body{ flex:1; overflow-y:auto; padding:8px 20px 20px; }
-    .doravo-landing .dv-drawer-group{ padding-top:18px; }
-    .doravo-landing .dv-drawer-title{
-      font-family:'Manrope',sans-serif; font-size:12.5px; font-weight:700; letter-spacing:0.1em;
-      text-transform:uppercase; color:var(--muted); margin:0 0 6px;
-    }
-    .doravo-landing .dv-drawer-group a{
-      display:flex; align-items:center; justify-content:space-between; padding:13px 4px;
-      font-size:17.5px; font-weight:600; color:var(--maroon-ink); text-decoration:none;
-      border-bottom:1px solid var(--line);
-    }
-    .doravo-landing .dv-drawer-group a::after{ content:"\\203A"; color:var(--maroon); font-size:22px; line-height:1; }
-    .doravo-landing .dv-drawer-group a:hover{ color:var(--maroon); background:var(--paper); }
-    .doravo-landing .dv-drawer-foot{ padding:18px 20px 22px; border-top:1px solid var(--line); background:var(--paper); display:flex; flex-direction:column; gap:12px; }
-    .doravo-landing .dv-drawer-signin{
-      display:flex; align-items:center; justify-content:center; min-height:50px;
-      background:var(--maroon); color:#FFFFFF; font-size:17px; font-weight:700;
-      border-radius:8px; text-decoration:none; border:2px solid var(--maroon);
-    }
-    .doravo-landing .dv-drawer-signin:hover{ background:var(--maroon-deep); border-color:var(--maroon-deep); }
-    .doravo-landing .dv-drawer-demo{ justify-content:center; width:100%; border-radius:8px; }
-    .doravo-landing .dv-drawer-mail{ text-align:center; font-size:14.5px; color:var(--muted); text-decoration:underline; }
-    @media (prefers-reduced-motion: reduce){
-      .doravo-landing .dv-overlay, .doravo-landing .dv-drawer{ transition:none !important; }
-    }
-  `;
-  document.head.appendChild(el);
-};
-
-/* ---------------------------------------------------------
-   SITE CONFIG
-   Two values the audit flagged as unsafe to leave dynamic or
-   placeholder-looking in production:
-
-   - SITE_URL: canonical/OG URLs were previously built from
-     window.location.href, which means the "canonical" identity
-     of the page shifts depending on whatever hostname loaded
-     it (a marketing domain, a tenant subdomain, a preview URL,
-     localhost, etc). That's exactly the kind of thing that
-     confuses search engines. Set this to the real production
-     marketing domain before launch. Until then it falls back
-     to window.location.origin so the page still works in dev/
-     preview without crashing.
-   - CONTACT_EMAIL: "hello@doravo.core" is not a real,
-     registered domain — replace with the actual support/sales
-     address once Doravo's official domain is finalized.
---------------------------------------------------------- */
 const SITE_URL = SITE.url; // canonical production domain (see src/config/site.js)
 const CONTACT_EMAIL = SITE.email;
 const WA_URL = waLink();
@@ -1124,68 +284,6 @@ const FEATURES = [
   },
 ];
 
-const TABS = [
-  {
-    id: "students",
-    label: "Students",
-    title: "Every student record in one place",
-    desc: "Enrolment, class placement and academic history stay together, and carry through to report cards and transcripts automatically.",
-    bullets: ["Enrolment and class placement", "Academic history per student", "Report cards generated from live records"],
-  },
-  {
-    id: "assessments",
-    label: "Assessments",
-    title: "Set, sit and mark assessments online",
-    desc: "Run timed e-exams on dedicated exam devices alongside conventional coursework and marking.",
-    bullets: ["Timed e-exams on exam devices", "Structured marking workflows", "Results tied back to student records"],
-  },
-  {
-    id: "attendance",
-    label: "Attendance",
-    title: "Attendance, taken and rolled up automatically",
-    desc: "Daily registers by class or subject roll up into attendance records without separate spreadsheets.",
-    bullets: ["Class and subject-level registers", "Per-student attendance history", "No manual reconciliation"],
-  },
-  {
-    id: "fees",
-    label: "Fees",
-    title: "Fee balances you can see at a glance",
-    desc: "Billing, payments and balances follow your school's own fee structure and terms, so the picture is always current.",
-    bullets: ["Your own fee structure and terms", "Payments and balances in one place", "A statement for every student"],
-  },
-  {
-    id: "teachers",
-    label: "Teachers",
-    title: "A dashboard built around teaching, not admin",
-    desc: "Teachers see their classes, assessments and attendance tools in one portal, branded to their own school.",
-    bullets: ["Class and subject overview", "Assessment and marking tools", "School-branded portal"],
-  },
-  {
-    id: "reports",
-    label: "Reports",
-    title: "Information you can act on",
-    desc: "Notifications and reporting surface what's happening across the school, in real time, to the people who need it.",
-    bullets: ["Real-time notifications", "School-level reporting", "Delivered only to your own dashboards"],
-  },
-  {
-    id: "admin",
-    label: "Administration",
-    title: "The everyday operations of running a campus",
-    desc: "Fees, gate and visitor logs, kitchen and meal cards, and leave-out requests, brought into one administrative workspace.",
-    bullets: ["Fees and payment tracking", "Gate, visitor and meal-card logs", "Leave-out requests and approvals"],
-  },
-];
-
-const TAB_PREVIEW = {
-  students: "students",
-  assessments: "exam",
-  attendance: "attendance",
-  fees: "fees",
-  teachers: "marking",
-  reports: "reports",
-  admin: "admin",
-};
-
 const SPOT_STEPS = [
   { title: "Set the assessment", copy: "Teachers build the questions and schedule the assessment from their own portal." },
   { title: "Students sit it on one device", copy: "Each student gets an exam token that locks to the first device that opens it. The exam is timed and answers are saved as they work." },
@@ -1237,598 +335,409 @@ const MENU_GROUPS = [
   },
 ];
 
+
+const injectStyles = () => {
+  if (document.getElementById("landing-tokens")) return;
+  const el = document.createElement("style");
+  el.id = "landing-tokens";
+  el.textContent = `
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600&display=swap');
+.dv{--ink:#0a0a0a;--paper:#fff;--maroon:#7A1B36;--ember:#d8452b;--rose:#e8896f;--lilac:#b9a6ec;--mute:rgba(255,255,255,.62);
+ margin:0;background:var(--ink);color:var(--paper);font:400 15px/1.55 'Inter Tight',sans-serif;-webkit-font-smoothing:antialiased;scroll-behavior:smooth;overflow-x:clip}
+.dv *{box-sizing:border-box}.dv h1,.dv h2,.dv h3,.dv .serif{font-family:'Instrument Serif',serif;font-weight:400;margin:0;letter-spacing:-.01em;line-height:1}
+.dv p{margin:0}:where(.dv a){color:inherit}.dv img{display:block;max-width:100%}.dv em{font-style:italic}
+.dv :focus-visible{outline:2px solid var(--lilac);outline-offset:3px}
+.dv .wrap{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4vw,48px)}
+/* preloader */
+.dv-pre{position:fixed;inset:0;z-index:200;background:radial-gradient(120% 90% at 70% 60%,#6b1d1a,#2a0a0a 60%,#160505);overflow:hidden;transition:transform .9s cubic-bezier(.76,0,.24,1)}
+.dv-pre.done{transform:translateY(-100%)}
+.dv-beam{position:absolute;width:42vmax;height:18vmax;background:linear-gradient(90deg,rgba(255,170,150,.85),rgba(255,120,100,0) 80%);filter:blur(2px);transform-origin:0 50%}
+.dv-beam::after{content:"";position:absolute;left:-14px;top:50%;width:28px;height:28px;margin-top:-14px;border-radius:50%;background:#fff;box-shadow:0 0 40px 14px rgba(255,200,180,.8)}
+.dv-beam.a{left:16%;top:42%;clip-path:polygon(0 48%,100% 0,100% 100%,0 52%);transform:rotate(18deg);animation:beamA 3s ease-in-out infinite alternate}
+.dv-beam.b{left:84%;top:34%;clip-path:polygon(0 48%,100% 0,100% 100%,0 52%);transform:rotate(160deg);animation:beamB 3s ease-in-out infinite alternate}
+@keyframes beamA{to{transform:rotate(30deg)}}@keyframes beamB{to{transform:rotate(148deg)}}
+.dv-desk{position:absolute;left:48%;bottom:24%;width:120px;height:4px;background:#1a0505;box-shadow:0 30px 0 -1px #1a0505}
+.dv-count{position:absolute;right:clamp(20px,4vw,48px);bottom:clamp(14px,3vw,36px);font:italic 400 clamp(56px,9vw,120px)/1 'Instrument Serif',serif;color:#fff}
+/* nav */
+.dv-nav{position:fixed;top:14px;left:0;right:0;z-index:60;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(14px,2.4vw,32px);pointer-events:none}
+.dv-nav>*{pointer-events:auto}
+.dv-chip{background:#fff;color:#111;border-radius:7px;padding:7px 12px;display:flex;align-items:center;gap:8px;text-decoration:none;font:600 14px 'Inter Tight'}
+.dv-chip img{height:20px;width:auto}
+.dv-pill{display:flex;gap:4px;background:#fff;border-radius:9px;padding:5px}
+.dv-pill a{color:#111;text-decoration:none;font-size:13px;font-weight:500;padding:6px 12px;border-radius:6px;transition:background .2s}
+.dv-pill a:hover{background:#eee}
+.dv-right{display:flex;gap:8px;align-items:center}
+.dv-btn{display:inline-flex;align-items:center;gap:8px;background:#0a0a0a;color:#fff;text-decoration:none;font:500 13px 'Inter Tight';padding:11px 18px;border-radius:8px;border:0;cursor:pointer;transition:transform .2s,background .2s}
+.dv-btn:hover{transform:translateY(-1px);background:#222}
+.dv-nav .dv-btn:not(.light){box-shadow:0 0 0 1px rgba(255,255,255,.28)}
+.dv-btn.light{background:#fff;color:#111}.dv-btn.light:hover{background:#eee}
+.dv-btn.line{background:transparent;border:1px solid currentColor;color:inherit}
+.dv-btn svg{width:13px;height:13px}
+.dv-burger{display:none;background:#fff;color:#111;border:0;border-radius:7px;width:38px;height:38px;align-items:center;justify-content:center;cursor:pointer}
+.dv-burger svg{width:18px;height:18px}
+@media(max-width:900px){.dv-pill{display:none}.dv-burger{display:flex}.dv-right .dv-signin{display:none}}
+/* hero */
+.dv-hero{position:relative;min-height:100svh;display:flex;align-items:flex-end;justify-content:center;text-align:center;padding:120px 20px 12vh;overflow:hidden;background:#c9432b}
+.dv-mesh{position:absolute;inset:-20%;filter:blur(30px);animation:hue 28s ease-in-out infinite alternate}
+.dv-mesh i{position:absolute;border-radius:50%}
+.dv-mesh i:nth-child(1){width:60%;height:70%;left:-5%;top:20%;background:#f08a4b;animation:drift 18s ease-in-out infinite alternate}
+.dv-mesh i:nth-child(2){width:50%;height:60%;right:-5%;bottom:-10%;background:#e5481c;animation:drift 22s ease-in-out infinite alternate-reverse}
+.dv-mesh i:nth-child(3){width:45%;height:50%;left:30%;top:-10%;background:#a82c34;animation:drift 25s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate(12%,-10%) scale(1.15)}}
+@keyframes hue{0%{filter:blur(30px) hue-rotate(0)}100%{filter:blur(30px) hue-rotate(-62deg) saturate(.8) brightness(1.25)}}
+.dv-reed{position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.1) 0 1px,rgba(0,0,0,.07) 1px 2px,transparent 2px 7px);mix-blend-mode:overlay;pointer-events:none}
+.dv-hero-in{position:relative;color:#111;max-width:860px}
+.dv-hero h1{font-size:clamp(44px,7.4vw,98px);line-height:.95;color:#0a0a0a}
+.dv-hero p.lede{max-width:52ch;margin:22px auto 26px;font-size:15px;color:#1a0a08}
+.dv-hero .acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.dv-hero .btn-ghost{color:#111}
+.dv-hero .mail{margin-top:16px;font-size:13px;color:#2a1411}
+/* funnel */
+.dv-funnel{background:var(--ink);padding:0 0 4px;margin-top:-1px}
+.dv-funnel div{height:12px;margin:0 auto 6px;border-radius:3px;background:#d9d2f6;transform:scaleX(0);transition:transform .9s cubic-bezier(.16,1,.3,1)}
+.dv-funnel.in div{transform:scaleX(1)}
+.dv-funnel.alt{background:#fff}.dv-funnel.alt div{background:#0a0a0a}
+/* dark sections */
+.dv-sec{padding:clamp(80px,12vw,160px) 0;position:relative}
+.dv-big{font-size:clamp(48px,8.4vw,120px);line-height:.98;text-align:center}
+.dv-big .chip{display:inline-block;width:1.7em;height:.62em;border-radius:6px;vertical-align:middle;margin:0 .12em;background:linear-gradient(110deg,#7A1B36,#e5481c,#f08a4b,#b9a6ec);background-size:200% 100%;animation:chip 8s linear infinite alternate}@keyframes chip{to{background-position:100% 0}}
+.dv-about-grid{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:40px;margin-top:80px;align-items:start}
+.dv-about-grid .tag{font-size:12px;letter-spacing:.04em;color:var(--mute)}
+.dv-about-grid p{color:var(--mute);font-size:14px;max-width:44ch}
+.dv-about-grid p+p{margin-top:14px}
+@media(max-width:860px){.dv-about-grid{grid-template-columns:1fr;gap:24px;margin-top:48px}}
+/* features */
+.dv-svc{background:radial-gradient(90% 60% at 50% 0,#3b0f1f,#0a0a0a 70%)}
+.dv-h2{font-size:clamp(40px,6vw,84px);text-align:center;max-width:14ch;margin:0 auto}
+.dv-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:80px;align-items:start}
+.dv-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:22px;backdrop-filter:blur(6px)}
+.dv-card:nth-child(4n+2){margin-top:44px}.dv-card:nth-child(4n+3){margin-top:88px}.dv-card:nth-child(4n){margin-top:132px}
+.dv-card .fi svg{width:22px;height:22px;color:var(--rose)}
+.dv-card h3{font-size:26px;margin:18px 0 10px;line-height:1.05}
+.dv-card .pr{font-size:12.5px;color:var(--rose);margin-bottom:8px}
+.dv-card p{font-size:13.5px;color:var(--mute)}
+@media(max-width:980px){.dv-cards{grid-template-columns:repeat(2,1fr)}.dv-card:nth-child(n){margin-top:0}.dv-card:nth-child(2n){margin-top:36px}}
+@media(max-width:560px){.dv-cards{grid-template-columns:1fr}.dv-card:nth-child(n){margin-top:0}}
+/* stats */
+.dv-stat-head{display:flex;justify-content:space-between;gap:40px;align-items:flex-start;flex-wrap:wrap}
+.dv-stat-head h2{font-size:clamp(48px,8vw,116px)}.dv-stat-head p{max-width:34ch;color:var(--mute);font-size:13.5px}
+.dv-bars{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:70px;align-items:end;min-height:380px}
+.dv-bar .n{font:400 clamp(30px,3.4vw,46px)/1 'Instrument Serif',serif}.dv-bar b{display:block;font-weight:600;font-size:13px;margin-top:6px}.dv-bar span.s{font-size:12px;color:var(--mute)}
+.dv-code{margin-top:14px;height:var(--h);background:repeating-linear-gradient(90deg,#fff 0 3px,transparent 3px 7px);clip-path:inset(100% 0 0 0);transition:clip-path 1.1s cubic-bezier(.16,1,.3,1)}
+.dv-bars.in .dv-code{clip-path:inset(0)}
+@media(max-width:700px){.dv-bars{grid-template-columns:repeat(2,1fr);gap:30px 12px}}
+/* steps / light sections */
+.dv-light{background:#fff;color:#0a0a0a}
+.dv-light .dv-h2,.dv-light h2{color:#0a0a0a}
+.dv-light .sub{text-align:center;color:#555;max-width:48ch;margin:18px auto 0}
+.dv-steps{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:64px;align-items:start}
+.dv-step{border-top:2px solid #0a0a0a;padding-top:14px}
+.dv-step:nth-child(even){margin-top:40px}
+.dv-step h3{font-size:26px;margin-bottom:8px;line-height:1.05}.dv-step p{font-size:13px;color:#555}
+@media(max-width:900px){.dv-steps{grid-template-columns:1fr}.dv-step:nth-child(n){margin-top:0}}
+.dv-roles{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:64px}
+.dv-role{border:1px solid #ddd;border-radius:8px;padding:18px}.dv-role h3{font-size:24px;margin-bottom:8px;line-height:1.05}.dv-role p{font-size:13px;color:#555}
+@media(max-width:980px){.dv-roles{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.dv-roles{grid-template-columns:1fr}}
+.dv-trust{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;margin-top:64px}
+.dv-trust h3{font-size:28px;margin-bottom:10px;line-height:1.05}.dv-trust p{font-size:13.5px;color:var(--mute)}
+@media(max-width:860px){.dv-trust{grid-template-columns:1fr 1fr}}
+.dv-how{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:64px}
+.dv-how .n{font:italic 400 64px/1 'Instrument Serif',serif}.dv-how h3{font-size:28px;margin:12px 0 8px;line-height:1.05}.dv-how p{font-size:14px;color:#555}
+@media(max-width:760px){.dv-how{grid-template-columns:1fr}}
+/* faq */
+.dv-faq{max-width:780px;margin:56px auto 0}
+.dv-q{border-top:1px solid #ddd}.dv-q:last-child{border-bottom:1px solid #ddd}
+.dv-q button{width:100%;text-align:left;background:none;border:0;padding:22px 0;font:400 28px/1.1 'Instrument Serif',serif;display:flex;justify-content:space-between;gap:16px;cursor:pointer;color:#0a0a0a}
+.dv-q .a{display:grid;grid-template-rows:0fr;transition:grid-template-rows .35s ease}.dv-q.open .a{grid-template-rows:1fr}
+.dv-q .a>div{overflow:hidden}.dv-q .a p{padding-bottom:22px;color:#555;max-width:62ch}
+.dv-q .pl{transition:transform .3s}.dv-q.open .pl{transform:rotate(45deg)}
+/* cta + footer */
+.dv-cta{position:relative;text-align:center;overflow:hidden;background:#c9432b;color:#0a0a0a;padding:clamp(90px,14vw,180px) 20px}
+.dv-cta .dv-mesh{animation-duration:22s}.dv-cta>div:last-child{position:relative}
+.dv-cta h2{font-size:clamp(44px,7vw,100px);max-width:13ch;margin:0 auto 24px}.dv-cta p{max-width:46ch;margin:0 auto 28px}
+.dv-foot{background:#0a0a0a;padding:64px 0 28px}
+.dv-foot-grid{display:grid;grid-template-columns:1.4fr 2fr;gap:40px}
+.dv-foot p{color:var(--mute);font-size:13px;max-width:36ch;margin-top:14px}
+.dv-fcols{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.dv-fcols h5{margin:0 0 12px;font-size:12px;color:var(--mute);font-weight:500}.dv-fcols a{display:block;text-decoration:none;font-size:13.5px;padding:4px 0;color:#fff}.dv-fcols a:hover{color:var(--rose)}
+.dv-fbot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:48px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12);font-size:12px;color:var(--mute)}
+@media(max-width:760px){.dv-foot-grid,.dv-fcols{grid-template-columns:1fr}}
+/* drawer */
+.dv-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);opacity:0;pointer-events:none;transition:opacity .3s;z-index:90}.dv-ov.open{opacity:1;pointer-events:auto}
+.dv-dr{position:fixed;top:0;left:0;bottom:0;width:min(86vw,360px);background:#0a0a0a;z-index:100;transform:translateX(-100%);transition:transform .35s cubic-bezier(.16,1,.3,1);padding:20px;display:flex;flex-direction:column;gap:18px;overflow:auto}
+.dv-dr.open{transform:none}.dv-dr h2{font:500 12px 'Inter Tight';color:var(--mute);margin:14px 0 6px}
+.dv-dr a{display:block;text-decoration:none;padding:7px 0;font:400 26px 'Instrument Serif',serif}
+.dv-dr .top{display:flex;justify-content:space-between;align-items:center}
+.dv-dr .top button{background:none;border:0;color:#fff;cursor:pointer;width:36px;height:36px}
+.dv-dr .foot{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+.dv-dr .foot a{font:500 14px 'Inter Tight';text-align:center}
+.dv-wa{position:fixed;right:18px;bottom:18px;z-index:70;width:52px;height:52px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.dv-wa svg{width:26px;height:26px}
+.dv .reveal{opacity:0;transform:translateY(14px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}.dv .reveal.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.dv *{animation:none!important;transition:none!important}.dv .reveal{opacity:1;transform:none}.dv-funnel div{transform:none}.dv-code{clip-path:none}}
+`;
+  document.head.appendChild(el);
+};
+
+const Arrow = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9" /></svg>
+);
+
+const Mesh = () => (<><div className="dv-mesh" aria-hidden="true"><i /><i /><i /></div><div className="dv-reed" aria-hidden="true" /></>);
+
+/* Tapered bars that draw in when scrolled to, as in the reference. */
+const Funnel = ({ alt }) => {
+  const ref = useReveal();
+  return (
+    <div className={`dv-funnel ${alt ? "alt" : ""}`} ref={ref} aria-hidden="true">
+      {Array.from({ length: 14 }, (_, i) => (
+        <div key={i} style={{ width: `${96 - i * 6.6}%`, height: Math.max(2, 12 - i * 0.8), transitionDelay: `${i * 45}ms` }} />
+      ))}
+    </div>
+  );
+};
+
+/* Honest "stats": counts that come from the product's own content, not invented figures. */
+const COUNTS = [
+  { n: FEATURES.length, label: "Connected modules", sub: "Students to school administration", h: 120 },
+  { n: ROLES.length, label: "Role-based portals", sub: "Each person sees their own", h: 200 },
+  { n: TRUST.length, label: "Access controls", sub: "Passkeys, one device per exam", h: 280 },
+  { n: 1, label: "Platform", sub: "One workspace for your school", h: 340 },
+];
+
 export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openFaq, setOpenFaq] = useState(0);
+  const [skipPre] = useState(() => typeof window === "undefined" || !!(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || sessionStorage.getItem("dv-pre")));
+  const [pct, setPct] = useState(skipPre ? 100 : 0);
+  const [loaded, setLoaded] = useState(skipPre);
   const menuBtnRef = useRef(null);
   const closeBtnRef = useRef(null);
   const drawerRef = useRef(null);
-  const [activeTab, setActiveTab] = useState(TABS[0].id);
-  const [openFaq, setOpenFaq] = useState(0);
-  const [spotView, setSpotView] = useState("exam");
-  const [autoTabs, setAutoTabs] = useState(true);
-
-  useEffect(() => {
-    injectLandingStyles();
-    injectSEO();
-  }, []);
-
-  const heroRef = useReveal();
-  const problemRef = useReveal();
-  const featuresRef = useReveal();
-  const tabsRef = useReveal();
-  const rolesRef = useReveal();
-  const institutionRef = useReveal();
-  const howRef = useReveal();
-  const spotRef = useReveal();
-  const trustRef = useReveal();
+  const barsRef = useReveal();
+  const aboutRef = useReveal();
+  const gridRef = useReveal();
+  const svcRef = useReveal();
+  const stepsRef = useReveal();
   const faqRef = useReveal();
 
-  // Staggered scroll reveal for cards (set before paint so there is no flash).
-  useLayoutEffect(() => {
-    const root = document.querySelector(".doravo-landing");
-    if (!root) return undefined;
-    const targets = root.querySelectorAll(".feature-card, .role-card, .how-card, .trust-card, .spot-step, .hero-visual");
-    const io = new IntersectionObserver(
-      (entries) => entries.forEach((e) => {
-        if (e.isIntersecting) { e.target.classList.add("rv-in"); io.unobserve(e.target); }
-      }),
-      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
-    );
-    targets.forEach((el, i) => {
-      el.setAttribute("data-rv", "");
-      el.style.transitionDelay = `${(i % 4) * 80}ms`;
-      io.observe(el);
-    });
-    return () => io.disconnect();
-  }, []);
+  useEffect(() => { injectStyles(); injectSEO(); }, []);
 
-  // Product tabs advance on their own until the visitor takes control.
+  // Preloader: counts to 100 once per session, then lifts away.
   useEffect(() => {
-    if (!autoTabs) return undefined;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
-    const t = setTimeout(() => {
-      setActiveTab((cur) => {
-        const i = TABS.findIndex((x) => x.id === cur);
-        return TABS[(i + 1) % TABS.length].id;
-      });
-    }, 8000);
-    return () => clearTimeout(t);
-  }, [autoTabs, activeTab]);
+    if (skipPre) return undefined;
+    document.body.style.overflow = "hidden";
+    const start = performance.now(); let raf;
+    const tick = (t) => {
+      const p = Math.min(1, (t - start) / 2600);
+      setPct(Math.round(p * p * (3 - 2 * p) * 100));
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else setTimeout(() => { setLoaded(true); document.body.style.overflow = ""; sessionStorage.setItem("dv-pre", "1"); }, 250);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); document.body.style.overflow = ""; };
+  }, [skipPre]);
 
-  const activeTabData = TABS.find((t) => t.id === activeTab) || TABS[0];
-
-  const closeMenu = () => setMenuOpen(false);
-  const closeMenuAndRefocus = () => {
-    setMenuOpen(false);
-    menuBtnRef.current?.focus();
-  };
-
-  // Side menu: lock page scroll, move focus in, trap Tab, close on Escape.
+  // Side menu: scroll lock, focus, Tab trap, Escape.
   useEffect(() => {
     if (!menuOpen) return undefined;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const focusTimer = setTimeout(() => closeBtnRef.current?.focus(), 50);
+    const prev = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const ft = setTimeout(() => closeBtnRef.current?.focus(), 50);
     const onKey = (e) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        menuBtnRef.current?.focus();
-        return;
-      }
+      if (e.key === "Escape") { setMenuOpen(false); menuBtnRef.current?.focus(); return; }
       if (e.key === "Tab" && drawerRef.current) {
         const f = drawerRef.current.querySelectorAll("a[href], button:not([disabled])");
         if (!f.length) return;
-        const first = f[0];
-        const last = f[f.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => {
-      clearTimeout(focusTimer);
-      document.body.style.overflow = prevOverflow;
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => { clearTimeout(ft); document.body.style.overflow = prev; document.removeEventListener("keydown", onKey); };
   }, [menuOpen]);
 
+  const closeMenu = () => setMenuOpen(false);
+  const closeAndFocus = () => { setMenuOpen(false); menuBtnRef.current?.focus(); };
+
   return (
-    <div className="doravo-landing">
-      <header>
-        <div className="wrap nav">
-          <div className="nav-left">
-            <button
-              ref={menuBtnRef}
-              type="button"
-              className="menu-btn"
-              aria-label="Open menu"
-              aria-expanded={menuOpen}
-              aria-controls="site-menu"
-              onClick={() => setMenuOpen(true)}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <path d="M4 7h16M4 12h16M4 17h16" />
-              </svg>
-              <span className="menu-label">Menu</span>
-            </button>
-            <a className="brand" href="#top">
-              <img src="/assets/doravo-icon.png" alt="Doravo mark" />
-              <span>Doravo Core</span>
-            </a>
-          </div>
-          <nav className="navlinks" aria-label="Primary">
-            <a href="#features">Features</a>
-            <a href="#solutions">Solutions</a>
-            <a href="#how-it-works">How it works</a>
-            <a href="#about">About</a>
-            <a href="#contact">Contact</a>
-          </nav>
-          <div className="nav-right">
-            <SignInLink className="navlogin">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <circle cx="12" cy="8" r="3.5" />
-                <path d="M5 20c0-3.9 3.1-6 7-6s7 2.1 7 6" />
-              </svg>
-              <span className="label-full">Sign In</span>
-            </SignInLink>
-            <a className="navcta wa" href={WA_URL} target="_blank" rel="noopener noreferrer">
-              <WaIcon /> Request a Demo
-            </a>
-          </div>
+    <div className="dv">
+      <div className={`dv-pre ${loaded ? "done" : ""}`} aria-hidden="true">
+        <div className="dv-beam a" /><div className="dv-beam b" /><div className="dv-desk" />
+        <div className="dv-count">{pct}%</div>
+      </div>
+
+      <header className="dv-nav">
+        <div style={{ display: "flex", gap: 8 }}>
+          <button ref={menuBtnRef} type="button" className="dv-burger" aria-label="Open menu" aria-expanded={menuOpen} aria-controls="site-menu" onClick={() => setMenuOpen(true)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+          </button>
+          <a className="dv-chip" href="#top"><img src="/assets/doravo-icon.png" alt="Doravo Core" /></a>
+        </div>
+        <nav className="dv-pill" aria-label="Primary">
+          <a href="#features">Features</a><a href="#e-assessments">E-exams</a><a href="#how-it-works">How it works</a><a href="#faq">FAQ</a><a href="#contact">Contact</a>
+        </nav>
+        <div className="dv-right">
+          <SignInLink className="dv-btn light dv-signin">Sign In</SignInLink>
+          <a className="dv-btn" href={WA_URL} target="_blank" rel="noopener noreferrer">Request a demo <Arrow /></a>
         </div>
       </header>
 
-      {/* SIDE MENU — rendered outside <header> because the header's backdrop-filter
-          would otherwise become the containing block for this fixed panel. */}
-      <div className={`dv-overlay ${menuOpen ? "open" : ""}`} onClick={closeMenuAndRefocus} aria-hidden="true" />
-      <aside
-        id="site-menu"
-        ref={drawerRef}
-        className={`dv-drawer ${menuOpen ? "open" : ""}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Site menu"
-        aria-hidden={!menuOpen}
-      >
-        <div className="dv-drawer-head">
-          <a className="brand" href="#top" onClick={closeMenu}>
-            <img src="/assets/doravo-icon.png" alt="" />
-            <span>Doravo Core</span>
-          </a>
-          <button ref={closeBtnRef} type="button" className="dv-drawer-close" aria-label="Close menu" onClick={closeMenuAndRefocus}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
+      <div className={`dv-ov ${menuOpen ? "open" : ""}`} onClick={closeAndFocus} aria-hidden="true" />
+      <aside id="site-menu" ref={drawerRef} className={`dv-dr ${menuOpen ? "open" : ""}`} role="dialog" aria-modal="true" aria-label="Site menu" aria-hidden={!menuOpen}>
+        <div className="top">
+          <span className="serif" style={{ fontSize: 26 }}>Doravo Core</span>
+          <button ref={closeBtnRef} type="button" aria-label="Close menu" onClick={closeAndFocus}>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         </div>
-        <nav className="dv-drawer-body" aria-label="Site menu">
+        <nav aria-label="Site menu">
           {MENU_GROUPS.map((g) => (
-            <div className="dv-drawer-group" key={g.title}>
-              <h2 className="dv-drawer-title">{g.title}</h2>
-              {g.links.map(([label, href]) => (
-                <a key={href} href={href} onClick={closeMenu}>{label}</a>
-              ))}
-            </div>
+            <div key={g.title}><h2>{g.title}</h2>{g.links.map(([l, h]) => <a key={h} href={h} onClick={closeMenu}>{l}</a>)}</div>
           ))}
         </nav>
-        <div className="dv-drawer-foot">
-          <SignInLink className="dv-drawer-signin" onClick={closeMenu}>Sign In</SignInLink>
-          <a className="btn-wa dv-drawer-demo" href={WA_URL} target="_blank" rel="noopener noreferrer" onClick={closeMenu}>
-            <WaIcon /> Request a Demo
-          </a>
-          <a className="dv-drawer-mail" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        <div className="foot">
+          <SignInLink className="dv-btn line" onClick={closeMenu}>Sign In</SignInLink>
+          <a className="dv-btn light" href={WA_URL} target="_blank" rel="noopener noreferrer" onClick={closeMenu}>Request a demo</a>
         </div>
       </aside>
 
       <main id="top">
-        {/* HERO
-            Rewritten per audit: leads with the core value ("one
-            connected platform") rather than opening on multi-campus
-            positioning, so a single-school buyer doesn't read the
-            product as being "for school groups". Multi-campus support
-            is now a supporting line, not the headline framing. The
-            founder-story hero-note has also been replaced with plain
-            positioning copy. */}
-        <section className="hero">
-          <div className="wrap hero-grid" ref={heroRef}>
-            <div>
-              <p className="eyebrow">School management &amp; e-examinations</p>
-              <h1>Run your school and your exams from <em>one platform.</em></h1>
-              <p className="lede">
-                Doravo Core brings students, staff, attendance, fees and school operations together with
-                online assessments and e-exams, so your team stops juggling spreadsheets and paper.
-              </p>
-              <div className="hero-ctas">
-                <a className="btn-wa pulse" href={WA_URL} target="_blank" rel="noopener noreferrer">
-                  <WaIcon /> Request a Demo on WhatsApp
-                </a>
-                <a className="btn-ghost" href="#platform">Explore the Platform</a>
-              </div>
-              <p className="hero-contact">
-                Or email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-              </p>
-              <p className="hero-note">Built around the everyday work of running a modern school.</p>
+        <section className="dv-hero">
+          <Mesh />
+          <div className="dv-hero-in">
+            <h1>Run your school and your exams from <em>one platform</em></h1>
+            <p className="lede">Doravo Core brings students, staff, attendance, fees and school operations together with online assessments and e-exams, so your team stops juggling spreadsheets and paper.</p>
+            <div className="acts">
+              <a className="dv-btn" href={WA_URL} target="_blank" rel="noopener noreferrer"><WaIcon /> Request a demo on WhatsApp</a>
+              <a className="dv-btn line btn-ghost" href="#about">See how it works</a>
             </div>
-            <div className="hero-visual">
-              <Preview name="dashboard" />
-            </div>
+            <p className="mail">Or email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></p>
           </div>
         </section>
+        <Funnel />
 
-        {/* TRUST BAR */}
-        <section className="trust-bar" style={{ padding: "34px 0" }} id="platform">
-          <div className="wrap">
-            <p className="trust-label">Built for the people who run a school</p>
-            <div className="trust-items">
-              <span>Principals</span>
-              <span>Registrars</span>
-              <span>Examinations officers</span>
-              <span>Bursars</span>
-              <span>ICT administrators</span>
-            </div>
-          </div>
-        </section>
-
-        {/* PROBLEM / SOLUTION */}
-        <section>
-          <div className="wrap">
-            <div className="sec-head reveal" ref={problemRef}>
-              <h2>Running a school shouldn't feel fragmented.</h2>
-              <p>
-                Schools often manage students, staff, assessments, attendance and communication
-                across disconnected processes. Doravo Core gives you one connected workspace for
-                everyday academic and administrative operations.
-              </p>
-            </div>
-            <div className="ps-grid">
-              <div className="ps-card problem">
-                <h3>Without a connected platform</h3>
-                <p>
-                  Records live in separate spreadsheets and tools, communication is scattered
-                  across apps, and growing to a second campus means a second set of processes to
-                  keep running.
-                </p>
-              </div>
-              <div className="ps-card solution">
-                <h3>With Doravo Core</h3>
-                <p>
-                  Students, staff, assessments, attendance and communication share one platform,
-                  your school keeps its own identity, and adding a campus later doesn't mean
-                  starting over.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <hr className="divider" />
-
-        {/* CORE FEATURES */}
-        <section id="features">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={featuresRef}>
-              <h2>Everything your school needs, connected.</h2>
-              <p>The modules you already rely on day to day, available from one platform.</p>
-            </div>
-            {/* TODO (audit P1): once real product screenshots exist, consider
-                swapping some or all of these icon+text cards for a smaller
-                number of larger visual blocks (screenshot + short caption)
-                for a couple of headline features — that reads as more premium
-                than an eight-card icon grid. Left as an icon grid for now
-                since it's honest about not having screenshots to show yet,
-                and eight genuinely distinct modules is a reasonable amount
-                of information to scan this way. */}
-            <div className="feature-grid">
-              {FEATURES.map((f) => (
-                <div className="feature-card" key={f.title}>
-                  <div className="fi">{f.icon}</div>
-                  <h4>{f.title}</h4>
-                  <p className="fprob">{f.problem}</p>
-                  <p>{f.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* E-ASSESSMENT SPOTLIGHT — every step below is a feature that exists in the app */}
-        <section className="spot" id="e-assessments">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={spotRef}>
-              <h2>E-assessments, from setting to results.</h2>
-              <p>Run timed online exams without losing control of how they are sat or marked.</p>
-            </div>
-            <div className="spot-grid">
-              <ol className="spot-steps">
-                {SPOT_STEPS.map((st, i) => (
-                  <li className="spot-step" key={st.title}>
-                    <span className="spot-n">{i + 1}</span>
-                    <div>
-                      <h4>{st.title}</h4>
-                      <p>{st.copy}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-              <div className="spot-visual">
-                <div className="spot-switch" role="tablist" aria-label="Assessment views">
-                  <button type="button" role="tab" aria-selected={spotView === "exam"} className={spotView === "exam" ? "on" : ""} onClick={() => setSpotView("exam")}>Student view</button>
-                  <button type="button" role="tab" aria-selected={spotView === "marking"} className={spotView === "marking" ? "on" : ""} onClick={() => setSpotView("marking")}>Marking view</button>
-                </div>
-                <Preview name={spotView} key={spotView} />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* PRODUCT EXPERIENCE TABS */}
-        <section className="tabs-section" id="solutions">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={tabsRef}>
-              <h2>Designed around the way your school works.</h2>
-              <p>One platform, built around the roles and routines that already run a school.</p>
-            </div>
-            <div className="tabs-bar" role="tablist" aria-label="Doravo Core product areas">
-              {TABS.map((t) => (
-                <button
-                  key={t.id}
-                  role="tab"
-                  aria-selected={activeTab === t.id}
-                  className={`tab-btn ${activeTab === t.id ? "active" : ""} ${autoTabs ? "auto" : ""}`}
-                  onClick={() => { setAutoTabs(false); setActiveTab(t.id); }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <div className="tab-panel tab-fade" role="tabpanel" key={activeTab}>
-              <div className="tab-copy">
-                <h3>{activeTabData.title}</h3>
-                <p>{activeTabData.desc}</p>
-                <ul>
-                  {activeTabData.bullets.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="tab-visual">
-                <Preview name={TAB_PREVIEW[activeTab] || "dashboard"} />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ROLE-BASED VALUE */}
-        <section id="roles">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={rolesRef}>
-              <h2>Built for everyone at your school.</h2>
-              <p>The same platform, presented around what each person actually needs to do.</p>
-            </div>
-            <div className="role-grid">
-              {ROLES.map((r) => (
-                <div className="role-card" key={r.tag}>
-                  <div className="role-tag">{r.tag}</div>
-                  <p>{r.copy}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <hr className="divider" />
-
-        {/* YOUR SCHOOL, YOUR IDENTITY
-            Rewritten per audit: previously led with implementation
-            details ("a login at one institution has no reach into
-            another institution's records") that read as architecture
-            explanation rather than a customer benefit. Multi-tenancy
-            is kept, but framed as "what this means for you" instead
-            of "how this is built". */}
-        <section id="about">
-          <div className="wrap institution-section reveal" ref={institutionRef}>
-            <div className="institution-copy">
-              <h2>Your school. Your own space.</h2>
-              <p>
-                Your logo, colours and report cards appear across your login screen, portals and
-                printed documents — so Doravo Core looks and feels like your school, not a
-                generic system.
-              </p>
-              <p>
-                If you're part of a school group, each campus gets its own dedicated workspace
-                and keeps its own identity, while still running on one platform underneath.
-              </p>
-            </div>
-            <div className="mock">
-              <div className="mock-head">
-                <img src="/assets/doravo-icon.png" alt="" style={{ height: 24 }} />
-                <span className="tag">Login — [Your school name]</span>
-              </div>
-              <div className="mock-slot"><span>Your logo &amp; colours</span></div>
-              <div className="mock-line w60"></div>
-              <div className="mock-line w80"></div>
-              <div className="mock-line w40"></div>
-              <p className="mock-caption">The same layout, your school's own look.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* TRUST & SECURITY — only capabilities that exist in the app */}
-        <section id="trust">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={trustRef}>
-              <h2>Built with control in mind.</h2>
-              <p>What the platform does today to keep school and exam data under your control.</p>
-            </div>
-            <div className="trust-grid">
-              {TRUST.map((t) => (
-                <div className="trust-card" key={t.title}>
-                  <h4>{t.title}</h4>
-                  <p>{t.copy}</p>
-                </div>
-              ))}
-            </div>
-            <p className="trust-note">
-              We only describe capabilities the platform has today and do not list certifications we have not earned.
-              Ask us about hosting and data handling during your demo.
-            </p>
-          </div>
-        </section>
-
-        <hr className="divider" />
-
-        {/* HOW IT WORKS */}
-        <section id="how-it-works">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={howRef}>
-              <h2>From first message to live school.</h2>
-              <p>Getting started with Doravo Core takes three simple steps.</p>
-            </div>
-            <div className="how-grid">
-              {HOW_STEPS.map((s) => (
-                <div className="how-card" key={s.n}>
-                  <div className="how-num">{s.n}</div>
-                  <h4>{s.title}</h4>
-                  <p>{s.copy}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <hr className="divider" />
-
-        {/* FAQ — mirrored in index.html's FAQPage structured data */}
-        <section id="faq">
-          <div className="wrap">
-            <div className="sec-head reveal" ref={faqRef}>
-              <h2>Frequently asked questions.</h2>
-              <p>Quick answers about Doravo Core.</p>
-            </div>
-            <div className="faq-list">
-              {FAQS.map((f, i) => (
-                <div className={`faq-item ${openFaq === i ? "open" : ""}`} key={f.q}>
-                  <button
-                    type="button"
-                    className="faq-q"
-                    aria-expanded={openFaq === i}
-                    onClick={() => setOpenFaq(openFaq === i ? -1 : i)}
-                  >
-                    {f.q}
-                    <span aria-hidden="true">+</span>
-                  </button>
-                  <div className="faq-a" role="region">
-                    <p>{f.a}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* CTA */}
-        <section id="contact">
-          <div className="wrap">
-            <div className="cta-band">
+        <section className="dv-sec" id="about">
+          <div className="wrap" ref={aboutRef}>
+            <h2 className="dv-big">Your school.<br /><em>Your</em> <span className="chip" aria-hidden="true" /> own space</h2>
+            <div className="dv-about-grid reveal" ref={gridRef}>
+              <div className="tag">Why Doravo Core</div>
+              <div className="tag">Built for school teams</div>
               <div>
-                <h2>Ready to move education forward?</h2>
-                <p>See how Doravo Core can bring your school's academic and administrative operations together.</p>
+                <p>Running a school shouldn't feel fragmented. Students, staff, assessments, attendance and communication share one connected workspace.</p>
+                <p>Your logo, colours and report cards appear across your login screen, portals and printed documents. School groups get a dedicated workspace per campus.</p>
               </div>
-              <div className="cta-buttons">
-                <a className="btn-wa pulse" href={WA_URL} target="_blank" rel="noopener noreferrer">
-                  <WaIcon /> Request a Demo on WhatsApp
-                </a>
-              </div>
-              <p className="cta-alt">
-                Prefer email? <a href={`mailto:${CONTACT_EMAIL}?subject=Doravo%20Core%20demo%20request`}>{CONTACT_EMAIL}</a>
-              </p>
             </div>
+          </div>
+        </section>
+
+        <section className="dv-sec dv-svc" id="features">
+          <div className="wrap">
+            <h2 className="dv-h2 reveal" ref={svcRef}>Everything your school needs, <em>connected</em></h2>
+            <div className="dv-cards">
+              {FEATURES.map((f) => (
+                <article className="dv-card" key={f.title}>
+                  <div className="fi">{f.icon}</div>
+                  <h3>{f.title}</h3>
+                  <p className="pr">{f.problem}</p>
+                  <p>{f.desc}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="dv-sec" id="platform">
+          <div className="wrap">
+            <div className="dv-stat-head">
+              <h2>One platform, <em>every role</em></h2>
+              <p>Built around the people who run a school: principals, registrars, examinations officers, bursars and ICT administrators.</p>
+              <a className="dv-btn light" href={WA_URL} target="_blank" rel="noopener noreferrer">Request a demo <Arrow /></a>
+            </div>
+            <div className="dv-bars" ref={barsRef}>
+              {COUNTS.map((c) => (
+                <div className="dv-bar" key={c.label}>
+                  <div className="n">{c.n}</div><b>{c.label}</b><span className="s">{c.sub}</span>
+                  <div className="dv-code" style={{ "--h": `${c.h}px` }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+        <Funnel alt />
+
+        <section className="dv-sec dv-light" id="e-assessments">
+          <div className="wrap" ref={stepsRef}>
+            <h2 className="dv-h2" style={{ maxWidth: "16ch" }}>E-assessments, from setting to <em>results</em></h2>
+            <p className="sub">Run timed online exams without losing control of how they are sat or marked.</p>
+            <div className="dv-steps">
+              {SPOT_STEPS.map((s) => (<div className="dv-step" key={s.title}><h3>{s.title}</h3><p>{s.copy}</p></div>))}
+            </div>
+            <h2 className="dv-h2" style={{ marginTop: 140, maxWidth: "16ch" }}>Built for everyone at <em>your school</em></h2>
+            <div className="dv-roles">
+              {ROLES.map((r) => (<div className="dv-role" key={r.tag}><h3>{r.tag}</h3><p>{r.copy}</p></div>))}
+            </div>
+          </div>
+        </section>
+
+        <section className="dv-sec" id="trust">
+          <div className="wrap">
+            <h2 className="dv-h2">Built with <em>control</em> in mind</h2>
+            <div className="dv-trust">
+              {TRUST.map((t) => (<div key={t.title}><h3>{t.title}</h3><p>{t.copy}</p></div>))}
+            </div>
+          </div>
+        </section>
+
+        <section className="dv-sec dv-light" id="how-it-works">
+          <div className="wrap">
+            <h2 className="dv-h2">From first message to <em>live school</em></h2>
+            <div className="dv-how">
+              {HOW_STEPS.map((s) => (<div key={s.n}><div className="n">{s.n}</div><h3>{s.title}</h3><p>{s.copy}</p></div>))}
+            </div>
+            <div id="faq" style={{ paddingTop: 120 }}>
+              <h2 className="dv-h2" ref={faqRef}>Frequently asked <em>questions</em></h2>
+              <div className="dv-faq">
+                {FAQS.map((f, i) => (
+                  <div className={`dv-q ${openFaq === i ? "open" : ""}`} key={f.q}>
+                    <button type="button" aria-expanded={openFaq === i} onClick={() => setOpenFaq(openFaq === i ? -1 : i)}>{f.q}<span className="pl" aria-hidden="true">+</span></button>
+                    <div className="a" role="region"><div><p>{f.a}</p></div></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="dv-cta" id="contact">
+          <Mesh />
+          <div>
+            <h2>Ready to move education <em>forward?</em></h2>
+            <p>See how Doravo Core can bring your school's academic and administrative operations together.</p>
+            <a className="dv-btn" href={WA_URL} target="_blank" rel="noopener noreferrer"><WaIcon /> Request a demo on WhatsApp</a>
+            <p style={{ marginTop: 16, fontSize: 13 }}>Prefer email? <a href={`mailto:${CONTACT_EMAIL}?subject=Doravo%20Core%20demo%20request`}>{CONTACT_EMAIL}</a></p>
           </div>
         </section>
       </main>
 
-      <footer>
+      <footer className="dv-foot">
         <div className="wrap">
-          <div className="foot-grid">
-            <div className="foot-brand">
-              <img src="/assets/doravo-core-lockup.png" alt="Doravo Core" style={{ height: 44, width: "auto" }} />
-              <p>Education management software for schools — built so each one keeps its own identity, with room to add campuses later.</p>
+          <div className="dv-foot-grid">
+            <div>
+              <img src="/assets/doravo-core-lockup.png" alt="Doravo Core" style={{ height: 44, width: "auto", filter: "brightness(0) invert(1)" }} />
+              <p>Education management software for schools, built so each one keeps its own identity, with room to add campuses later.</p>
             </div>
-            <div className="foot-cols">
-              <div className="foot-col">
-                <h5>Platform</h5>
-                <a href="#platform">Why Doravo Core</a>
-                <a href="#features">Features</a>
-                <a href="#solutions">Solutions</a>
-              </div>
-              <div className="foot-col">
-                <h5>Company</h5>
-                <a href="#about">About</a>
-                <a href="#faq">FAQ</a>
-                <a href="#contact">Contact</a>
-                <a href={WA_URL} target="_blank" rel="noopener noreferrer">WhatsApp {SITE.whatsappDisplay}</a>
-                <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-              </div>
-              <div className="foot-col">
-                <h5>Account</h5>
-                <SignInLink>Sign In</SignInLink>
-              </div>
+            <div className="dv-fcols">
+              <div><h5>Platform</h5><a href="#platform">Why Doravo Core</a><a href="#features">Features</a><a href="#e-assessments">E-assessments</a></div>
+              <div><h5>Company</h5><a href="#about">About</a><a href="#faq">FAQ</a><a href="#contact">Contact</a><a href={WA_URL} target="_blank" rel="noopener noreferrer">WhatsApp {SITE.whatsappDisplay}</a><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></div>
+              <div><h5>Account</h5><SignInLink>Sign In</SignInLink></div>
             </div>
           </div>
-          <div className="foot-bottom">
-            <span>&copy; 2026 Doravo. All rights reserved.</span>
-            <span>Moving Education Forward</span>
-          </div>
+          <div className="dv-fbot"><span>&copy; 2026 Doravo. All rights reserved.</span><span>Moving Education Forward</span></div>
         </div>
       </footer>
 
-      <a
-        className="dv-wa-float"
-        href={WA_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Request a demo on WhatsApp"
-      >
-        <WaIcon />
-      </a>
+      <a className="dv-wa" href={WA_URL} target="_blank" rel="noopener noreferrer" aria-label="Request a demo on WhatsApp"><WaIcon /></a>
       <ChatAssistant />
     </div>
   );
 }
-
-/* =========================================================
-   NOTES FOR NEXT STEPS (not implemented here, by design):
-
-   - Privacy Policy / Terms of Service: no routes exist for
-     these yet, so no footer links were added rather than
-     pointing at pages that don't exist. Add a Privacy/Terms
-     route and link it from the "Company" footer column once
-     that content exists.
-   - robots.txt / sitemap.xml: added as sibling files in this
-     delivery (robots.txt, sitemap.xml) — these are static files
-     served from the app root, not React components, so they
-     live alongside this file rather than inside Landing.jsx.
-     Both use SITE_URL's placeholder domain; update the domain
-     in sitemap.xml once the production domain is finalized.
-   - SITE_URL / CONTACT_EMAIL: see the SITE CONFIG block above —
-     both are placeholders (window.location.origin and
-     hello@doravo.core) that need real values before launch.
-   - Real screenshots: the hero visual and the per-tab preview
-     panel are still illustrative mockups (see inline TODOs at
-     each), since no actual product screenshots were supplied.
-     These are the two highest-impact visual swaps once
-     screenshots are available.
-   - Typography: kept Fraunces + Manrope rather than switching to
-     a single sans-serif family. A serif display face isn't
-     inherently less "SaaS" — it reads as more institutional/
-     editorial, which can suit a product sold to school
-     administrators rather than working against it. Worth a
-     second look once real screenshots are in place and you can
-     judge the whole page together, but not changed unilaterally
-     here since it's a bigger brand decision than a copy/structure
-     fix.
-   - No customer counts, testimonials, logos or ratings are
-     included, since none were supplied to report honestly.
-     The JSON-LD block intentionally omits aggregateRating for
-     the same reason.
-========================================================= */
