@@ -90,6 +90,16 @@ function writeLocalMarkingCache(assessmentId, snapshot) {
     /* storage full/unavailable/private-mode — the 30s server push still covers it */
   }
 }
+// The draft only needs the marked-up HTML of answers the teacher has actually
+// annotated; for the rest the original answer is re-rendered on restore.
+// Sending every answer's HTML made the snapshot multi-MB (413 / DB timeouts).
+function slimEssayHTML(essayHTML, highlights) {
+  const out = {};
+  for (const [k, v] of Object.entries(essayHTML || {})) {
+    if (Array.isArray(highlights?.[k]) && highlights[k].length) out[k] = v;
+  }
+  return out;
+}
 function clearLocalMarkingCache(assessmentId) {
   try {
     localStorage.removeItem(SESSION_CACHE_PREFIX + assessmentId);
@@ -1433,22 +1443,27 @@ export default function Marking() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scores, remarks, highlights, essayHTML, flags, dismissed, current?.id, assessmentId]);
 
+  const pushInFlightRef = useRef(false);
   const pushSessionSnapshot = useCallback(async () => {
     if (!assessmentId) return;
     const { scores: s2, remarks: r2, highlights: h2, essayHTML: e2, flags: f2, dismissed: d2 } = latestStateRef.current;
     const snapshot = {
-      scores: s2, remarks: r2, highlights: h2, essayHTML: e2, flags: f2,
+      scores: s2, remarks: r2, highlights: h2, essayHTML: slimEssayHTML(e2, h2), flags: f2,
       dismissed: Array.from(d2 || []),
       currentAnswerId: latestCurrentIdRef.current,
       savedAt: Date.now(),
     };
     writeLocalMarkingCache(assessmentId, snapshot);
+    if (pushInFlightRef.current) return; // don't stack large writes
+    pushInFlightRef.current = true;
     try {
       await API.put(`/e-assessments/marking-session/${assessmentId}`, { state: snapshot });
       sessionDirtyRef.current = false;
     } catch {
       /* best-effort — local cache already has it, the next tick (or another
          device's own push) will pick things up once connectivity returns */
+    } finally {
+      pushInFlightRef.current = false;
     }
   }, [assessmentId]);
 
@@ -1470,7 +1485,7 @@ export default function Marking() {
       if (!sessionDirtyRef.current) return;
       const { scores: s2, remarks: r2, highlights: h2, essayHTML: e2, flags: f2, dismissed: d2 } = latestStateRef.current;
       const snapshot = {
-        scores: s2, remarks: r2, highlights: h2, essayHTML: e2, flags: f2,
+        scores: s2, remarks: r2, highlights: h2, essayHTML: slimEssayHTML(e2, h2), flags: f2,
         dismissed: Array.from(d2 || []),
         currentAnswerId: latestCurrentIdRef.current,
         savedAt: Date.now(),
