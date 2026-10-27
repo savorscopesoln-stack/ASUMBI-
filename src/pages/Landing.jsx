@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import ChatAssistant, { WaIcon } from "../components/ChatAssistant";
-import LampPreloader from "../components/LampPreloader";
+import LampBackground from "../components/LampBackground";
 import { SITE, waLink } from "../config/site";
 import Preview from "../components/LandingPreviews";
 
@@ -12,11 +12,11 @@ import Preview from "../components/LandingPreviews";
    e-assessment spotlight, drawer, FAQ and chat assistant all
    come from the full landing page.
 
-   Motion comes from the "Orbid" remake: lamp-reveal preloader
-   (see components/LampPreloader.jsx) with percentage counter,
-   drifting reeded-glass gradient hero, tapered funnel bars,
-   barcode stats and an animated gradient chip in the big serif
-   statement.
+   Motion: a looping lamp-beam background behind the hero
+   (components/LampBackground.jsx, maroon palette only), tapered
+   funnel bars, barcode stats and an animated gradient chip in the
+   big serif statement. Everything animates transform/opacity only
+   so it stays smooth on phones.
 
    Styles are injected once as a single <style> tag. Selectors
    are written with a § placeholder that becomes .doravo-landing.
@@ -49,31 +49,16 @@ const injectLandingStyles = () => {
     § .wrap{ width:100%; max-width:1480px; margin:0 auto; padding:0 clamp(24px,4.2vw,76px); }
     § :focus-visible{ outline:2px solid var(--maroon); outline-offset:3px; }
 
-    /* ---------- preloader: counter, beams, lift-away ---------- */
-    § .pre{ position:fixed; inset:0; z-index:200; background:radial-gradient(120% 90% at 70% 60%,#6b1d1a,#2a0a0a 60%,#160505); overflow:hidden; transition:transform .9s cubic-bezier(.76,0,.24,1), visibility 0s .9s; }
-    § .pre.done{ transform:translateY(-100%); visibility:hidden; }
-    § .beam{ position:absolute; width:42vmax; height:18vmax; background:linear-gradient(90deg,rgba(255,170,150,.85),rgba(255,120,100,0) 80%); filter:blur(2px); transform-origin:0 50%; clip-path:polygon(0 48%,100% 0,100% 100%,0 52%); }
-    § .beam::after{ content:""; position:absolute; left:-14px; top:50%; width:28px; height:28px; margin-top:-14px; border-radius:50%; background:#fff; box-shadow:0 0 40px 14px rgba(255,200,180,.8); }
-    § .beam.a{ left:16%; top:42%; transform:rotate(18deg); animation:dvBeamA 3s ease-in-out infinite alternate; }
-    § .beam.b{ left:84%; top:34%; transform:rotate(160deg); animation:dvBeamB 3s ease-in-out infinite alternate; }
-    @keyframes dvBeamA{ to{ transform:rotate(30deg); } }
-    @keyframes dvBeamB{ to{ transform:rotate(148deg); } }
-    § .desk{ position:absolute; left:48%; bottom:24%; width:120px; height:4px; background:#1a0505; box-shadow:0 30px 0 -1px #1a0505; }
-    § .count{ position:absolute; right:clamp(20px,4vw,48px); bottom:clamp(14px,3vw,36px); font:italic 400 clamp(56px,9vw,120px)/1 'Fraunces',serif; color:#fff; }
-
-    /* ---------- drifting gradient + reeded glass ---------- */
-    § .mesh{ position:absolute; inset:-20%; filter:blur(30px); animation:dvHue 28s ease-in-out infinite alternate; pointer-events:none; }
-    § .mesh i{ position:absolute; border-radius:50%; }
-    § .mesh i:nth-child(1){ width:60%; height:70%; left:-5%; top:20%; background:#f08a4b; animation:dvDrift 18s ease-in-out infinite alternate; }
-    § .mesh i:nth-child(2){ width:50%; height:60%; right:-5%; bottom:-10%; background:#e5481c; animation:dvDrift 22s ease-in-out infinite alternate-reverse; }
-    § .mesh i:nth-child(3){ width:45%; height:50%; left:30%; top:-10%; background:#a82c34; animation:dvDrift 25s ease-in-out infinite alternate; }
-    § .mesh.maroon{ animation:none; }
-    § .mesh.maroon i:nth-child(1){ background:#a82c34; }
-    § .mesh.maroon i:nth-child(2){ background:#7A1B36; }
-    § .mesh.maroon i:nth-child(3){ background:#4A0E22; }
-    § .reed{ position:absolute; inset:0; background:repeating-linear-gradient(90deg,rgba(255,255,255,.1) 0 1px,rgba(0,0,0,.07) 1px 2px,transparent 2px 7px); mix-blend-mode:overlay; pointer-events:none; }
-    @keyframes dvDrift{ to{ transform:translate(12%,-10%) scale(1.15); } }
-    @keyframes dvHue{ 0%{ filter:blur(30px) hue-rotate(0); } 100%{ filter:blur(30px) hue-rotate(-62deg) saturate(.8) brightness(1.25); } }
+    /* ---------- soft gradient blobs + reeded glass (CTA band) ----------
+       No blur filters or blend modes: gradients give the soft edges and
+       only transform is animated, which keeps phones smooth. */
+    § .mesh{ position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+    § .mesh i{ position:absolute; border-radius:50%; will-change:transform; }
+    § .mesh i:nth-child(1){ width:60%; height:150%; left:-10%; top:-25%; background:radial-gradient(closest-side,rgba(168,44,52,.75),rgba(168,44,52,0)); animation:dvDrift 18s ease-in-out infinite alternate; }
+    § .mesh i:nth-child(2){ width:50%; height:130%; right:-8%; bottom:-30%; background:radial-gradient(closest-side,rgba(232,160,168,.28),rgba(232,160,168,0)); animation:dvDrift 22s ease-in-out infinite alternate-reverse; }
+    § .mesh i:nth-child(3){ width:45%; height:110%; left:30%; top:-35%; background:radial-gradient(closest-side,rgba(51,9,26,.85),rgba(51,9,26,0)); animation:dvDrift 25s ease-in-out infinite alternate; }
+    § .reed{ position:absolute; inset:0; background:repeating-linear-gradient(90deg,rgba(255,255,255,.06) 0 1px,rgba(0,0,0,.06) 1px 2px,transparent 2px 7px); pointer-events:none; }
+    @keyframes dvDrift{ to{ transform:translate3d(12%,-10%,0) scale(1.15); } }
 
     /* ---------- funnel bars ---------- */
     § .funnel{ background:#FFFFFF; padding:0 0 4px; margin-top:-1px; }
@@ -81,7 +66,7 @@ const injectLandingStyles = () => {
     § .funnel.in div{ transform:scaleX(1); }
 
     /* ---------- header ---------- */
-    § header{ position:sticky; top:0; z-index:50; background:rgba(255,255,255,0.96); backdrop-filter:blur(6px); border-top:3px solid var(--maroon); border-bottom:1px solid var(--line); box-shadow:0 1px 0 rgba(22,26,38,0.03), 0 8px 24px -18px rgba(22,26,38,0.25); }
+    § header{ position:sticky; top:0; z-index:50; background:rgba(255,255,255,0.98); border-top:3px solid var(--maroon); border-bottom:1px solid var(--line); box-shadow:0 1px 0 rgba(22,26,38,0.03), 0 8px 24px -18px rgba(22,26,38,0.25); }
     § .nav{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 0; }
     § .nav-left{ display:flex; align-items:center; gap:14px; min-width:0; }
     § .nav-right{ display:flex; align-items:center; gap:16px; }
@@ -147,20 +132,35 @@ const injectLandingStyles = () => {
     § .btn-wa.pulse{ animation:dvPulse 2.6s 3 1.2s; }
     @keyframes dvPulse{ 0%{ box-shadow:0 0 0 0 rgba(37,211,102,0.5); } 70%{ box-shadow:0 0 0 16px rgba(37,211,102,0); } 100%{ box-shadow:0 0 0 0 rgba(37,211,102,0); } }
 
-    /* ---------- hero (gradient + reeded glass) ---------- */
-    § .hero{ position:relative; overflow:hidden; background:#c9432b; padding:clamp(76px,7vw,112px) 0 clamp(68px,6vw,96px); }
+    /* ---------- hero (looping lamp background, maroon palette) ---------- */
+    § .hero{ position:relative; overflow:hidden; isolation:isolate; background:#4A0E22; padding:clamp(76px,7vw,112px) 0 clamp(68px,6vw,96px); }
+    § .hero{ --sceneH:clamp(190px,17vw,250px); }
+    § .hero-grid{ margin-bottom:calc(var(--sceneH) - 56px); }
     § .hero-grid{ position:relative; z-index:1; display:grid; grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr); gap:clamp(44px,5vw,88px); align-items:center; }
     § .eyebrow{ display:flex; align-items:center; gap:10px; font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:0.12em; color:var(--maroon-ink); margin-bottom:14px; }
     § .eyebrow::before{ content:""; width:26px; height:1px; background:var(--maroon-ink); }
-    § .hero h1{ font-size:clamp(44px,4.1vw,68px); line-height:1.08; max-width:17ch; color:#0a0a0a; }
-    § .hero h1 em{ color:var(--maroon-deep); }
-    § .hero .lede{ margin-top:20px; max-width:52ch; font-size:clamp(18px,1.25vw,21px); line-height:1.75; color:#1a0a08; }
+    § .hero .eyebrow{ color:#F3C0C6; }
+    § .hero .eyebrow::before{ background:#F3C0C6; }
+    § .hero h1{ font-size:clamp(44px,4.1vw,68px); line-height:1.08; max-width:17ch; color:#FFFFFF; }
+    § .hero h1 em{ color:#F3C0C6; }
+    § .hero .lede{ margin-top:20px; max-width:52ch; font-size:clamp(18px,1.25vw,21px); line-height:1.75; color:rgba(255,255,255,0.9); }
     § .hero-ctas{ display:flex; gap:14px; margin-top:30px; flex-wrap:wrap; }
-    § .hero .btn-ghost{ border-color:#111; color:#111; }
-    § .hero .btn-ghost:hover{ background:#111; color:#fff; }
-    § .hero-contact{ margin-top:16px; font-size:15px; color:#2a1411; }
-    § .hero-contact a{ color:var(--maroon-deep); font-weight:700; }
-    § .hero-note{ margin-top:18px; font-size:15px; color:#2a1411; }
+    § .hero .btn-ghost{ border-color:rgba(255,255,255,0.85); color:#FFFFFF; }
+    § .hero .btn-ghost:hover{ background:#FFFFFF; color:var(--maroon-deep); }
+    § .hero-contact{ margin-top:16px; font-size:15px; color:rgba(255,255,255,0.85); }
+    § .hero-contact a{ color:#FFFFFF; font-weight:700; }
+    § .hero-note{ margin-top:18px; font-size:15px; color:rgba(255,255,255,0.75); }
+    § .hero :focus-visible{ outline-color:#FFFFFF; }
+    § .hero .pv-cap{ color:#FFFFFF; opacity:0.75; }
+    § .hero .pv-cap::before{ background:#F3C0C6; }
+    /* hero text eases in on load (transform + opacity only) */
+    § .hero .eyebrow, § .hero h1, § .hero .lede, § .hero .hero-ctas, § .hero .hero-contact, § .hero .hero-note{ animation:dvRise .9s var(--ease) both; }
+    § .hero h1{ animation-delay:.08s; }
+    § .hero .lede{ animation-delay:.2s; }
+    § .hero .hero-ctas{ animation-delay:.3s; }
+    § .hero .hero-contact{ animation-delay:.38s; }
+    § .hero .hero-note{ animation-delay:.44s; }
+    @keyframes dvRise{ from{ opacity:0; transform:translate3d(0,22px,0); } to{ opacity:1; transform:none; } }
     § .hero-visual{ min-width:0; }
     § .product-frame{ background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 30px 70px -36px rgba(22,26,38,0.45); overflow:hidden; }
 
@@ -826,9 +826,9 @@ const Arrow = () => (
 );
 
 /* Drifting gradient blobs with a reeded-glass overlay. */
-const Mesh = ({ tone }) => (
+const Mesh = () => (
   <>
-    <div className={`mesh ${tone || ""}`} aria-hidden="true"><i /><i /><i /></div>
+    <div className="mesh" aria-hidden="true"><i /><i /><i /></div>
     <div className="reed" aria-hidden="true" />
   </>
 );
@@ -855,18 +855,6 @@ export default function Landing() {
   const [spotView, setSpotView] = useState("exam");
   const [autoTabs, setAutoTabs] = useState(true);
 
-  // Preloader plays once per session and never for reduced-motion visitors.
-  const [skipPre] = useState(() => {
-    if (typeof window === "undefined") return true;
-    try {
-      return !!(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || sessionStorage.getItem("dv-pre"));
-    } catch {
-      return true;
-    }
-  });
-  const [pct, setPct] = useState(skipPre ? 100 : 0);
-  const [loaded, setLoaded] = useState(skipPre);
-
   // Styles go in before first paint so the preloader never flashes unstyled.
   useLayoutEffect(() => { injectLandingStyles(); }, []);
   useEffect(() => { injectSEO(); }, []);
@@ -883,34 +871,6 @@ export default function Landing() {
   const faqRef = useReveal();
   const statsRef = useReveal();
   const barsRef = useReveal();
-
-  // Lamp reveal: counts to 100, flashes, then hands over to the hero.
-  useEffect(() => {
-    if (skipPre) return undefined;
-    document.body.style.overflow = "hidden";
-    const start = performance.now();
-    let raf;
-    let timer;
-    const tick = (t) => {
-      const p = Math.min(1, (t - start) / 2600);
-      setPct(Math.round(p * p * (3 - 2 * p) * 100));
-      if (p < 1) {
-        raf = requestAnimationFrame(tick);
-      } else {
-        timer = setTimeout(() => {
-          setLoaded(true);
-          document.body.style.overflow = "";
-          try { sessionStorage.setItem("dv-pre", "1"); } catch { /* storage unavailable */ }
-        }, 700);
-      }
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(timer);
-      document.body.style.overflow = "";
-    };
-  }, [skipPre]);
 
   // Staggered scroll reveal for cards (set before paint so there is no flash).
   useLayoutEffect(() => {
@@ -982,10 +942,7 @@ export default function Landing() {
   }, [menuOpen]);
 
   return (
-    <div className={`doravo-landing ${loaded ? "lamp-on" : "lamp-off"}`}>
-      {/* LAMP REVEAL PRELOADER */}
-      <LampPreloader pct={pct} loaded={loaded} />
-
+    <div className="doravo-landing">
       <header>
         <div className="wrap nav">
           <div className="nav-left">
@@ -1030,8 +987,8 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* SIDE MENU — rendered outside <header> because the header's backdrop-filter
-          would otherwise become the containing block for this fixed panel. */}
+      {/* SIDE MENU — rendered outside <header> so the sticky header never clips or
+          re-parents this fixed panel. */}
       <div className={`dv-overlay ${menuOpen ? "open" : ""}`} onClick={closeMenuAndRefocus} aria-hidden="true" />
       <aside
         id="site-menu"
@@ -1073,9 +1030,9 @@ export default function Landing() {
       </aside>
 
       <main id="top">
-        {/* HERO — drifting gradient and reeded glass behind the full layout */}
+        {/* HERO — looping lamp-beam background behind the full layout */}
         <section className="hero">
-          <Mesh />
+          <LampBackground />
           <div className="wrap hero-grid" ref={heroRef}>
             <div>
               <p className="eyebrow">School management &amp; e-examinations</p>
@@ -1376,7 +1333,7 @@ export default function Landing() {
         <section id="contact">
           <div className="wrap">
             <div className="cta-band">
-              <Mesh tone="maroon" />
+              <Mesh />
               <div>
                 <h2>Ready to move education <em>forward?</em></h2>
                 <p>See how Doravo Core can bring your school's academic and administrative operations together.</p>
@@ -1454,7 +1411,6 @@ export default function Landing() {
      and the JSON-LD omits aggregateRating, because none exist
      to report honestly. The barcode stats count the product's
      own modules, portals and controls.
-   - The lamp-reveal preloader lives in components/LampPreloader.jsx.
-     The old .pre / .beam / .desk / .count CSS above is unused and
-     can be deleted.
+   - The hero's looping lamp background lives in
+     components/LampBackground.jsx (no preloader any more).
 ========================================================= */
