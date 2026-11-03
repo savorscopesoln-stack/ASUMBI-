@@ -31,6 +31,7 @@ export const PAGES = [
   { key: "Website",          label: "Website",             route: "/website" },
   { key: "School Settings",  label: "School Settings",     route: "/school-settings" },
   { key: "Wallet",           label: "Examination Wallet",  route: "/wallet" },
+  { key: "LMS",              label: "LMS",                 route: "/lms" },
 ];
 
 export const PAGE_KEYS = PAGES.map((p) => p.key);

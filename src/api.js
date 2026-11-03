@@ -34,6 +34,13 @@ export const resolveFileUrl = resolvePhotoUrl;
 // ================================
 // AXIOS INSTANCE
 // ================================
+// 403 codes the LMS uses for ordinary refusals (see backend/utils/lmsPermissions.js,
+// lmsEnrolment.js, lmsApproval.js). None of these mean "your session is invalid".
+export const LMS_REFUSAL_CODES = new Set([
+  "LMS_FORBIDDEN", "COURSE_ACCESS_DENIED", "ENROLMENT_CLOSED",
+  "REENROL_BLOCKED", "STUDENT_INACTIVE", "SELF_APPROVAL",
+]);
+
 const API = axios.create({
   baseURL: BASE_URL,
   headers: {
@@ -148,6 +155,32 @@ API.interceptors.response.use(
     // the restriction off the student can carry straight on.
     // ============================
     if (status === 403 && error.response?.data?.code === "DEVICE_NOT_ALLOWED") {
+      return Promise.reject(error);
+    }
+
+    // ============================
+    // MODULE NOT LICENSED (LMS etc.)
+    // A 403 that is NOT an auth failure: the session is fine, the school just
+    // has not bought this module/feature. Must not log the user out. Pages show
+    // an upgrade prompt from error.response.data.{module,flag}.
+    // ============================
+    if (status === 403 && error.response?.data?.code === "MODULE_NOT_LICENSED") {
+      return Promise.reject(error);
+    }
+
+    // ============================
+    // LMS PERMISSION REFUSALS
+    // The LMS answers "you may not do this" / "not your course" / "enrolment
+    // closed" with 403 + a code. The session is fine; the user must stay signed
+    // in and the page shows the message. Scoped to /lms URLs AND an explicit
+    // code list, so genuine session failures (which also use 403 in the auth
+    // middleware) still log the user out.
+    // ============================
+    if (
+      status === 403 &&
+      LMS_REFUSAL_CODES.has(error.response?.data?.code) &&
+      String(error.config?.url || "").replace(/^\/api/, "").startsWith("/lms")
+    ) {
       return Promise.reject(error);
     }
 

@@ -5,8 +5,9 @@ import { usePortalPageAccess } from "../../hooks/usePortalPageAccess";
 import {
   LayoutDashboard, UserRound, Bell, BarChart3, FileText, MonitorCheck,
   PenSquare, CalendarCheck, GraduationCap, ClipboardCheck, Wrench, Trophy,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut, Sun, Moon,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut, Sun, Moon, BookOpen,
 } from "lucide-react";
+import useLmsLicence from "../../hooks/useLmsLicence";
 import useUnreadNotifications from "../../hooks/useUnreadNotifications";
 
 
@@ -131,6 +132,8 @@ export const NAV_GROUPS = [
     label: "Academics",
     items: [
       { name: "Marks Entry",   path: "/teacher/marks",         Icon: PenSquare },
+      // Separately licensed: shown only when the school has the LMS (see visibleNavGroups).
+      { name: "Courses",       path: "/teacher/courses",       Icon: BookOpen, lms: true },
       { name: "Assessments",   path: "/teacher/assessments",   Icon: ClipboardCheck },
       { name: "E-Assessments", path: "/teacher/e-assessments", Icon: MonitorCheck },
       { name: "Practicum",     path: "/teacher/practicum",     Icon: Wrench },
@@ -174,9 +177,10 @@ export default function TeacherLayout() {
   // Before the disabled-pages list has loaded, isEnabled() would say
   // "yes" to everything — showing every nav item for a moment even if
   // an admin turned some off. Show nothing until we actually know.
+  const lmsLicence = useLmsLicence();
   const visibleNavGroups = pagesLoaded
     ? NAV_GROUPS
-        .map((group) => ({ ...group, items: group.items.filter((item) => isEnabled(item.path)) }))
+        .map((group) => ({ ...group, items: group.items.filter((item) => isEnabled(item.path) && (!item.lms || lmsLicence.enabled)) }))
         .filter((group) => group.items.length > 0)
     : [];
 

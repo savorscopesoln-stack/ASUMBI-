@@ -14,6 +14,12 @@ import useSessionTimeout from "./hooks/useSessionTimeout";
 ========================================================= */
 import Dashboard from "./pages/Dashboard";
 import InstitutionWallet from "./pages/InstitutionWallet";
+import useTenantPageAccess from "./hooks/useTenantPageAccess";
+import LmsAdmin from "./pages/LmsAdmin";
+import TeacherCourses from "./pages/lms/TeacherCourses";
+import StudentCourses from "./pages/lms/StudentCourses";
+import CourseLessons from "./pages/lms/CourseLessons";
+import CoursePlayer from "./pages/lms/CoursePlayer";
 import FinanceDashboard from "./pages/finance/FinanceDashboard";
 import Students from "./pages/Students";
 import Teachers from "./pages/Teachers";
@@ -137,12 +143,16 @@ const ROLES = {
    PROTECTED ROUTE
 ========================================================= */
 
+const ADMIN_PORTAL_ROLES = ["admin", "sub_admin", "sub_admin_2", "module_admin"];
+
 const ProtectedRoute = ({
   children,
   allowedRoles = [],
   page, // page key from permissions.js — only enforced for sub_admin
 }) => {
   const user = getUser();
+  // Pages Doravo Finance switched off for this institution: blocked for every admin tier, even by URL.
+  const { loaded: pageAccessLoaded, isAdminPageOff } = useTenantPageAccess();
 
   const role = String(
     user?.role || ""
@@ -207,6 +217,11 @@ const ProtectedRoute = ({
         replace
       />
     );
+  }
+
+  if (page && ADMIN_PORTAL_ROLES.includes(role)) {
+    if (!pageAccessLoaded) return null; // wait for the list so a switched-off page never flashes
+    if (isAdminPageOff(page)) return <Navigate to="/dashboard" replace />;
   }
 
   // A sub_admin (either tier) or module_admin only gets in if this
@@ -440,6 +455,18 @@ export default function App() {
             page="Dashboard"
           >
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/lms"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="LMS"
+          >
+            <LmsAdmin />
           </ProtectedRoute>
         }
       />
@@ -822,6 +849,16 @@ export default function App() {
         />
 
         <Route
+          path="courses"
+          element={<TeacherCourses />}
+        />
+
+        <Route
+          path="courses/:courseId/lessons"
+          element={<CourseLessons />}
+        />
+
+        <Route
           path="reports"
           element={<TeacherReports />}
         />
@@ -917,6 +954,16 @@ export default function App() {
         <Route
           path="marks"
           element={<StudentMarks />}
+        />
+
+        <Route
+          path="courses"
+          element={<StudentCourses />}
+        />
+
+        <Route
+          path="courses/:courseId/learn"
+          element={<CoursePlayer />}
         />
 
         <Route

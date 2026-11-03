@@ -4,6 +4,7 @@ import { useTheme } from "../../context/ThemeContext";
 import AiFinanceWalletPanel from "../../components/aiMarking/AiFinanceWalletPanel";
 import AiFinanceAnalyticsPanel from "../../components/aiMarking/AiFinanceAnalyticsPanel";
 import TrialPanel from "../../components/finance/TrialPanel";
+import PageAccessPanel from "../../components/finance/PageAccessPanel";
 
 /* =========================================================================
    DORAVO FINANCE DASHBOARD
@@ -98,7 +99,7 @@ const s = {
   }),
 };
 
-const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "Trial Period", "AI Marking Wallet", "AI Marking Analytics"];
+const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "Trial Period", "Page Access", "AI Marking Wallet", "AI Marking Analytics"];
 
 const EMPTY_ITEM = { description: "", quantity: "1", unitPrice: "" };
 const EMPTY_INVOICE_FORM = {
@@ -529,6 +530,10 @@ export default function FinanceDashboard() {
 
             {tab === "Trial Period" && (
               <TrialPanel key={selected} api={API} tenantKey={selected} onChanged={refreshInstitutions} />
+            )}
+
+            {tab === "Page Access" && (
+              <PageAccessPanel key={selected} api={API} tenantKey={selected} />
             )}
 
             {tab === "AI Marking Wallet" && (
