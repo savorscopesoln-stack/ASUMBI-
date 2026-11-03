@@ -78,7 +78,7 @@ export default function LessonEditor({ courseId, lessonId, lessons, onListChange
         onChange={(t) => { if (t !== "content" && dirty && !window.confirm("You have unsaved changes to the content. Leave this tab anyway? They stay here until you save or switch lessons.")) return; setMsg(null); setTab(t); }} />
       <Notice msg={msg} />
       {conflict && (
-        <div role="alert" style={{ ...S.box, borderColor: "#b91c1c", marginBottom: 12 }}>
+        <div role="alert" style={{ ...S.box, borderColor: C.bad, marginBottom: 12 }}>
           <p style={{ margin: "0 0 8px" }}>Someone else saved this lesson after you opened it. Your unsaved changes were NOT saved, and nothing was overwritten.</p>
           <button type="button" style={S.btnPrimary} onClick={() => { if (window.confirm("Reload the latest version? Your unsaved changes in this lesson will be lost.")) load(); }}>Reload latest</button>
         </div>
@@ -87,10 +87,10 @@ export default function LessonEditor({ courseId, lessonId, lessons, onListChange
       {tab === "content" && (
         <>
           <BlockEditorList courseId={courseId} blocks={blocks} setBlocks={editBlocks} setMsg={setMsg} />
-          {problems.length > 0 && <ul style={{ color: "#b45309", fontSize: 13, paddingLeft: 18 }}>{problems.slice(0, 3).map((p) => <li key={p}>{p}</li>)}</ul>}
+          {problems.length > 0 && <ul style={{ color: C.warn, fontSize: 13, paddingLeft: 18 }}>{problems.slice(0, 3).map((p) => <li key={p}>{p}</li>)}</ul>}
           <div style={{ position: "sticky", bottom: 0, background: C.card, padding: "10px 0", marginTop: 14, borderTop: `1px solid ${C.border}`, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <button type="button" style={S.btnPrimary} disabled={saving || !dirty || conflict} onClick={saveContent}>{saving ? "Saving…" : "Save content"}</button>
-            <span aria-live="polite" style={{ fontSize: 13, color: dirty ? "#b45309" : "#15803d" }}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
+            <span aria-live="polite" style={{ fontSize: 13, color: dirty ? C.warn : C.ok }}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
           </div>
         </>
       )}
@@ -199,7 +199,7 @@ function Prerequisites({ base, lessonId, lessons, setMsg }) {
           ))}
         </div>
       )}
-      {ids && others.length > 0 && <div style={{ marginTop: 10 }}><button type="button" style={S.btnPrimary} disabled={busy || ids.size > 10} onClick={save}>Save prerequisites</button>{ids.size > 10 && <span role="alert" style={{ marginLeft: 10, fontSize: 13, color: "#b91c1c" }}>Choose at most 10.</span>}</div>}
+      {ids && others.length > 0 && <div style={{ marginTop: 10 }}><button type="button" style={S.btnPrimary} disabled={busy || ids.size > 10} onClick={save}>Save prerequisites</button>{ids.size > 10 && <span role="alert" style={{ marginLeft: 10, fontSize: 13, color: C.bad }}>Choose at most 10.</span>}</div>}
     </section>
   );
 }
@@ -244,7 +244,7 @@ function Preview({ base, dirty }) {
     API.get(`${base}/preview`).then((r) => { if (alive) setData(r.data); }).catch((e) => { if (alive) setErr(errText(e, "Could not load the preview.")); });
     return () => { alive = false; };
   }, [base]);
-  if (err) return <p role="alert" style={{ color: "#b91c1c" }}>{err}</p>;
+  if (err) return <p role="alert" style={{ color: C.bad }}>{err}</p>;
   if (!data) return <Skeleton rows={2} />;
   const p = data.preview || {};
   return (

@@ -71,7 +71,7 @@ function CreateForm({ label, canTemplate, onCreated, onCancel }) {
           </div>
         )}
       </div>
-      {err && <p role="alert" style={{ color: "#b91c1c", fontSize: 14, margin: "10px 0 0" }}>{err}</p>}
+      {err && <p role="alert" style={{ color: C.bad, fontSize: 14, margin: "10px 0 0" }}>{err}</p>}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         <button type="submit" style={S.btnPrimary} disabled={saving}>{saving ? "Saving…" : "Create draft"}</button>
         <button type="button" style={S.btn} onClick={onCancel} disabled={saving}>Cancel</button>

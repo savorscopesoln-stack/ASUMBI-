@@ -21,7 +21,7 @@ const PORTALS = [
 const cleanMap = (d = {}) => ({ admin: d.admin || [], student: d.student || [], teacher: d.teacher || [] });
 const btn = (kind) => ({
   padding: "9px 16px", borderRadius: 10, border: kind === "ghost" ? "1px solid var(--border)" : "none", fontWeight: 700, cursor: "pointer", fontSize: 14,
-  background: kind === "ghost" ? "var(--card-elevated)" : "var(--primary)", color: kind === "ghost" ? "var(--text-secondary)" : "#fff",
+  background: kind === "ghost" ? "var(--card-elevated)" : "var(--primary)", color: kind === "ghost" ? "var(--text-secondary)" : "var(--card)",
 });
 
 export default function PageAccessPanel({ api, tenantKey }) {

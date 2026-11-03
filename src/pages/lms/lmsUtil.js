@@ -1,22 +1,27 @@
 import { useEffect, useState } from "react";
 import API from "../../api";
 import { isModuleNotLicensed } from "../../components/UpgradePrompt";
+import { ensureThemeTokens } from "../../utils/themeTokens";
+
+ensureThemeTokens();
 
 /* Non-component helpers for the LMS screens (L2.6): theme colours, shared styles, error text and hooks.
-   Colours come from the portal's CSS variables (with light fallbacks) so the screens follow light/dark theme. */
+   Colours come from the system design tokens (--card, --primary, --text-muted ...), so the screens match the rest of the portal in light and dark. */
 
 export const C = {
-  card: "var(--card, #fff)", border: "var(--border, #E2E5EA)", text: "var(--text, #0f172a)",
-  muted: "var(--muted, #475569)", accent: "var(--accent, #1d4ed8)",
+  card: "var(--card, #fff)", border: "var(--border, #E2E5EA)", text: "var(--text, #0B0F19)",
+  muted: "var(--text-muted, #64748B)", accent: "var(--primary, #8B1E2D)",
+  ok: "var(--success, #15803D)", bad: "var(--destructive, #DC2626)", warn: "var(--warning, #B45309)",
+  tint: "var(--primary-tint, #FBEAEC)", elevated: "var(--card-elevated, #fff)",
 };
 export const S = {
   page: { maxWidth: 1000, margin: "0 auto", padding: "4px 0 40px", color: C.text },
   h1: { fontSize: 22, margin: "0 0 4px" },
   sub: { margin: "0 0 16px", color: C.muted, fontSize: 14 },
-  box: { border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, background: C.card },
+  box: { border: `1px solid ${C.border}`, borderRadius: "var(--radius, 14px)", padding: 14, background: C.card, boxShadow: "var(--shadow-sm)" },
   input: { padding: "9px 10px", border: `1px solid ${C.border}`, borderRadius: 8, background: C.card, color: C.text, fontSize: 14, boxSizing: "border-box", minHeight: 40 },
   btn: { padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, cursor: "pointer", fontSize: 14, minHeight: 40 },
-  btnPrimary: { padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.accent}`, background: C.accent, color: "#fff", cursor: "pointer", fontSize: 14, minHeight: 40 },
+  btnPrimary: { padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.accent}`, background: C.accent, color: C.card, cursor: "pointer", fontSize: 14, minHeight: 40 },
   label: { display: "block", fontSize: 13, fontWeight: 600, margin: "10px 0 4px" },
 };
 

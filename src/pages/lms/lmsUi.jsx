@@ -4,11 +4,11 @@ import { C, S } from "./lmsUtil";
 /* Small shared components for the LMS screens (L2.6). Helpers live in lmsUtil.js. */
 
 const BADGE = {
-  draft: ["Draft", "#64748b"], pending: ["Waiting for approval", "#b45309"], published: ["Published", "#15803d"],
-  archived: ["Archived", "#475569"], active: ["Enrolled", "#15803d"],
+  draft: ["Draft", C.muted], pending: ["Waiting for approval", C.warn], published: ["Published", C.ok],
+  archived: ["Archived", C.muted], active: ["Enrolled", C.ok],
 };
 export function StatusBadge({ status }) {
-  const [text, colour] = BADGE[status] || [status, "#475569"];
+  const [text, colour] = BADGE[status] || [status, C.muted];
   return <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 12, fontWeight: 600, color: colour, border: `1px solid ${colour}` }}>{text}</span>;
 }
 
@@ -29,7 +29,7 @@ export function Notice({ msg }) {
   if (!msg) return <div aria-live="polite" style={{ minHeight: 0 }} />;
   return (
     <div role={msg.ok ? "status" : "alert"} aria-live={msg.ok ? "polite" : "assertive"}
-      style={{ margin: "0 0 12px", padding: "10px 12px", borderRadius: 8, fontSize: 14, border: `1px solid ${msg.ok ? "#15803d" : "#b91c1c"}`, color: msg.ok ? "#15803d" : "#b91c1c", background: C.card }}>
+      style={{ margin: "0 0 12px", padding: "10px 12px", borderRadius: 8, fontSize: 14, border: `1px solid ${msg.ok ? C.ok : C.bad}`, color: msg.ok ? C.ok : C.bad, background: C.card }}>
       {msg.text}
     </div>
   );

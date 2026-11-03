@@ -5,7 +5,10 @@ import AiFinanceWalletPanel from "../../components/aiMarking/AiFinanceWalletPane
 import AiFinanceAnalyticsPanel from "../../components/aiMarking/AiFinanceAnalyticsPanel";
 import TrialPanel from "../../components/finance/TrialPanel";
 import PageAccessPanel from "../../components/finance/PageAccessPanel";
+<<<<<<< HEAD
 import ModulesPanel from "../../components/finance/ModulesPanel";
+=======
+>>>>>>> e5aa8023af08addb67ff48a7c2ecf866b1f102ed
 
 /* =========================================================================
    DORAVO FINANCE DASHBOARD
@@ -100,7 +103,11 @@ const s = {
   }),
 };
 
+<<<<<<< HEAD
 const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "Trial Period", "LMS Licence", "Page Access", "AI Marking Wallet", "AI Marking Analytics"];
+=======
+const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "Trial Period", "Page Access", "AI Marking Wallet", "AI Marking Analytics"];
+>>>>>>> e5aa8023af08addb67ff48a7c2ecf866b1f102ed
 
 const EMPTY_ITEM = { description: "", quantity: "1", unitPrice: "" };
 const EMPTY_INVOICE_FORM = {
@@ -533,10 +540,13 @@ export default function FinanceDashboard() {
               <TrialPanel key={selected} api={API} tenantKey={selected} onChanged={refreshInstitutions} />
             )}
 
+<<<<<<< HEAD
             {tab === "LMS Licence" && (
               <ModulesPanel key={selected} api={API} tenantKey={selected} />
             )}
 
+=======
+>>>>>>> e5aa8023af08addb67ff48a7c2ecf866b1f102ed
             {tab === "Page Access" && (
               <PageAccessPanel key={selected} api={API} tenantKey={selected} />
             )}

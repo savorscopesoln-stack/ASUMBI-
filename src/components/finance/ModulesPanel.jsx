@@ -9,7 +9,7 @@ const ADDON_LABELS = { lms_offline: "Offline use", lms_guardian: "Guardian view"
 const btn = (kind) => ({
   padding: "9px 16px", borderRadius: 10, border: kind === "ghost" ? "1px solid var(--border)" : "none", fontWeight: 700, cursor: "pointer", fontSize: 14,
   background: kind === "danger" ? "var(--destructive)" : kind === "ghost" ? "var(--card-elevated)" : "var(--primary)",
-  color: kind === "ghost" ? "var(--text-secondary)" : "#fff",
+  color: kind === "ghost" ? "var(--text-secondary)" : "var(--card)",
 });
 const field = { width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, marginBottom: 10 };
 

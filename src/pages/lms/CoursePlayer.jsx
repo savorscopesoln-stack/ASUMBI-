@@ -176,7 +176,7 @@ function LessonPane({ base, lessonId, prev, next, onOpen, onChanged }) {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 20, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
         {prev && <button type="button" style={S.btn} disabled={prev.locked} onClick={() => onOpen(prev.id)}>← Previous</button>}
         {done
-          ? <span role="status" style={{ color: "#15803d", fontWeight: 600 }}>Completed</span>
+          ? <span role="status" style={{ color: C.ok, fontWeight: 600 }}>Completed</span>
           : rule === "view"
             ? <span style={{ color: C.muted, fontSize: 14 }}>This lesson completes when you open it.</span>
             : <button type="button" style={S.btnPrimary} disabled={busy} onClick={complete}>{busy ? "Saving…" : rule === "min_time" ? "Mark complete (needs minimum time)" : "Mark complete"}</button>}
