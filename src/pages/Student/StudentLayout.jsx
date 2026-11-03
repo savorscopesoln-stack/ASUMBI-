@@ -7,8 +7,9 @@ import {
   LayoutDashboard, UserRound, Bell, BarChart3, FileText, MonitorCheck,
   Trophy, CalendarDays, CalendarCheck, Wallet, Utensils, DoorOpen,
   Settings, ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut,
-  Sun, Moon, GraduationCap, Vote,
+  Sun, Moon, GraduationCap, Vote, BookOpen,
 } from "lucide-react";
+import useLmsLicence from "../../hooks/useLmsLicence";
 
 /* ─── shared design-token stylesheet — identical id/tokens to the
    admin dashboard so both layouts render from one consistent
@@ -133,6 +134,8 @@ export const NAV_GROUPS = [
   {
     label: "Academics",
     items: [
+      // Separately licensed: shown only when the school has the LMS (see visibleNavGroups).
+      { name: "Courses",          path: "/student/courses",        Icon: BookOpen, lms: true },
       { name: "Marks & Grades",   path: "/student/marks",          Icon: BarChart3 },
       { name: "Report Card",      path: "/student/report",         Icon: FileText },
       { name: "E-Assessments",    path: "/student/e-assessments",  Icon: MonitorCheck },
@@ -179,9 +182,10 @@ export default function StudentLayout() {
   // Before the disabled-pages list has loaded, isEnabled() would say
   // "yes" to everything — showing every nav item for a moment even if
   // an admin turned some off. Show nothing until we actually know.
+  const lmsLicence = useLmsLicence();
   const visibleNavGroups = pagesLoaded
     ? NAV_GROUPS
-        .map((group) => ({ ...group, items: group.items.filter((item) => isEnabled(item.path)) }))
+        .map((group) => ({ ...group, items: group.items.filter((item) => isEnabled(item.path) && (!item.lms || lmsLicence.enabled)) }))
         .filter((group) => group.items.length > 0)
     : [];
 

@@ -48,6 +48,8 @@ export default function PortalPages() {
   }, [settings]);
 
   const isEnabled = (portal, path) => enabledMap[`${portal}:${path}`] !== false;
+  // Pages Doravo Finance switched off for this institution: the school cannot switch them back on.
+  const financeLocked = useMemo(() => new Set(settings.filter((s) => s.finance_locked).map((s) => `${s.portal}:${s.page_key}`)), [settings]);
 
   const toggle = async (portal, path, current) => {
     const nextEnabled = !current;
@@ -95,13 +97,14 @@ export default function PortalPages() {
             <div style={styles.pageList}>
               {items.map((p) => {
                 const enabled = isEnabled(portal, p.path);
-                const locked = LOCKED_PATHS.has(p.path);
+                const byFinance = financeLocked.has(`${portal}:${p.path}`);
+                const locked = LOCKED_PATHS.has(p.path) || byFinance;
                 const key = `${portal}:${p.path}`;
                 return (
                   <div key={p.path} style={styles.pageRow}>
                     <div>
                       <div style={styles.pageName}>{p.label}</div>
-                      <div style={styles.pagePath}>{p.path}{locked ? " · always on" : ""}</div>
+                      <div style={styles.pagePath}>{p.path}{byFinance ? " · switched off by Doravo" : locked ? " · always on" : ""}</div>
                     </div>
                     <button
                       onClick={() => !locked && toggle(portal, p.path, enabled)}
@@ -113,7 +116,7 @@ export default function PortalPages() {
                         cursor: locked ? "not-allowed" : "pointer",
                       }}
                       aria-label={enabled ? `Disable ${p.label}` : `Enable ${p.label}`}
-                      title={locked ? "This is the portal's landing page and can't be disabled" : undefined}
+                      title={byFinance ? "Switched off for your institution by Doravo" : locked ? "This is the portal's landing page and can't be disabled" : undefined}
                     >
                       <span style={{ ...styles.knob, transform: enabled ? "translateX(18px)" : "translateX(0)" }} />
                     </button>

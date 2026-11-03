@@ -1,3 +1,4 @@
+import useTenantPageAccess from "../hooks/useTenantPageAccess";
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import API from "../api";
 import {
@@ -12,7 +13,7 @@ import {
   Sun, Moon, Menu, X, LogOut, Search, Download, RefreshCw, Upload,
   Pencil, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, Loader2,
   Award, Activity, Inbox, KeyRound, Bell, Settings, Vote, SlidersHorizontal,
-  UserRoundCog, Globe, Building2, Plus, Wallet,
+  UserRoundCog, Globe, Building2, Plus, Wallet, BookOpen,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { hasPage } from "../permissions";
@@ -193,6 +194,8 @@ const NAV_GROUPS = [
       // distribute their own credits, but never mint them (that's
       // Doravo Finance's separate, stricter financeOnly dashboard).
       { name: "Wallet", Icon: Wallet },
+      // Separately licensed module: hidden unless /api/tenant/modules says lms is enabled (see visibleNavGroups).
+      { name: "LMS", Icon: BookOpen },
       // Not part of the grantable sub-admin PAGE_KEYS list (see
       // permissions.js) on purpose — hasPage() only returns true for
       // this key when role === "admin" (its unconditional bypass), so
@@ -223,6 +226,7 @@ const ROUTES = {
   Website:"/website",
   "School Settings":"/school-settings",
   Wallet:"/wallet",
+  LMS:"/lms",
 };
 
 const formatYear = (y) => {
@@ -283,10 +287,21 @@ function Dashboard() {
      they're gated by tier (admin + module_admin, the two full-
      capability roles) rather than by an individual grant. */
   const FULL_ADMIN_ONLY_NAV_ITEMS = ["Portal Pages", "Notification Settings"];
+  // Licensed modules (decision D-001). Unlicensed = no menu item (the API blocks it regardless).
+  const [licensedModules, setLicensedModules] = useState({});
+  useEffect(() => {
+    let alive = true;
+    API.get("/tenant/modules").then((r) => { if (alive) setLicensedModules(r.data?.modules || {}); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  // Pages Doravo Finance switched off for this institution (Finance -> Page Access). Hidden for every admin tier.
+  const { isAdminPageOff } = useTenantPageAccess();
   const visibleNavGroups = NAV_GROUPS
     .map((group) => ({
       ...group,
       items: group.items.filter((item) =>
+        item.name === "LMS" && !licensedModules?.lms?.enabled ? false :
+        isAdminPageOff(item.name) ? false :
         FULL_ADMIN_ONLY_NAV_ITEMS.includes(item.name)
           ? ["admin", "module_admin"].includes(String(user?.role || "").toLowerCase())
           : hasPage(user, item.name)
