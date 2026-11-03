@@ -16,6 +16,7 @@ import Dashboard from "./pages/Dashboard";
 import InstitutionWallet from "./pages/InstitutionWallet";
 import useTenantPageAccess from "./hooks/useTenantPageAccess";
 import LmsAdmin from "./pages/LmsAdmin";
+import LmsErrorBoundary from "./components/LmsErrorBoundary";
 import TeacherCourses from "./pages/lms/TeacherCourses";
 import StudentCourses from "./pages/lms/StudentCourses";
 import CourseLessons from "./pages/lms/CourseLessons";
@@ -466,7 +467,7 @@ export default function App() {
             allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
             page="LMS"
           >
-            <LmsAdmin />
+            <LmsErrorBoundary><LmsAdmin /></LmsErrorBoundary>
           </ProtectedRoute>
         }
       />
@@ -850,12 +851,12 @@ export default function App() {
 
         <Route
           path="courses"
-          element={<TeacherCourses />}
+          element={<LmsErrorBoundary><TeacherCourses /></LmsErrorBoundary>}
         />
 
         <Route
           path="courses/:courseId/lessons"
-          element={<CourseLessons />}
+          element={<LmsErrorBoundary><CourseLessons /></LmsErrorBoundary>}
         />
 
         <Route
@@ -958,12 +959,12 @@ export default function App() {
 
         <Route
           path="courses"
-          element={<StudentCourses />}
+          element={<LmsErrorBoundary><StudentCourses /></LmsErrorBoundary>}
         />
 
         <Route
           path="courses/:courseId/learn"
-          element={<CoursePlayer />}
+          element={<LmsErrorBoundary><CoursePlayer /></LmsErrorBoundary>}
         />
 
         <Route

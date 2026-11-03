@@ -25,6 +25,7 @@ const label = { display: "block", fontSize: 13, fontWeight: 600, margin: "10px 0
 export default function LmsAdmin() {
   const navigate = useNavigate();
   const [state, setState] = useState("loading"); // loading | ready | unlicensed | forbidden | error
+  const [refusal, setRefusal] = useState("");
   const [s, setS] = useState(null);
   const [scales, setScales] = useState([]);
   const [msg, setMsg] = useState(null); // { ok, text }
@@ -37,7 +38,7 @@ export default function LmsAdmin() {
       setS(a.data.settings); setScales(b.data.gradingSystems || []); setState("ready");
     } catch (e) {
       if (isModuleNotLicensed(e)) setState("unlicensed");
-      else if (e?.response?.status === 403) setState("forbidden");
+      else if (e?.response?.status === 403) { setRefusal(e?.response?.data?.message || ""); setState("forbidden"); }
       else setState("error");
     }
   }, []);
@@ -75,7 +76,7 @@ export default function LmsAdmin() {
 
   if (state === "loading") return <p style={{ padding: 24 }}>Loading…</p>;
   if (state === "unlicensed") return <UpgradePrompt module="lms" onBack={() => navigate(-1)} />;
-  if (state === "forbidden") return <p style={{ padding: 24 }}>You do not have permission to manage LMS settings.</p>;
+  if (state === "forbidden") return <p style={{ padding: 24 }}>You do not have permission to manage LMS settings.{refusal ? ` ${refusal}` : ""} Platform (master) logins cannot open school LMS settings; sign in with the school's own admin account.</p>;
   if (state === "error") return <p style={{ padding: 24 }}>Could not load LMS settings. <button type="button" onClick={load}>Retry</button></p>;
 
   const set = (path, v) => setS((x) => { const n = JSON.parse(JSON.stringify(x)); let o = n; path.slice(0, -1).forEach((k) => { o = o[k]; }); o[path.at(-1)] = v; return n; });
