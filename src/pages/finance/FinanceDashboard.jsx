@@ -5,10 +5,7 @@ import AiFinanceWalletPanel from "../../components/aiMarking/AiFinanceWalletPane
 import AiFinanceAnalyticsPanel from "../../components/aiMarking/AiFinanceAnalyticsPanel";
 import TrialPanel from "../../components/finance/TrialPanel";
 import PageAccessPanel from "../../components/finance/PageAccessPanel";
-<<<<<<< HEAD
 import ModulesPanel from "../../components/finance/ModulesPanel";
-=======
->>>>>>> e5aa8023af08addb67ff48a7c2ecf866b1f102ed
 
 /* =========================================================================
    DORAVO FINANCE DASHBOARD
@@ -38,76 +35,130 @@ const injectDesignTokens = () => {
   el.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     :root {
-      --bg: #F8FAFC; --card: #FFFFFF; --card-elevated: #FFFFFF; --border: #E2E5EA;
-      --text: #0B0F19; --text-secondary: #384152; --text-muted: #64748B;
+      --bg: #F4F6FA; --card: #FFFFFF; --card-elevated: #F8F9FC; --border: #E6E9F0;
+      --text: #0F172A; --text-secondary: #334155; --text-muted: #6B7686;
       --primary: #8B1E2D; --primary-dark: #6F1725; --primary-tint: #FBEAEC;
-      --success: #15803D; --success-tint: #ECFDF3; --warning: #B45309; --warning-tint: #FFFBEB;
-      --destructive: #DC2626; --destructive-tint: #FEF2F2; --info: #1D4ED8; --info-tint: #EFF6FF;
-      --shadow-sm: 0 1px 2px rgba(16,24,40,0.04); --shadow: 0 1px 3px rgba(16,24,40,0.06);
-      --radius: 14px; --radius-sm: 10px;
+      --success: #15803D; --success-tint: #E8F7EE; --warning: #B45309; --warning-tint: #FEF3E2;
+      --destructive: #DC2626; --destructive-tint: #FEECEC; --info: #1D4ED8; --info-tint: #EAF1FF;
+      --shadow-sm: 0 1px 2px rgba(15,23,42,0.05);
+      --shadow: 0 4px 16px rgba(15,23,42,0.07);
+      --radius: 16px; --radius-sm: 10px;
     }
     [data-theme='dark'] {
-      --bg: #0F1115; --card: #171A21; --card-elevated: #1D2129; --border: #323844;
-      --text: #FFFFFF; --text-secondary: #C7CCD6; --text-muted: #9198A6;
-      --primary: #E8A0A8; --primary-dark: #F3C0C6; --primary-tint: rgba(139,30,45,0.28);
+      --bg: #0C0E13; --card: #151922; --card-elevated: #1C212C; --border: #2A303D;
+      --text: #F5F7FA; --text-secondary: #C7CCD6; --text-muted: #8B93A3;
+      --primary: #E8A0A8; --primary-dark: #F3C0C6; --primary-tint: rgba(139,30,45,0.30);
       --success: #4ADE80; --success-tint: rgba(22,163,74,0.18); --warning: #FBBF24; --warning-tint: rgba(217,119,6,0.18);
       --destructive: #FB7185; --destructive-tint: rgba(220,38,38,0.18); --info: #7DA6FF; --info-tint: rgba(37,99,235,0.18);
-      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3); --shadow: 0 1px 3px rgba(0,0,0,0.4);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+      --shadow: 0 6px 20px rgba(0,0,0,0.45);
     }
     body { background: var(--bg); transition: background-color .2s ease; }
+
+    .fin-page * { box-sizing: border-box; }
+    .fin-page ::-webkit-scrollbar { width: 8px; height: 8px; }
+    .fin-page ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+
+    .fin-row { transition: background .15s ease, border-color .15s ease; }
     .fin-row:hover { background: var(--card-elevated) !important; }
-    .fin-tab:hover { filter: brightness(0.97); }
+
+    .fin-tab { transition: background .15s ease, color .15s ease, transform .1s ease; user-select: none; }
+    .fin-tab:hover { transform: translateY(-1px); }
+
+    .fin-page button { transition: filter .15s ease, transform .1s ease, box-shadow .15s ease; font-family: inherit; }
+    .fin-page button:hover:not(:disabled) { filter: brightness(1.08); }
+    .fin-page button:active:not(:disabled) { transform: scale(0.98); }
+    .fin-page button:disabled { opacity: .55; cursor: not-allowed; }
+
+    .fin-page input, .fin-page select { font-family: inherit; transition: border-color .15s ease, box-shadow .15s ease; }
+    .fin-page input:focus, .fin-page select:focus {
+      outline: none; border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-tint);
+    }
+
+    .fin-page tbody tr { transition: background .12s ease; }
+    .fin-page tbody tr:hover { background: var(--card-elevated); }
   `;
   document.head.appendChild(el);
 };
 
 const s = {
   page: { fontFamily: "Inter, sans-serif", background: "var(--bg)", color: "var(--text)", minHeight: "100vh", display: "flex" },
-  sidebar: { width: 300, borderRight: "1px solid var(--border)", background: "var(--card)", padding: 20, overflowY: "auto" },
-  main: { flex: 1, padding: 28, overflowY: "auto" },
-  h1: { fontSize: 20, fontWeight: 800, margin: 0 },
-  muted: { color: "var(--text-muted)", fontSize: 13 },
-  card: { background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 20, boxShadow: "var(--shadow-sm)", marginBottom: 16 },
+  sidebar: {
+    width: 304, borderRight: "1px solid var(--border)", background: "var(--card)", padding: 20, overflowY: "auto",
+    boxShadow: "var(--shadow-sm)",
+  },
+  main: { flex: 1, padding: 32, overflowY: "auto", maxWidth: 1280 },
+  h1: { fontSize: 19, fontWeight: 800, margin: 0, letterSpacing: "-0.02em" },
+  muted: { color: "var(--text-muted)", fontSize: 13, lineHeight: 1.5 },
+  card: {
+    background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
+    padding: 24, boxShadow: "var(--shadow)", marginBottom: 18,
+  },
   instRow: (active) => ({
-    padding: "10px 12px", borderRadius: "var(--radius-sm)", cursor: "pointer", marginBottom: 6,
+    padding: "11px 14px", borderRadius: "var(--radius-sm)", cursor: "pointer", marginBottom: 6,
     background: active ? "var(--primary-tint)" : "transparent",
-    border: active ? "1px solid var(--primary)" : "1px solid transparent",
+    border: "1px solid transparent",
+    borderLeft: active ? "3px solid var(--primary)" : "3px solid transparent",
   }),
-  tabs: { display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" },
+  tabs: {
+    display: "flex", gap: 4, marginBottom: 22, flexWrap: "wrap", padding: 4,
+    background: "var(--card-elevated)", border: "1px solid var(--border)", borderRadius: 999, width: "fit-content", maxWidth: "100%",
+  },
   tab: (active) => ({
-    padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: "pointer",
-    background: active ? "var(--primary)" : "var(--card-elevated)",
+    padding: "7px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: "pointer",
+    background: active ? "var(--primary)" : "transparent",
     color: active ? "#fff" : "var(--text-secondary)",
-    border: "1px solid var(--border)",
+    boxShadow: active ? "0 2px 8px rgba(139,30,45,0.35)" : "none",
+    border: "1px solid transparent",
   }),
-  statGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 },
-  stat: { background: "var(--card-elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: 14 },
-  statVal: { fontSize: 22, fontWeight: 800 },
-  input: { width: "100%", padding: "9px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, marginBottom: 10 },
-  label: { fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" },
-  btn: { padding: "9px 16px", borderRadius: "var(--radius-sm)", border: "none", background: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 },
-  btnSmall: { padding: "5px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--card-elevated)", color: "var(--text-secondary)", fontWeight: 600, cursor: "pointer", fontSize: 12, marginRight: 6 },
+  statGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 20 },
+  stat: {
+    background: "var(--card)", border: "1px solid var(--border)", borderTop: "3px solid var(--primary)",
+    borderRadius: "var(--radius-sm)", padding: "14px 16px", boxShadow: "var(--shadow-sm)",
+  },
+  statVal: { fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 2 },
+  input: {
+    width: "100%", padding: "10px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
+    background: "var(--card-elevated)", color: "var(--text)", fontSize: 14, marginBottom: 12,
+  },
+  label: {
+    fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 5, display: "block",
+    textTransform: "uppercase", letterSpacing: "0.04em",
+  },
+  btn: {
+    padding: "10px 18px", borderRadius: "var(--radius-sm)", border: "none", background: "var(--primary)", color: "#fff",
+    fontWeight: 700, cursor: "pointer", fontSize: 14, boxShadow: "0 2px 8px rgba(139,30,45,0.28)",
+  },
+  btnSmall: {
+    padding: "5px 11px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--card)",
+    color: "var(--text-secondary)", fontWeight: 600, cursor: "pointer", fontSize: 12, marginRight: 6,
+  },
   pill: (status) => ({
-    display: "inline-block", padding: "2px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: "uppercase",
+    display: "inline-block", padding: "3px 10px", borderRadius: 999, fontSize: 10.5, fontWeight: 700,
+    textTransform: "uppercase", letterSpacing: "0.04em",
     background: status === "paid" ? "var(--success-tint)" : status === "void" ? "var(--destructive-tint)" : "var(--warning-tint)",
     color: status === "paid" ? "var(--success)" : status === "void" ? "var(--destructive)" : "var(--warning)",
   }),
-  btnDanger: { padding: "9px 16px", borderRadius: "var(--radius-sm)", border: "none", background: "var(--destructive)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 },
+  btnDanger: {
+    padding: "10px 18px", borderRadius: "var(--radius-sm)", border: "none", background: "var(--destructive)", color: "#fff",
+    fontWeight: 700, cursor: "pointer", fontSize: 14, boxShadow: "0 2px 8px rgba(220,38,38,0.28)",
+  },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
-  th: { textAlign: "left", padding: "8px 6px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", fontWeight: 600 },
-  td: { padding: "8px 6px", borderBottom: "1px solid var(--border)" },
+  th: {
+    textAlign: "left", padding: "10px 8px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)",
+    fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em",
+  },
+  td: { padding: "11px 8px", borderBottom: "1px solid var(--border)" },
   banner: (tone) => ({
-    padding: "10px 14px", borderRadius: "var(--radius-sm)", marginBottom: 14, fontSize: 13,
+    padding: "11px 14px", borderRadius: "var(--radius-sm)", marginBottom: 16, fontSize: 13, fontWeight: 500,
     background: tone === "error" ? "var(--destructive-tint)" : "var(--success-tint)",
     color: tone === "error" ? "var(--destructive)" : "var(--success)",
+    borderLeft: `3px solid ${tone === "error" ? "var(--destructive)" : "var(--success)"}`,
   }),
 };
 
-<<<<<<< HEAD
 const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "Trial Period", "LMS Licence", "Page Access", "AI Marking Wallet", "AI Marking Analytics"];
-=======
-const TABS = ["Overview", "Invoices", "Verify Payment", "Receipts", "Issue Credits", "Reverse Credits", "Ledger", "Audit Log", "Trial Period", "Page Access", "AI Marking Wallet", "AI Marking Analytics"];
->>>>>>> e5aa8023af08addb67ff48a7c2ecf866b1f102ed
 
 const EMPTY_ITEM = { description: "", quantity: "1", unitPrice: "" };
 const EMPTY_INVOICE_FORM = {
@@ -458,7 +509,7 @@ export default function FinanceDashboard() {
   const selectedRow = useMemo(() => institutions.find((i) => i.tenantKey === selected), [institutions, selected]);
 
   return (
-    <div style={s.page}>
+    <div className="fin-page" style={s.page}>
       {/* INSTITUTIONS SIDEBAR */}
       <div style={s.sidebar}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -540,13 +591,10 @@ export default function FinanceDashboard() {
               <TrialPanel key={selected} api={API} tenantKey={selected} onChanged={refreshInstitutions} />
             )}
 
-<<<<<<< HEAD
             {tab === "LMS Licence" && (
               <ModulesPanel key={selected} api={API} tenantKey={selected} />
             )}
 
-=======
->>>>>>> e5aa8023af08addb67ff48a7c2ecf866b1f102ed
             {tab === "Page Access" && (
               <PageAccessPanel key={selected} api={API} tenantKey={selected} />
             )}
