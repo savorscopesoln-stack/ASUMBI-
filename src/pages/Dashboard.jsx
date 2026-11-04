@@ -1,4 +1,5 @@
 import useTenantPageAccess from "../hooks/useTenantPageAccess";
+import { wipeOfflineDeviceData } from "../utils/lmsOfflineWipe";
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import API from "../api";
 import {
@@ -691,6 +692,7 @@ function Dashboard() {
   };
 
   const logout = () => {
+    wipeOfflineDeviceData(); // L10.2b step 4: offline packs + remembered licence leave this device
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.location.href = "/login";

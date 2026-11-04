@@ -5,6 +5,11 @@ import UpgradePrompt from "../../components/UpgradePrompt";
 import { C, S, errText, isModuleNotLicensed } from "./lmsUtil";
 import { Notice, Skeleton } from "./lmsUi";
 import { BlockList } from "./BlockView";
+import OfflineStrip from "./OfflineStrip";
+import useOfflineQueue from "../../hooks/useOfflineQueue";
+import { queueLessonAction, noResponse } from "../../utils/lmsOfflineEnqueue";
+import usePackStore from "../../hooks/usePackStore";
+import { packLessonList, loadPackLesson } from "../../utils/lmsOfflineReader";
 
 /* Student course player (L4.2 first cut) at /student/courses/:courseId/learn?lesson=ID.
    Backend (student only, ACTIVE enrolment): GET /lms/courses/:id/learn/lessons (sections, unsectioned; each lesson has locked/lockedBy),
@@ -25,16 +30,31 @@ export default function CoursePlayer() {
   const [prog, setProg] = useState(null); // { percent, completed, total, lessons, resumeLessonId }
   const [state, setState] = useState("loading"); // loading | ready | error | unlicensed | forbidden
   const [msg, setMsg] = useState(null);
+  /* L10.3e: this learner's offline queue (per user, on this device). No signed-in user = no queue = no strip. The strip shows nothing while the queue is empty. */
+  const queue = useOfflineQueue(); // null unless `lms_offline` is sold and a learner is signed in (shared with the assignment screen)
+  const store = usePackStore(queue); // lessons saved on this device (L10.2b step 3); only read when the network is down
+  const [offlineMode, setOfflineMode] = useState(false);
 
   const fetchBoth = useCallback(() => Promise.all([API.get(`${base}/lessons`), API.get(`${base}/progress`)]), [base]);
   const apply = useCallback(([l, p]) => { setList({ sections: l.data.sections || [], unsectioned: l.data.unsectioned || [] }); setProg(p.data); setState("ready"); }, []);
   const fail = useCallback((e) => {
     if (isModuleNotLicensed(e)) setState("unlicensed");
     else if ([403, 404].includes(e?.response?.status)) setState("forbidden");
+    else if (noResponse(e)) setState("netdown");
     else { setMsg({ ok: false, text: errText(e) }); setState("error"); }
   }, []);
-  const loadAll = useCallback(() => { setState("loading"); fetchBoth().then(apply).catch(fail); }, [fetchBoth, apply, fail]);
+  const loadAll = useCallback(() => { setOfflineMode(false); setState("loading"); fetchBoth().then(apply).catch(fail); }, [fetchBoth, apply, fail]);
   useEffect(() => { let alive = true; fetchBoth().then((r) => { if (alive) apply(r); }).catch((e) => { if (alive) fail(e); }); return () => { alive = false; }; }, [fetchBoth, apply, fail]);
+  // Network down: show the lessons saved on this device (needs the offline add-on; nothing is read from the device while the server answers).
+  useEffect(() => {
+    if (state !== "netdown" || !store) return undefined;
+    let alive = true;
+    packLessonList(store, Number(courseId)).then((l) => {
+      if (!alive || !l.length) return;
+      setList({ sections: [], unsectioned: l.map((x) => ({ id: x.id, title: x.title })) }); setProg({ percent: 0, completed: 0, total: l.length, lessons: [], resumeLessonId: null }); setOfflineMode(true); setState("ready");
+    }).catch(() => { /* stays on the offline message */ });
+    return () => { alive = false; };
+  }, [state, store, courseId]);
   const refreshProgress = useCallback(() => { fetchBoth().then(apply).catch(() => { /* refreshed again on the next action */ }); }, [fetchBoth, apply]);
 
   const flat = useMemo(() => (list ? [...list.sections.flatMap((s) => s.lessons), ...list.unsectioned] : []), [list]);
@@ -44,6 +64,7 @@ export default function CoursePlayer() {
   if (state === "unlicensed") return <UpgradePrompt module="lms" />;
   if (state === "loading") return <div style={S.page}><Skeleton rows={3} /></div>;
   if (state === "forbidden") return <div style={S.page}><p>You are not enrolled in this course, or it is not available.</p><Link to="/student/courses">Back to my courses</Link></div>;
+  if (state === "netdown") return <div style={S.page}><Notice msg={{ ok: false, text: queue ? "You are offline and no lessons are saved on this device for this course." : "You are offline. Connect to open your lessons." }} /><button type="button" style={S.btn} onClick={loadAll}>Try again</button></div>;
   if (state === "error") return <div style={S.page}><Notice msg={msg} /><button type="button" style={S.btn} onClick={loadAll}>Try again</button></div>;
 
   const resume = prog?.resumeLessonId;
@@ -68,9 +89,10 @@ export default function CoursePlayer() {
 
   return (
     <div style={{ ...S.page, maxWidth: 1200 }}>
-      <p style={{ margin: "0 0 6px", fontSize: 14 }}><Link to="/student/courses">← My courses</Link></p>
+      <p style={{ margin: "0 0 6px", fontSize: 14, display: "flex", gap: 16, flexWrap: "wrap" }}><Link to="/student/courses">← My courses</Link><Link to={`/student/courses/${courseId}/assignments`}>Assignments</Link><Link to={`/student/courses/${courseId}/quizzes`}>Quizzes</Link>{queue && <Link to={`/student/courses/${courseId}/offline`}>Offline lessons</Link>}</p>
       <h1 style={S.h1}>Lessons</h1>
-      <div style={{ ...S.box, margin: "8px 0 14px", display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+      {offlineMode && <div role="status" style={{ ...S.box, margin: "8px 0 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}><span>Offline: showing lessons saved on this device.</span><button type="button" style={S.btn} onClick={loadAll}>Go online</button></div>}
+      {!offlineMode && <div style={{ ...S.box, margin: "8px 0 14px", display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 220px" }}>
           <div style={{ fontSize: 14, marginBottom: 4 }}>{prog.percent}% complete ({prog.completed} of {prog.total} lessons)</div>
           <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={prog.percent} aria-label="Course progress" style={{ height: 8, borderRadius: 999, background: C.border }}>
@@ -78,7 +100,8 @@ export default function CoursePlayer() {
           </div>
         </div>
         {resume && resume !== lessonId && <button type="button" style={S.btnPrimary} onClick={() => open(resume)}>Continue learning</button>}
-      </div>
+      </div>}
+      {queue && <OfflineStrip courseId={Number(courseId)} queue={queue} onSynced={refreshProgress} />}
       <Notice msg={msg} />
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
         <nav aria-label="Lessons" style={{ flex: "1 1 260px", maxWidth: 360, minWidth: 0 }}>
@@ -93,7 +116,7 @@ export default function CoursePlayer() {
         </nav>
         <main style={{ flex: "3 1 420px", minWidth: 0 }}>
           {lessonId
-            ? <LessonPane key={lessonId} base={base} lessonId={lessonId} prev={prev} next={next} onOpen={open} onChanged={refreshProgress} />
+            ? <LessonPane key={lessonId} store={store} base={base} courseId={Number(courseId)} queue={queue} lessonId={lessonId} prev={prev} next={next} onOpen={open} onChanged={refreshProgress} />
             : <p style={{ color: C.muted }}>{flat.length ? "Choose a lesson to begin." : ""}</p>}
         </main>
       </div>
@@ -101,13 +124,21 @@ export default function CoursePlayer() {
   );
 }
 
-function LessonPane({ base, lessonId, prev, next, onOpen, onChanged }) {
+function LessonPane({ store, base, courseId, queue, lessonId, prev, next, onOpen, onChanged }) {
   const [state, setState] = useState("loading"); // loading | ready | locked | error
   const [data, setData] = useState(null);
   const [locked, setLocked] = useState([]);
   const [status, setStatus] = useState("not_started");
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [urlMap, setUrlMap] = useState(null); // blob URLs when the lesson is read from the device
+  const disposeRef = useRef(null);
+  const storeRef = useRef(store);
+  useEffect(() => { storeRef.current = store; }, [store]);
+  useEffect(() => () => { if (disposeRef.current) disposeRef.current(); }, []);
+  const [savedHere, setSavedHere] = useState(false); // L10.3f: "mark complete" is saved on this device, not yet sent
+  const queueRef = useRef(queue);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
   const onChangedRef = useRef(onChanged);
   useEffect(() => { onChangedRef.current = onChanged; }, [onChanged]);
 
@@ -115,7 +146,15 @@ function LessonPane({ base, lessonId, prev, next, onOpen, onChanged }) {
     let alive = true;
     (async () => {
       try {
-        const r = await API.get(`${base}/lessons/${lessonId}`);
+        let r;
+        try { r = await API.get(`${base}/lessons/${lessonId}`); }
+        catch (e0) {
+          if (!noResponse(e0) || !storeRef.current) throw e0;
+          const o = await loadPackLesson({ store: storeRef.current, courseId, lessonId });
+          if (!alive) { if (o.ok) o.dispose(); return; }
+          if (!o.ok) { setMsg({ ok: false, text: o.message || "This lesson is not saved on this device." }); setState("error"); return; }
+          disposeRef.current = o.dispose; setUrlMap(o.urlMap); r = { data: { lesson: o.lesson, blocks: o.blocks } };
+        }
         if (!alive) return;
         setData(r.data); setState("ready");
         try {
@@ -123,7 +162,7 @@ function LessonPane({ base, lessonId, prev, next, onOpen, onChanged }) {
           if (!alive) return;
           if (v.data.progress) setStatus(v.data.progress.status);
           onChangedRef.current?.();
-        } catch { /* viewing is recorded best effort; reading is not blocked */ }
+        } catch (e2) { queueLessonAction(queueRef.current, courseId, { kind: "view", lessonId }, e2); /* viewing is recorded best effort; reading is not blocked. With no connection and the offline add-on, it waits on this device. */ }
       } catch (e) {
         if (!alive) return;
         if (e?.response?.data?.code === "LESSON_LOCKED") { setLocked(e.response.data.lockedBy || []); setState("locked"); }
@@ -131,7 +170,7 @@ function LessonPane({ base, lessonId, prev, next, onOpen, onChanged }) {
       }
     })();
     return () => { alive = false; };
-  }, [base, lessonId]);
+  }, [base, courseId, lessonId]);
 
   // Time on the lesson: report every 30 s while the page is visible. The server decides how much of it counts.
   useEffect(() => {
@@ -150,7 +189,12 @@ function LessonPane({ base, lessonId, prev, next, onOpen, onChanged }) {
       setStatus(r.data.progress?.status || "completed"); setMsg({ ok: true, text: "Lesson completed." }); onChanged();
     } catch (e) {
       const d = e?.response?.data;
-      if (d?.code === "MIN_TIME_NOT_MET") { const m = Math.max(1, Math.ceil((d.remainingSeconds || 0) / 60)); setMsg({ ok: false, text: `Keep reading: about ${m} more minute${m === 1 ? "" : "s"} before you can mark this complete.` }); }
+      const q = queueLessonAction(queue, courseId, { kind: "complete", lessonId }, e);
+      if (q.queued) {
+        if (q.ok) { setSavedHere(true); setMsg({ ok: true, text: "Saved on this device. It will be sent when you are back online." }); }
+        else setMsg({ ok: false, text: q.message || "This device could not keep your work. Reconnect and try again." });
+      }
+      else if (d?.code === "MIN_TIME_NOT_MET") { const m = Math.max(1, Math.ceil((d.remainingSeconds || 0) / 60)); setMsg({ ok: false, text: `Keep reading: about ${m} more minute${m === 1 ? "" : "s"} before you can mark this complete.` }); }
       else setMsg({ ok: false, text: errText(e) });
     } finally { setBusy(false); }
   };
@@ -172,11 +216,13 @@ function LessonPane({ base, lessonId, prev, next, onOpen, onChanged }) {
       <h2 style={{ margin: "0 0 4px", fontSize: 20 }}>{data.lesson.title}</h2>
       {data.lesson.summary && <p style={{ color: C.muted, margin: "0 0 12px" }}>{data.lesson.summary}</p>}
       <Notice msg={msg} />
-      <BlockList blocks={data.blocks} />
+      <BlockList blocks={data.blocks} urlMap={urlMap} />
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 20, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
         {prev && <button type="button" style={S.btn} disabled={prev.locked} onClick={() => onOpen(prev.id)}>← Previous</button>}
         {done
           ? <span role="status" style={{ color: C.ok, fontWeight: 600 }}>Completed</span>
+          : savedHere
+            ? <span role="status" style={{ color: C.muted, fontWeight: 600 }}>Saved on this device, waiting to send</span>
           : rule === "view"
             ? <span style={{ color: C.muted, fontSize: 14 }}>This lesson completes when you open it.</span>
             : <button type="button" style={S.btnPrimary} disabled={busy} onClick={complete}>{busy ? "Saving…" : rule === "min_time" ? "Mark complete (needs minimum time)" : "Mark complete"}</button>}

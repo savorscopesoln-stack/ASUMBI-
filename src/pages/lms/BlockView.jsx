@@ -6,9 +6,10 @@ import { C } from "./lmsUtil";
    Text html is ALREADY sanitised by the server on every save and every read (allow-list), so it is safe to inject here.
    Media urls are local uploads (resolved against the backend origin) or YouTube/Vimeo links; embeds are sandboxed. */
 
-const media = (u) => resolvePhotoUrl(u);
+const resolveMedia = (u) => resolvePhotoUrl(u);
 
-export function BlockView({ block: b }) {
+export function BlockView({ block: b, urlMap }) {
+  const media = (u) => (urlMap && urlMap.get(u)) || resolveMedia(u); // urlMap: blob URLs of files saved on the device (offline reading)
   switch (b.type) {
     case "text":
       return <div className="lms-richtext" style={{ lineHeight: 1.6, overflowWrap: "anywhere" }} dangerouslySetInnerHTML={{ __html: b.html || "" }} />;
@@ -47,7 +48,7 @@ function Frame({ url, title }) {
   );
 }
 
-export function BlockList({ blocks }) {
+export function BlockList({ blocks, urlMap }) {
   if (!blocks?.length) return <p style={{ color: C.muted }}>This lesson has no content yet.</p>;
-  return <div>{blocks.map((b, i) => <BlockView key={b.id ?? i} block={b} />)}</div>;
+  return <div>{blocks.map((b, i) => <BlockView key={b.id ?? i} block={b} urlMap={urlMap} />)}</div>;
 }

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import useLmsLicence from "../../hooks/useLmsLicence";
 
+import { wipeOfflineDeviceData } from "../../utils/lmsOfflineWipe";
 /* ─── shared design-token stylesheet — identical id/tokens to the
    admin dashboard so both layouts render from one consistent
    system and only ever inject once per page load ─── */
@@ -135,6 +136,9 @@ export const NAV_GROUPS = [
     label: "Academics",
     items: [
       // Separately licensed: shown only when the school has the LMS (see visibleNavGroups).
+      { name: "My Learning",      path: "/student/learning",       Icon: BookOpen, lms: true },
+      { name: "My Planner",       path: "/student/planner",        Icon: CalendarDays, lms: true },
+      { name: "Announcements",    path: "/student/announcements",  Icon: Bell, lms: true },
       { name: "Courses",          path: "/student/courses",        Icon: BookOpen, lms: true },
       { name: "Marks & Grades",   path: "/student/marks",          Icon: BarChart3 },
       { name: "Report Card",      path: "/student/report",         Icon: FileText },
@@ -200,6 +204,7 @@ export default function StudentLayout() {
   };
 
   const logout = () => {
+    wipeOfflineDeviceData(); // L10.2b step 4: offline packs + remembered licence leave this device
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.location.href = "/login";

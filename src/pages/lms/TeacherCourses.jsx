@@ -149,6 +149,13 @@ function MyCourses({ label, perms, setMsg }) {
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/lessons`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Lessons</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/marking`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Marking</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/rubrics`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Rubrics</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/gradebook`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Gradebook</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/quizzes`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Quizzes</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/announcements`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Announcements</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/reports`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Reports</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/questions`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Questions</Link>}
                 {c.status === "draft" && (needsApproval.has(c.id)
                   ? <B disabled={busyId === c.id} primary onClick={() => post(c, "submit", "Submitted for approval.")}>Submit for approval</B>
                   : <B disabled={busyId === c.id} primary onClick={() => setStatusTo(c, "published", "Published.")}>Publish</B>)}

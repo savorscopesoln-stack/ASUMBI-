@@ -15,12 +15,28 @@ import useSessionTimeout from "./hooks/useSessionTimeout";
 import Dashboard from "./pages/Dashboard";
 import InstitutionWallet from "./pages/InstitutionWallet";
 import useTenantPageAccess from "./hooks/useTenantPageAccess";
-import LmsAdmin from "./pages/LmsAdmin";
 import LmsErrorBoundary from "./components/LmsErrorBoundary";
+import LmsAdmin from "./pages/LmsAdmin";
 import TeacherCourses from "./pages/lms/TeacherCourses";
+import TeacherMarking from "./pages/lms/TeacherMarking";
+import CourseRubrics from "./pages/lms/CourseRubrics";
+import CourseGradebook from "./pages/lms/CourseGradebook";
+import CourseQuizzes from "./pages/lms/CourseQuizzes";
+import CourseQuestions from "./pages/lms/CourseQuestions";
+import CourseQuizAttempts from "./pages/lms/CourseQuizAttempts";
+import CourseQuizResults from "./pages/lms/CourseQuizResults";
+import CourseCertificates from "./pages/lms/CourseCertificates";
+import CourseAnnouncements from "./pages/lms/CourseAnnouncements";
+import CourseReports from "./pages/lms/CourseReports";
 import StudentCourses from "./pages/lms/StudentCourses";
+import StudentLearning from "./pages/lms/StudentLearning";
+import StudentPlanner from "./pages/lms/StudentPlanner";
+import StudentAnnouncements from "./pages/lms/StudentAnnouncements";
 import CourseLessons from "./pages/lms/CourseLessons";
 import CoursePlayer from "./pages/lms/CoursePlayer";
+import StudentAssignment, { StudentAssignmentList } from "./pages/lms/StudentAssignments";
+import StudentQuiz, { StudentQuizList } from "./pages/lms/StudentQuizzes";
+import OfflinePacks from "./pages/lms/OfflinePacks";
 import FinanceDashboard from "./pages/finance/FinanceDashboard";
 import Students from "./pages/Students";
 import Teachers from "./pages/Teachers";
@@ -860,6 +876,56 @@ export default function App() {
         />
 
         <Route
+          path="courses/:courseId/marking"
+          element={<LmsErrorBoundary><TeacherMarking /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/rubrics"
+          element={<LmsErrorBoundary><CourseRubrics /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/gradebook"
+          element={<LmsErrorBoundary><CourseGradebook /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/quizzes"
+          element={<LmsErrorBoundary><CourseQuizzes /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/questions"
+          element={<LmsErrorBoundary><CourseQuestions /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/quizzes/:quizId/attempts"
+          element={<LmsErrorBoundary><CourseQuizAttempts /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/quizzes/:quizId/results"
+          element={<LmsErrorBoundary><CourseQuizResults /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/certificates"
+          element={<LmsErrorBoundary><CourseCertificates /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/announcements"
+          element={<LmsErrorBoundary><CourseAnnouncements /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/reports"
+          element={<LmsErrorBoundary><CourseReports /></LmsErrorBoundary>}
+        />
+
+        <Route
           path="reports"
           element={<TeacherReports />}
         />
@@ -958,6 +1024,21 @@ export default function App() {
         />
 
         <Route
+          path="learning"
+          element={<LmsErrorBoundary><StudentLearning /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="planner"
+          element={<LmsErrorBoundary><StudentPlanner /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="announcements"
+          element={<LmsErrorBoundary><StudentAnnouncements /></LmsErrorBoundary>}
+        />
+
+        <Route
           path="courses"
           element={<LmsErrorBoundary><StudentCourses /></LmsErrorBoundary>}
         />
@@ -965,6 +1046,31 @@ export default function App() {
         <Route
           path="courses/:courseId/learn"
           element={<LmsErrorBoundary><CoursePlayer /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/assignments"
+          element={<LmsErrorBoundary><StudentAssignmentList /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/assignments/:assignmentId"
+          element={<LmsErrorBoundary><StudentAssignment /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/quizzes"
+          element={<LmsErrorBoundary><StudentQuizList /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/offline"
+          element={<LmsErrorBoundary><OfflinePacks /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/quizzes/:quizId"
+          element={<LmsErrorBoundary><StudentQuiz /></LmsErrorBoundary>}
         />
 
         <Route

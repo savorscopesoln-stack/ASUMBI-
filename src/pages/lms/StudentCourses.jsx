@@ -87,6 +87,7 @@ export default function StudentCourses() {
                 <>
                   <StatusBadge status={c.myStatus === "pending" ? "pending" : "active"} />
                   {c.myStatus !== "pending" && <Link to={`/student/courses/${c.id}/learn`} style={{ ...S.btnPrimary, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Open</Link>}
+                  {c.myStatus !== "pending" && <Link to={`/student/courses/${c.id}/assignments`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Assignments</Link>}
                   <button type="button" style={S.btn} disabled={busyId === c.id}
                     onClick={() => { if (window.confirm(c.myStatus === "pending" ? "Cancel your request?" : `Leave ${c.title}?`)) act(c.id, "withdraw", "Done."); }}>
                     {c.myStatus === "pending" ? "Cancel request" : "Leave"}

@@ -53,3 +53,10 @@ export function Tabs({ tabs, value, onChange }) {
     </div>
   );
 }
+
+/* Shown when a screen is filled from the copy saved on this device because the network is down (D-134). `at` = ISO time of that copy. */
+export function SavedCopy({ at }) {
+  if (!at) return null;
+  const d = new Date(at), when = Number.isNaN(d.getTime()) ? "" : ` from ${d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
+  return <div role="status" style={{ margin: "0 0 12px", padding: "10px 12px", borderRadius: 8, fontSize: 14, border: `1px solid ${C.border}`, background: C.card, color: C.text }}>You are offline. Showing the copy saved on this device{when}. Changes you make are kept here until you are back online.</div>;
+}

@@ -155,5 +155,13 @@ export function createQueue({ storage, post, userKey, now = () => new Date(), ma
   /* A rejected item the learner wants to try again (for example after the teacher extended the window). */
   const retry = (id) => mutate((items) => { const x = items.find((i) => i.id === id && i.state === STATES.REJECTED); if (!x) return { ok: false, code: "NOT_FOUND" }; Object.assign(x, { state: STATES.WAITING, id: makeId() }); delete x.code; delete x.message; return { ok: true }; });
 
-  return { enqueueProgress, enqueueDraft, enqueueQuizAnswers, list, summary, flush, resolveDraft, resolveQuiz, discard, retry, ID_RE };
+  /* After the learner HANDED IN exactly this text online, the device copy of the same words is obsolete and must not replay as a fresh draft. Removes only WAITING drafts of this
+     course + assignment whose text is IDENTICAL to what was handed in; a different text, or an item that is syncing/conflict/rejected, is never touched. */
+  const dropHandedInDraft = (courseId, assignmentId, text) => mutate((items) => {
+    let removed = 0;
+    for (let i = items.length - 1; i >= 0; i--) { const e = items[i]; if (e.type === "submission_draft" && e.courseId === courseId && e.assignmentId === assignmentId && e.state === STATES.WAITING && e.text === text) { items.splice(i, 1); removed += 1; } }
+    return { ok: true, removed };
+  });
+
+  return { enqueueProgress, enqueueDraft, enqueueQuizAnswers, list, summary, flush, resolveDraft, resolveQuiz, discard, retry, dropHandedInDraft, ID_RE };
 }
