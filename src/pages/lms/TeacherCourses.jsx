@@ -145,9 +145,15 @@ function MyCourses({ label, perms, setMsg }) {
                   <div style={{ fontSize: 12, color: C.muted }}>{c.code} · {c.academicYear}{c.className ? ` · ${c.className}` : ""}{c.myRole === "co_teacher" ? " · co-teacher" : ""}</div>
                   <h3 style={{ margin: "2px 0", fontSize: 16 }}>{c.title}</h3>
                 </div>
-                <StatusBadge status={c.status} />
+                <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  {c.visibility && <span style={{ fontSize: 12, color: C.muted }}>{c.visibility === "listed" ? "Students can browse and join" : "Only people you enrol"}</span>}
+                  <StatusBadge status={c.status} />
+                </span>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                {c.status !== "archived" && c.visibility && <button type="button" style={S.btn} disabled={busyId === c.id}
+                  onClick={() => run(c, () => API.patch(`/lms/courses/${c.id}`, { visibility: c.visibility === "listed" ? "enrolled_only" : "listed" }), c.visibility === "listed" ? "Students can no longer browse this course." : "Students can now find this course under Browse.")}>
+                  {c.visibility === "listed" ? "Hide from Browse" : "Show in Browse"}</button>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/lessons`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Lessons</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/marking`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Marking</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/rubrics`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Rubrics</Link>}

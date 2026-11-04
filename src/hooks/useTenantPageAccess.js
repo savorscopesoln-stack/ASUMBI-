@@ -13,7 +13,7 @@ const listeners = new Set();
 function load() {
   if (started) return;
   started = true;
-  API.get("/tenant/pages")
+  API.get("/tenant/pages", { timeout: 8000 })
     .then((r) => { state = { loaded: true, admin: r.data?.disabled?.admin || [] }; })
     .catch(() => { state = { loaded: true, admin: [] }; started = false; }) // not cached as "final": retried on next mount
     .finally(() => listeners.forEach((fn) => fn()));

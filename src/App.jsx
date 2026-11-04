@@ -237,7 +237,7 @@ const ProtectedRoute = ({
   }
 
   if (page && ADMIN_PORTAL_ROLES.includes(role)) {
-    if (!pageAccessLoaded) return null; // wait for the list so a switched-off page never flashes
+    if (!pageAccessLoaded) return <p role="status" style={{ padding: 24 }}>Loading…</p>; // wait for the list so a switched-off page never flashes (the hook fails open after a few seconds)
     if (isAdminPageOff(page)) return <Navigate to="/dashboard" replace />;
   }
 
