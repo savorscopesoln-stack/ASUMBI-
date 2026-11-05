@@ -21,7 +21,7 @@ const day = (v) => (v ? String(v).slice(0, 10) : "none");
 const fix = (v) => (v === null || v === undefined ? "n/a" : String(v));
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const Cell = ({ children }) => <td style={{ padding: 4 }}>{children}</td>;
-const Head = ({ children }) => <th style={{ textAlign: "left", padding: 4 }}>{children}</th>;
+const Head = ({ children }) => <th scope="col" style={{ textAlign: "left", padding: 4 }}>{children}</th>;
 const Empty = ({ children }) => <p style={{ margin: 0, fontSize: 14, color: C.muted }}>{children}</p>;
 const label = (c) => `${c.code ? `${c.code} ` : ""}${c.title || "Untitled course"}`;
 

@@ -26,7 +26,7 @@ function Progress({ d }) {
       {d.learners.length === 0 ? <p style={{ margin: 0, fontSize: 14, color: C.muted }}>No active learners in this course yet.</p> : (
         <div style={{ overflowX: "auto" }}>
           <table aria-label="Learner progress" style={{ borderCollapse: "collapse", fontSize: 14, minWidth: 420 }}>
-            <thead><tr><th style={{ textAlign: "left", padding: 4 }}>Learner</th><th style={{ textAlign: "left", padding: 4 }}>Lessons done</th><th style={{ textAlign: "left", padding: 4 }}>Progress</th><th style={{ textAlign: "left", padding: 4 }}>Last activity</th></tr></thead>
+            <thead><tr><th scope="col" style={{ textAlign: "left", padding: 4 }}>Learner</th><th scope="col" style={{ textAlign: "left", padding: 4 }}>Lessons done</th><th scope="col" style={{ textAlign: "left", padding: 4 }}>Progress</th><th scope="col" style={{ textAlign: "left", padding: 4 }}>Last activity</th></tr></thead>
             <tbody>{d.learners.map((l) => (
               <tr key={l.studentId}><td style={{ padding: 4 }}>{l.name}{l.admissionNo ? ` (${l.admissionNo})` : ""}</td><td style={{ padding: 4 }}>{l.completed} of {l.total}</td><td style={{ padding: 4 }}>{l.percent}%</td><td style={{ padding: 4 }}>{day(l.lastActivityAt)}</td></tr>
             ))}</tbody>
@@ -46,7 +46,7 @@ function Distribution({ d }) {
       <p style={{ margin: "0 0 10px", fontSize: 14 }}>Pass mark {x.passMark}%: {x.passed} passed, {x.failed} below ({fix(x.passRate)}% pass rate).</p>
       <div style={{ overflowX: "auto" }}>
         <table aria-label="Grade histogram" style={{ borderCollapse: "collapse", fontSize: 14, marginBottom: 10 }}>
-          <thead><tr><th style={{ textAlign: "left", padding: 4 }}>Marks</th><th style={{ textAlign: "left", padding: 4 }}>Learners</th></tr></thead>
+          <thead><tr><th scope="col" style={{ textAlign: "left", padding: 4 }}>Marks</th><th scope="col" style={{ textAlign: "left", padding: 4 }}>Learners</th></tr></thead>
           <tbody>{x.histogram.map((h) => <tr key={h.from}><td style={{ padding: 4 }}>{h.from} to {h.from === 90 ? 100 : Math.floor(h.to)}%</td><td style={{ padding: 4 }}>{h.count}</td></tr>)}</tbody>
         </table>
       </div>
