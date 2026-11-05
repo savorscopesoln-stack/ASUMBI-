@@ -6,6 +6,7 @@ import { C, S, errText, isModuleNotLicensed } from "./lmsUtil";
 import { Notice, Pager, Skeleton, SavedCopy } from "./lmsUi";
 import OfflineStrip from "./OfflineStrip";
 import useOfflineQueue from "../../hooks/useOfflineQueue";
+import useLmsLicence from "../../hooks/useLmsLicence";
 import { noResponse } from "../../utils/lmsOfflineEnqueue";
 import useReadCache from "../../hooks/useReadCache";
 import { cachedGet } from "../../utils/lmsReadCache";
@@ -109,6 +110,7 @@ function RubricView({ rubric }) {
 
 /* ----------------------------- detail ----------------------------- */
 export default function StudentAssignment() {
+  const helpOn = useLmsLicence().flags.includes("lms_discussions"); // 'Ask about this assignment' link (S110); the server enforces the flag anyway
   const { courseId, assignmentId } = useParams();
   const base = `/lms/courses/${courseId}/learn/assignments/${assignmentId}`;
   const [state, setState] = useState("loading"); // loading | ready | error | forbidden | unlicensed
@@ -304,6 +306,7 @@ export default function StudentAssignment() {
     <div style={S.page}>
       <p style={{ margin: "0 0 6px", fontSize: 14 }}><Link to={`/student/courses/${courseId}/assignments`}>← Assignments</Link></p>
       <h1 style={S.h1}>{a.title}</h1>
+      {helpOn && navigator.onLine !== false && <p style={{ margin: "0 0 6px", fontSize: 14 }}><Link to={`/student/courses/${courseId}/help?assignmentId=${assignmentId}`}>Ask about this assignment</Link></p>}
       <p style={S.sub}>
         {a.dueAt ? `Due ${when(a.dueAt)}` : "No due date"}
         {a.maxPoints != null ? ` · ${a.maxPoints} points` : ""}

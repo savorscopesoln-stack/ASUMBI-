@@ -30,7 +30,6 @@ export default function CourseAnnouncements() {
     try { const r = await API.get(base, { params: { page, pageSize: PAGE_SIZE } }); setData(r.data); setState("ready"); }
     catch (e) { if (isModuleNotLicensed(e)) setState("unlicensed"); else { setMsg({ ok: false, text: errText(e, "Could not load the announcements.") }); setState("error"); } }
   }, [base, page]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   const act = async (fn, fail, ok) => {

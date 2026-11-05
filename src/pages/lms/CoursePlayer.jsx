@@ -9,6 +9,7 @@ import OfflineStrip from "./OfflineStrip";
 import useOfflineQueue from "../../hooks/useOfflineQueue";
 import { queueLessonAction, noResponse } from "../../utils/lmsOfflineEnqueue";
 import usePackStore from "../../hooks/usePackStore";
+import useLmsLicence from "../../hooks/useLmsLicence";
 import { packLessonList, loadPackLesson } from "../../utils/lmsOfflineReader";
 
 /* Student course player (L4.2 first cut) at /student/courses/:courseId/learn?lesson=ID.
@@ -23,6 +24,7 @@ const STATUS_TEXT = { completed: "Completed", in_progress: "In progress", not_st
 export default function CoursePlayer() {
   const { courseId } = useParams();
   const [params, setParams] = useSearchParams();
+  const licFlags = useLmsLicence().flags, pathsOn = licFlags.includes("lms_paths"), outcomesOn = licFlags.includes("lms_competency"), discussionsOn = licFlags.includes("lms_discussions"); // the Discussions link belongs to the Standard tier (A241); the server enforces it anyway
   const lessonId = Number(params.get("lesson")) || null;
   const base = `/lms/courses/${courseId}/learn`;
 
@@ -89,7 +91,7 @@ export default function CoursePlayer() {
 
   return (
     <div style={{ ...S.page, maxWidth: 1200 }}>
-      <p style={{ margin: "0 0 6px", fontSize: 14, display: "flex", gap: 16, flexWrap: "wrap" }}><Link to="/student/courses">← My courses</Link><Link to={`/student/courses/${courseId}/assignments`}>Assignments</Link><Link to={`/student/courses/${courseId}/quizzes`}>Quizzes</Link>{queue && <Link to={`/student/courses/${courseId}/offline`}>Offline lessons</Link>}</p>
+      <p style={{ margin: "0 0 6px", fontSize: 14, display: "flex", gap: 16, flexWrap: "wrap" }}><Link to="/student/courses">← My courses</Link><Link to={`/student/courses/${courseId}/assignments`}>Assignments</Link><Link to={`/student/courses/${courseId}/quizzes`}>Quizzes</Link>{pathsOn && <Link to={`/student/courses/${courseId}/paths`}>Learning paths</Link>}{outcomesOn && <Link to={`/student/courses/${courseId}/outcomes`}>My outcomes</Link>}{discussionsOn && <Link to={`/student/courses/${courseId}/discussions`}>Discussions</Link>}{discussionsOn && <Link to={`/student/courses/${courseId}/peer-review`}>Peer review</Link>}{discussionsOn && <Link to={`/student/courses/${courseId}/help`}>Help</Link>}{queue && <Link to={`/student/courses/${courseId}/offline`}>Offline lessons</Link>}</p>
       <h1 style={S.h1}>Lessons</h1>
       {offlineMode && <div role="status" style={{ ...S.box, margin: "8px 0 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}><span>Offline: showing lessons saved on this device.</span><button type="button" style={S.btn} onClick={loadAll}>Go online</button></div>}
       {!offlineMode && <div style={{ ...S.box, margin: "8px 0 14px", display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
@@ -125,6 +127,7 @@ export default function CoursePlayer() {
 }
 
 function LessonPane({ store, base, courseId, queue, lessonId, prev, next, onOpen, onChanged }) {
+  const helpOn = useLmsLicence().flags.includes("lms_discussions"); // 'Ask about this lesson' (S110); Help is online only, so it is hidden while the device is offline
   const [state, setState] = useState("loading"); // loading | ready | locked | error
   const [data, setData] = useState(null);
   const [locked, setLocked] = useState([]);
@@ -215,6 +218,7 @@ function LessonPane({ store, base, courseId, queue, lessonId, prev, next, onOpen
     <article>
       <h2 style={{ margin: "0 0 4px", fontSize: 20 }}>{data.lesson.title}</h2>
       {data.lesson.summary && <p style={{ color: C.muted, margin: "0 0 12px" }}>{data.lesson.summary}</p>}
+      {helpOn && navigator.onLine !== false && <p style={{ margin: "0 0 10px", fontSize: 14 }}><Link to={`/student/courses/${courseId}/help?lessonId=${lessonId}`}>Ask about this lesson</Link></p>}
       <Notice msg={msg} />
       <BlockList blocks={data.blocks} urlMap={urlMap} />
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 20, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>

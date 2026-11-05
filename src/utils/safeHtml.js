@@ -74,7 +74,7 @@ const cleanNode = (node, doc, opts) => {
         if (kept.length) el.setAttribute("class", kept.join(" "));
       } else if (ALLOWED_DATA.has(name)) {
         // plain tokens only (ids, numbers, "correct"/"wrong")
-        if (/^[\w.\-]{0,64}$/.test(attr.value)) el.setAttribute(name, attr.value);
+        if (/^[\w.-]{0,64}$/.test(attr.value)) el.setAttribute(name, attr.value);
       } else if (name === "title" && !opts.stripTitles && (tag === "MARK" || tag === "SPAN") && attr.value.length <= 100) {
         el.setAttribute("title", attr.value); // tooltip on highlight / ✓✗ badge
       } else if (SPAN_ATTRS.has(name) && (tag === "TD" || tag === "TH")) {

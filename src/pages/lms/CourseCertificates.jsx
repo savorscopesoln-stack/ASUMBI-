@@ -104,7 +104,6 @@ function Badges({ base }) {
     try { const r = await API.get(`${base}/badges`); setItems(r.data.items || []); setState("ready"); }
     catch (e) { setMsg({ ok: false, text: errText(e, "Could not load the badges.") }); setState("error"); }
   }, [base]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   const act = async (fn, fail, ok) => {

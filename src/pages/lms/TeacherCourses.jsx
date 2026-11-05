@@ -4,6 +4,7 @@ import API from "../../api";
 import UpgradePrompt from "../../components/UpgradePrompt";
 import { C, S, errText, isModuleNotLicensed, useCourseLabel, useDebounced } from "./lmsUtil";
 import { Notice, Pager, Skeleton, StatusBadge, Tabs } from "./lmsUi";
+import useLmsLicence from "../../hooks/useLmsLicence";
 
 /* Staff side of the LMS (L2.6): "My courses", create (optionally from a template), publish / archive,
    submit for approval, and (for reviewers) the approval queue.
@@ -81,6 +82,10 @@ function CreateForm({ label, canTemplate, onCreated, onCancel }) {
 }
 
 function MyCourses({ label, perms, setMsg }) {
+  const analyticsOn = useLmsLicence().flags.includes("lms_analytics"); // Attention list (S112); the server enforces the flag anyway
+  const outcomesOn = useLmsLicence().flags.includes("lms_competency"); // Outcome mastery link (S115); the server enforces flag + permission anyway
+  const pathsOn = useLmsLicence().flags.includes("lms_paths"); // Learning paths link (S114); the server enforces the flag anyway
+  const discussionsOn = useLmsLicence().flags.includes("lms_discussions"); // Discussions + Groups belong to the Standard tier (A241); the server enforces it anyway
   const [q, setQ] = useState(""); const dq = useDebounced(q);
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
@@ -131,6 +136,7 @@ function MyCourses({ label, perms, setMsg }) {
             <option value="">All</option><option value="draft">Draft</option><option value="pending">Waiting for approval</option><option value="published">Published</option><option value="archived">Archived</option>
           </select>
         </div>
+        {analyticsOn && perms.has("lms.analytics.department") && <Link to="/teacher/department" style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Department view</Link>}
         {perms.has("lms.course.create") && !creating && <button type="button" style={S.btnPrimary} onClick={() => setCreating(true)}>New {label.one.toLowerCase()}</button>}
       </div>
       {creating && <CreateForm label={label} canTemplate={perms.has("lms.course.create")} onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); setMsg({ ok: true, text: "Draft created." }); load(); }} />}
@@ -155,11 +161,20 @@ function MyCourses({ label, perms, setMsg }) {
                   onClick={() => run(c, () => API.patch(`/lms/courses/${c.id}`, { visibility: c.visibility === "listed" ? "enrolled_only" : "listed" }), c.visibility === "listed" ? "Students can no longer browse this course." : "Students can now find this course under Browse.")}>
                   {c.visibility === "listed" ? "Hide from Browse" : "Show in Browse"}</button>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/lessons`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Lessons</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/enrolments`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Students</Link>}
+                {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/assignments`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Assignments</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/marking`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Marking</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/rubrics`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Rubrics</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/gradebook`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Gradebook</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/quizzes`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Quizzes</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/announcements`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Announcements</Link>}
+                {c.status === "published" && <Link to={`/teacher/courses/${c.id}/help`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Help requests</Link>}
+                {discussionsOn && c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/discussions`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Discussions</Link>}
+                {discussionsOn && c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/groups`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Groups</Link>}
+                {pathsOn && c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/paths`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Learning paths</Link>}
+                {outcomesOn && c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/outcomes`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Outcome mastery</Link>}
+                {discussionsOn && c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/peer-review`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Peer review</Link>}
+                {analyticsOn && c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/attention`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Attention</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/reports`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Reports</Link>}
                 {c.status !== "archived" && <Link to={`/teacher/courses/${c.id}/questions`} style={{ ...S.btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Questions</Link>}
                 {c.status === "draft" && (needsApproval.has(c.id)

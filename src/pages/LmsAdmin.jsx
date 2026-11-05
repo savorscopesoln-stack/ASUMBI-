@@ -84,6 +84,7 @@ export default function LmsAdmin() {
   return (
     <main style={{ maxWidth: 760, margin: "0 auto", padding: 16, color: "var(--text)", minHeight: "100vh" }}>
       <h1 style={{ fontSize: 22 }}>LMS settings</h1>
+      <p><button type="button" onClick={() => navigate("/lms/department")} style={{ minHeight: 44, padding: "0 14px" }}>Department dashboards</button> <button type="button" onClick={() => navigate("/lms/guardian")} style={{ minHeight: 44, padding: "0 14px" }}>Guardian links</button></p>
       <div aria-live="polite" style={{ minHeight: 24, color: msg?.ok ? "var(--success)" : "var(--destructive)" }}>{msg?.text}</div>
 
       <section style={box}>

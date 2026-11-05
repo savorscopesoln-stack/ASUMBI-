@@ -13,12 +13,21 @@ import { Notice, Pager, Skeleton } from "./lmsUi";
      GET  .../submissions/:sid/files/:fileId                                   (authenticated download, always an attachment)
      PUT  .../submissions/:sid/grade   {points,comment} or {scores:[{criterionId,levelPosition,comment}],comment}   -> saved as a DRAFT
      POST .../submissions/:sid/return                                           -> the learner can now see it; cannot be changed after
-   Learner text is shown as plain text. Group work (item.groupId) is NOT marked here yet (group-grade routes exist, no UI). */
+        GROUP work (item.groupId, L8.4b UI S101): the same form uses PUT .../submissions/:sid/group-grade (same body) and POST .../group-return; the server applies it to every
+       submitted member row of the group and answers {grade, members:{graded|returned:n, skipped:[ids] (already returned, left unchanged), failed:[{submissionId,code}]}}.
+   Learner text is shown as plain text. */
 
 const PAGE_SIZE = 20;
 const FILTERS = [["all", "All"], ["ungraded", "Not marked"], ["graded", "Marked, not returned"], ["returned", "Returned"], ["late", "Late"], ["resubmitted", "Resubmitted"]];
 const when = (iso) => { const d = iso ? new Date(iso) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; };
 const statusText = (s) => (s === "returned" ? "Returned" : s === "draft" ? "Marked, not returned" : "Not marked");
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+/* Plain-language result of a group action. Partial failures are shown as a problem, never as success. */
+function groupResult(m, verb, done) {
+  const n = (m && m[done]) || 0, skipped = (m && m.skipped) || [], failed = (m && m.failed) || [];
+  const text = `${verb} for ${plural(n, "member")}.${skipped.length ? ` ${plural(skipped.length, "member")} already returned, left unchanged.` : ""}${failed.length ? ` ${plural(failed.length, "member")} could not be updated. Run it again to retry.` : ""}`;
+  return { ok: failed.length === 0, text };
+}
 const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 function Marker({ courseId, assignmentId, item, onChanged }) {
@@ -68,18 +77,18 @@ function Marker({ courseId, assignmentId, item, onChanged }) {
     }
     setBusy(true); setMsg(null);
     try {
-      const r = await API.put(`${base}/grade`, body);
+      const r = await API.put(`${base}/${item.groupId ? "group-grade" : "grade"}`, body);
       setD((x) => ({ ...x, grade: r.data.grade })); setDirty(false);
-      setMsg({ ok: true, text: "Grade saved. The learner cannot see it until you return the work." }); onChanged();
+      setMsg(item.groupId ? (() => { const g = groupResult(r.data.members, "Grade saved", "graded"); return { ok: g.ok, text: g.text + " Learners cannot see it until you return the work." }; })() : { ok: true, text: "Grade saved. The learner cannot see it until you return the work." }); onChanged();
     } catch (e) { setMsg({ ok: false, text: errText(e, "Could not save the grade. Your entries are still here.") }); }
     setBusy(false);
   };
   const giveBack = async () => {
-    if (!window.confirm("Return this work to the learner? They will see the grade and feedback, and you will not be able to change it.")) return;
+    if (!window.confirm(item.groupId ? "Return this work to every member of the group? They will see the grade and feedback, and you will not be able to change it." : "Return this work to the learner? They will see the grade and feedback, and you will not be able to change it.")) return;
     setBusy(true); setMsg(null);
     try {
-      const r = await API.post(`${base}/return`);
-      setD((x) => ({ ...x, grade: r.data.grade })); setMsg({ ok: true, text: "Returned to the learner." }); onChanged();
+      const r = await API.post(`${base}/${item.groupId ? "group-return" : "return"}`);
+      setD((x) => ({ ...x, grade: r.data.grade })); setMsg(item.groupId ? groupResult(r.data.members, "Returned", "returned") : { ok: true, text: "Returned to the learner." }); onChanged();
     } catch (e) { setMsg({ ok: false, text: errText(e, "Could not return the work.") }); }
     setBusy(false);
   };
@@ -115,10 +124,9 @@ function Marker({ courseId, assignmentId, item, onChanged }) {
           {grade.penaltyPercent ? <div style={{ fontSize: 13, color: C.muted }}>{grade.penaltyPercent}% late penalty applied to {grade.rawPoints}.</div> : null}
           {grade.comment && <p style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>{grade.comment}</p>}
         </section>
-      ) : item.groupId ? (
-        <Notice msg={{ ok: false, text: "This is group work. Marking a group is not available on this screen yet." }} />
       ) : (
         <section aria-label="Grade" style={S.box}>
+          {item.groupId && <p role="note" style={{ margin: "0 0 10px", fontSize: 14 }}>This is group work. The grade and feedback you save go to every member of the group who handed in.</p>}
           {rubric ? rubric.criteria.map((c) => (
             <div key={c.id} style={{ marginBottom: 12 }}>
               <label style={S.label} htmlFor={`lv-${c.id}`}>{c.title}</label>

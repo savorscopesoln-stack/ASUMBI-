@@ -27,11 +27,26 @@ import CourseQuizAttempts from "./pages/lms/CourseQuizAttempts";
 import CourseQuizResults from "./pages/lms/CourseQuizResults";
 import CourseCertificates from "./pages/lms/CourseCertificates";
 import CourseAnnouncements from "./pages/lms/CourseAnnouncements";
+import CourseHelp from "./pages/lms/CourseHelp";
+import StudentHelp from "./pages/lms/StudentHelp";
 import CourseReports from "./pages/lms/CourseReports";
+import CourseAttention from "./pages/lms/CourseAttention";
+import LmsDepartment from "./pages/lms/LmsDepartment";
+import CourseEnrolments from "./pages/lms/CourseEnrolments";
 import StudentCourses from "./pages/lms/StudentCourses";
 import StudentLearning from "./pages/lms/StudentLearning";
 import StudentPlanner from "./pages/lms/StudentPlanner";
+import StudentPaths from "./pages/lms/StudentPaths";
+import CoursePaths from "./pages/lms/CoursePaths";
+import StudentCompetency from "./pages/lms/StudentCompetency";
+import CourseCompetency from "./pages/lms/CourseCompetency";
 import StudentAnnouncements from "./pages/lms/StudentAnnouncements";
+import StudentDiscussions from "./pages/lms/StudentDiscussions";
+import StudentPeerReview from "./pages/lms/StudentPeerReview";
+import CourseDiscussions from "./pages/lms/CourseDiscussions";
+import CourseGroups from "./pages/lms/CourseGroups";
+import CourseAssignments from "./pages/lms/CourseAssignments";
+import CoursePeerReview from "./pages/lms/CoursePeerReview";
 import CourseLessons from "./pages/lms/CourseLessons";
 import CoursePlayer from "./pages/lms/CoursePlayer";
 import StudentAssignment, { StudentAssignmentList } from "./pages/lms/StudentAssignments";
@@ -85,6 +100,8 @@ import StudentMarks from "./pages/Student/StudentMarks";
 import StudentProfile from "./pages/Student/StudentProfile";
 import StudentReport from "./pages/Student/StudentReport";
 import ReportLink from "./pages/ReportLink";
+import GuardianView from "./pages/lms/GuardianView";
+import GuardianLinks from "./pages/lms/GuardianLinks";
 import TranscriptLink from "./pages/TranscriptLink";
 import StudentMainExamTimetable from "./pages/Student/StudentMainExamTimetable";
 import StudentNotifications from "./pages/Student/StudentNotifications";
@@ -398,6 +415,8 @@ export default function App() {
       <Route path="/r/:token" element={<ReportLink />} />
       {/* TRANSCRIPT LINK — a student downloads their own transcript PDF from the link the school sent */}
       <Route path="/t/:token" element={<TranscriptLink />} />
+      {/* GUARDIAN VIEW — a guardian opens the private link the school gave them (no login): progress and missed work only */}
+      <Route path="/g/:school/:secret" element={<GuardianView />} />
 
       {/* UNAUTHORIZED */}
       <Route
@@ -472,6 +491,30 @@ export default function App() {
             page="Dashboard"
           >
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/lms/guardian"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="LMS"
+          >
+            <LmsErrorBoundary><GuardianLinks back="/lms" /></LmsErrorBoundary>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/lms/department"
+        element={
+          <ProtectedRoute
+            allowedRoles={[ROLES.ADMIN, ROLES.MODULE_ADMIN, ROLES.SUB_ADMIN, ROLES.SUB_ADMIN_2]}
+            page="LMS"
+          >
+            <LmsErrorBoundary><LmsDepartment back="/lms" /></LmsErrorBoundary>
           </ProtectedRoute>
         }
       />
@@ -921,8 +964,58 @@ export default function App() {
         />
 
         <Route
+          path="courses/:courseId/help"
+          element={<LmsErrorBoundary><CourseHelp /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/discussions"
+          element={<LmsErrorBoundary><CourseDiscussions /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/groups"
+          element={<LmsErrorBoundary><CourseGroups /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/paths"
+          element={<LmsErrorBoundary><CoursePaths /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/outcomes"
+          element={<LmsErrorBoundary><CourseCompetency /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/assignments"
+          element={<LmsErrorBoundary><CourseAssignments /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/peer-review"
+          element={<LmsErrorBoundary><CoursePeerReview /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/enrolments"
+          element={<LmsErrorBoundary><CourseEnrolments /></LmsErrorBoundary>}
+        />
+
+        <Route
           path="courses/:courseId/reports"
           element={<LmsErrorBoundary><CourseReports /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="department"
+          element={<LmsErrorBoundary><LmsDepartment /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/attention"
+          element={<LmsErrorBoundary><CourseAttention /></LmsErrorBoundary>}
         />
 
         <Route
@@ -1049,6 +1142,16 @@ export default function App() {
         />
 
         <Route
+          path="courses/:courseId/paths"
+          element={<LmsErrorBoundary><StudentPaths /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/outcomes"
+          element={<LmsErrorBoundary><StudentCompetency /></LmsErrorBoundary>}
+        />
+
+        <Route
           path="courses/:courseId/assignments"
           element={<LmsErrorBoundary><StudentAssignmentList /></LmsErrorBoundary>}
         />
@@ -1061,6 +1164,21 @@ export default function App() {
         <Route
           path="courses/:courseId/quizzes"
           element={<LmsErrorBoundary><StudentQuizList /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/discussions"
+          element={<LmsErrorBoundary><StudentDiscussions /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/help"
+          element={<LmsErrorBoundary><StudentHelp /></LmsErrorBoundary>}
+        />
+
+        <Route
+          path="courses/:courseId/peer-review"
+          element={<LmsErrorBoundary><StudentPeerReview /></LmsErrorBoundary>}
         />
 
         <Route
