@@ -57,7 +57,7 @@ function UrlField({ courseId, block, onChange, label, allowUpload, setMsg }) {
     setBusy(true); setMsg(null);
     const fd = new FormData(); fd.append("file", file);
     try {
-      const r = await API.post(`/lms/courses/${courseId}/media`, fd);
+      const r = await API.post(`/lms/courses/${courseId}/media`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       onChange({ url: r.data.file.url, title: block.title || (block.type === "image" ? undefined : r.data.file.name) });
       setList(null);
       setMsg({ ok: true, text: `Uploaded ${r.data.file.name}.` });

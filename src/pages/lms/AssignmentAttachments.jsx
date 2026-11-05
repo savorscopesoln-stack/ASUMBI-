@@ -25,7 +25,7 @@ export default function AssignmentAttachments({ courseId, value, onChange }) {
     setBusy(true); setMsg(null);
     const fd = new FormData(); fd.append("file", file);
     try {
-      const r = await API.post(`/lms/courses/${courseId}/media`, fd);
+      const r = await API.post(`/lms/courses/${courseId}/media`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       setOpts(null); if (add(r.data.file)) setMsg({ ok: true, text: `Uploaded ${r.data.file.name}.` });
     } catch (e) { setMsg({ ok: false, text: errText(e, "Upload failed.") }); } finally { setBusy(false); if (fileRef.current) fileRef.current.value = ""; }
   };
