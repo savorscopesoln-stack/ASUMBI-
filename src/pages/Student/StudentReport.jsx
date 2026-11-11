@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { sortSubjectsByCode } from "../../utils/subjectOrder";
 import API, { resolveFileUrl } from "../../api";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -431,10 +432,10 @@ export default function StudentReport() {
     // An assessment shows only its own subject; an exam shows every subject
     // scheduled in it (CRNM where that paper has no mark yet). The picked
     // source decides the subjects — not the School Settings subject filter.
-    return (source.subjects || []).map((ss) => {
+    return sortSubjectsByCode((source.subjects || []).map((ss) => {
       const full = subjects.find((x) => (ss.id != null && x.id === ss.id) || x.name === ss.name);
       return full || { id: ss.id, name: ss.name, code: ss.code };
-    });
+    }));
   }, [subjects, source]);
 
   const visibleSubjectNames = useMemo(
@@ -938,6 +939,7 @@ export default function StudentReport() {
               </div>
               <div style={styles.summaryRow}>
                 {[
+                  { label: "Total Marks", value: `${Math.floor(Number(analytics.totalMarks) + 1e-9)}/${analytics.maximumMarks}`, color: "#0369a1" },
                   { label: "Average Score", value: `${Math.floor(Number(analytics.avg)+1e-9)}%`, color: "#1d4ed8" },
                   { label: "Overall Result", value: analytics.result || "—", color: "#15803d" },
                   { label: "Class Position", value: `#${classPosition}`, color: "#b45309" },

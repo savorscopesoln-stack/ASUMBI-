@@ -43,14 +43,14 @@ export async function downloadTablesPdf({
       doc.setTextColor(30, 30, 30);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text(String(sec.heading), margin, y);
+      doc.text(String(sec.heading), pageW / 2, y, { align: "center" });
       y += 6;
       if (sec.note) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(9);
         doc.setTextColor(100, 100, 100);
         y += 10;
-        doc.text(String(sec.note), margin, y);
+        doc.text(String(sec.note), pageW / 2, y, { align: "center", maxWidth: pageW - margin * 2 });
       }
       y += 8;
     }
@@ -59,8 +59,22 @@ export async function downloadTablesPdf({
       head: [sec.head],
       body: sec.body.length ? sec.body : [[{ content: "No data", colSpan: sec.head.length, styles: { halign: "center", textColor: 120 } }]],
       margin: { left: margin, right: margin },
-      styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
-      headStyles: { fillColor: BRAND, textColor: 255 },
+      // Wide tables (one column per subject…) shrink their font instead of
+      // wrapping; name-like columns never wrap so names stay on one line.
+      styles: {
+        fontSize: sec.head.length > 16 ? 6 : sec.head.length > 11 ? 7.5 : 9,
+        cellPadding: sec.head.length > 16 ? 2 : 4,
+        overflow: "linebreak",
+        valign: "middle",
+      },
+      columnStyles: Object.fromEntries(
+        sec.head
+          .map((h, i) => [i, /name|subject|assessment|admission/i.test(String(h)) ? { cellWidth: "wrap", halign: "left" } : { halign: "center" }]),
+      ),
+      headStyles: { fillColor: BRAND, textColor: 255, halign: "center" },
+      didParseCell: (d) => {
+        if (d.section === "head" && /name|subject/i.test(String(sec.head[d.column.index]))) d.cell.styles.halign = "left";
+      },
       alternateRowStyles: { fillColor: [248, 245, 246] },
     });
     y = doc.lastAutoTable.finalY + 22;

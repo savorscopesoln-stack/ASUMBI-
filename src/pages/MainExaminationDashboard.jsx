@@ -1519,7 +1519,7 @@ function CandidatesTab({ id, showToast }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>
               <Th>Candidate</Th><Th>Admission No.</Th><Th>Subjects Registered</Th>
-              <Th>Completed</Th><Th>Incomplete</Th><Th>Overall Average</Th><Th></Th>
+              <Th>Completed</Th><Th>Incomplete</Th><Th>Total</Th><Th>Overall Average</Th><Th></Th>
             </tr></thead>
             <tbody>
               {students.map((s) => (
@@ -1533,6 +1533,7 @@ function CandidatesTab({ id, showToast }) {
                       ? <Chip text={`${s.subjects_incomplete} incomplete`} tone="warning" />
                       : <Chip text="Complete" tone="success" />}
                   </Td>
+                  <Td style={{ whiteSpace: "nowrap" }}>{s.total_possible > 0 ? `${s.total_obtained}/${s.total_possible}` : "—"}</Td>
                   <Td>{s.overall_average != null ? `${s.overall_average}%` : "Not enough data"}</Td>
                   <Td><MiniBtn icon={<ChevronRight size={13} />} onClick={() => openCandidate(s.student_id, s.name)} /></Td>
                 </tr>
@@ -1670,6 +1671,7 @@ function useMemoFilterRows(rows, search) {
 ═══════════════════════════════════════════════════════════ */
 const REPORT_TYPES = [
   { key: "summary", label: "Main Examination Summary", needs: null, path: (id) => `/main-exams/${id}/reports/summary` },
+  { key: "subject-analysis", label: "Subject Analysis (Subjects Ranked)", needs: null, path: (id) => `/main-exams/${id}/reports/subject-analysis` },
   { key: "class-ranking", label: "Class Performance Ranking", needs: null, path: (id) => `/main-exams/${id}/reports/class-ranking` },
   { key: "overall-performance", label: "Overall Performance (Candidate Ranking)", needs: null, path: (id) => `/main-exams/${id}/reports/overall-performance` },
   { key: "timetable", label: "Examination Timetable", needs: null, path: (id) => `/main-exams/${id}/reports/timetable` },
@@ -2034,6 +2036,7 @@ function RowsTable({ rows, columns, emptyText }) {
 function ReportView({ reportKey, data }) {
   switch (reportKey) {
     case "summary": return <SummaryReportView data={data} />;
+    case "subject-analysis": return <SubjectAnalysisReportView data={data} />;
     case "class-ranking": return <ClassRankingReportView data={data} />;
     case "overall-performance": return <OverallPerformanceReportView data={data} />;
     case "timetable": return <TimetableReportView data={data} />;
@@ -2142,6 +2145,11 @@ function SummaryReportView({ data }) {
         ]}
       />
 
+      {/* Subject Analysis — every subject ranked by its mean, with the
+          highest / lowest candidate and the other relevant stats. */}
+      <SectionHeader title="Subject Analysis" />
+      <SubjectAnalysisTable rows={data.subject_analysis} />
+
       {/* Gender Analysis — overall and per class, same per-candidate mean. */}
       <SectionHeader title="Gender Analysis" />
       <RowsTable
@@ -2207,6 +2215,44 @@ function SummaryReportView({ data }) {
   );
 }
 
+/* Subject Analysis table — subjects ranked best mean first. Used by the
+   Summary and by the standalone Subject Analysis report. */
+function SubjectAnalysisTable({ rows }) {
+  const p = (v) => (v != null ? `${v}%` : "—");
+  return (
+    <RowsTable
+      rows={(rows || []).map((r) => ({ ...r, rank: r.rank ?? "—" }))}
+      emptyText="No subjects with an attached assessment yet."
+      columns={[
+        { key: "rank", label: "Rank", strong: true },
+        { key: "code", label: "Code" },
+        { key: "subject", label: "Subject", strong: true, fmt: (v) => <span style={{ whiteSpace: "nowrap" }}>{v}</span> },
+        { key: "registered", label: "Registered" },
+        { key: "sat", label: "Sat" },
+        { key: "absent", label: "Absent" },
+        { key: "mean", label: "Mean %", fmt: p },
+        { key: "median", label: "Median %", fmt: p },
+        { key: "highest", label: "Highest %", fmt: p },
+        { key: "highest_student", label: "Top Student", fmt: (v) => <span style={{ whiteSpace: "nowrap" }}>{v || "—"}</span> },
+        { key: "lowest", label: "Lowest %", fmt: p },
+        { key: "lowest_student", label: "Lowest Student", fmt: (v) => <span style={{ whiteSpace: "nowrap" }}>{v || "—"}</span> },
+        { key: "std_dev", label: "Std Dev", fmt: (v) => (v != null ? v : "—") },
+        { key: "pass_rate", label: "Pass Rate", fmt: p },
+        { key: "best_class", label: "Best Class", fmt: (v) => v || "—" },
+      ]}
+    />
+  );
+}
+
+function SubjectAnalysisReportView({ data }) {
+  return (
+    <div>
+      <SectionHeader title="Subject Analysis — Subjects Ranked by Mean" />
+      <SubjectAnalysisTable rows={data.subject_analysis} />
+    </div>
+  );
+}
+
 /* Shared by the Class Performance Ranking and Overall Performance
    sections above (and by their standalone report views below) — a
    position/admission-no/name/class table with one column per subject
@@ -2225,7 +2271,7 @@ function RankedCandidatesTable({ rows, subjects, positionKey, emptyText }) {
           <thead><tr>
             <Th>Position</Th><Th>Admission No</Th><Th>Name</Th><Th>Class</Th>
             {subjectList.map((s) => <Th key={s.session_id} title={s.subject}>{s.code}</Th>)}
-            <Th>Mean %</Th>
+            <Th>Total</Th><Th>Mean %</Th>
           </tr></thead>
           <tbody>
             {list.map((r) => (
@@ -2237,6 +2283,7 @@ function RankedCandidatesTable({ rows, subjects, positionKey, emptyText }) {
                 {(r.marks || []).map((m, i) => (
                   <Td key={i}>{m.not_registered || m.score == null ? "—" : m.score}</Td>
                 ))}
+                <Td style={{ whiteSpace: "nowrap" }}>{(r.total_obtained != null && r.total_possible) ? `${r.total_obtained}/${r.total_possible}` : "—"}</Td>
                 <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
               </tr>
             ))}
@@ -2305,7 +2352,7 @@ function NominalRollTable({ data }) {
           <thead><tr>
             <Th>Position</Th><Th>Assessment No.</Th><Th>G</Th><Th>Name</Th>
             {subjects.map((s) => <Th key={s.session_id} title={s.subject}>{s.code}</Th>)}
-            <Th>Average %</Th>
+            <Th>Total</Th><Th>Average %</Th>
           </tr></thead>
           <tbody>
             {rows.map((r) => (
@@ -2317,6 +2364,7 @@ function NominalRollTable({ data }) {
                 {r.marks.map((m, i) => (
                   <Td key={i}>{m.not_registered || m.score == null ? "—" : m.score}</Td>
                 ))}
+                <Td style={{ whiteSpace: "nowrap" }}>{(r.total_obtained != null && r.total_possible) ? `${r.total_obtained}/${r.total_possible}` : "—"}</Td>
                 <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
               </tr>
             ))}
@@ -2411,6 +2459,7 @@ function StudentResultReportView({ data }) {
       <ReportHeadline
         items={[
           ["Candidate", data.student?.name], ["Admission No.", data.student?.admission_no ?? "—"],
+          ["Total Marks", data.total_possible > 0 ? `${data.total_obtained}/${data.total_possible}` : "—"],
           ["Overall Average", data.overall_average != null ? `${data.overall_average}%` : "Not enough data"],
           ["Completed", data.subjects_completed], ["Absent", data.subjects_absent], ["Upcoming", data.subjects_upcoming],
         ]}
@@ -2661,6 +2710,7 @@ function AnalyticsTab({ id, subjects, classes, showToast }) {
         <>
           <AnalyticsPdfBar id={id} showToast={showToast} items={[
             { label: "Summary", path: "/reports/summary" },
+            { label: "Subject Analysis", path: "/reports/subject-analysis" },
             { label: "Class Ranking", path: "/reports/class-ranking" },
             { label: "Overall Performance", path: "/reports/overall-performance" },
             { label: "Grade Distribution", path: "/reports/grade-distribution" },
@@ -2824,7 +2874,7 @@ function ClassAnalyticsView({ label, loading, data, onBack, onSelectStudent }) {
             <thead><tr>
               <Th>Student</Th><Th>Admission No.</Th>
               {(data.subjects || []).map((s) => <Th key={s.session_id}>{s.subject}</Th>)}
-              <Th>Average</Th><Th></Th>
+              <Th>Total</Th><Th>Average</Th><Th></Th>
             </tr></thead>
             <tbody>
               {rows.map((r) => (
@@ -2832,6 +2882,10 @@ function ClassAnalyticsView({ label, loading, data, onBack, onSelectStudent }) {
                   <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
                   <Td>{r.admission_no || "—"}</Td>
                   {r.subjects.map((sm, i) => <Td key={i}>{sm.score != null ? `${sm.score}/${sm.total_marks}` : "—"}</Td>)}
+                  <Td style={{ whiteSpace: "nowrap" }}>{(() => {
+                    const got = r.subjects.filter((sm) => sm.score != null && sm.total_marks > 0);
+                    return got.length ? `${got.reduce((a, sm) => a + Number(sm.score), 0)}/${got.reduce((a, sm) => a + Number(sm.total_marks), 0)}` : "—";
+                  })()}</Td>
                   <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "Not enough data"}</Td>
                   <Td><MiniBtn icon={<ChevronRight size={13} />} onClick={() => onSelectStudent?.(r.student_id, r.name)} /></Td>
                 </tr>
@@ -2869,7 +2923,7 @@ function StudentsAnalyticsList({ students, loading, search, setSearch, onSearch,
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>
               <Th>Student</Th><Th>Admission No.</Th><Th>Subjects Registered</Th>
-              <Th>Completed</Th><Th>Incomplete</Th><Th>Overall Average</Th><Th></Th>
+              <Th>Completed</Th><Th>Incomplete</Th><Th>Total</Th><Th>Overall Average</Th><Th></Th>
             </tr></thead>
             <tbody>
               {students.map((s) => (
@@ -2879,6 +2933,7 @@ function StudentsAnalyticsList({ students, loading, search, setSearch, onSearch,
                   <Td>{s.subjects_registered}</Td>
                   <Td>{s.subjects_completed}</Td>
                   <Td>{s.subjects_incomplete}</Td>
+                  <Td style={{ whiteSpace: "nowrap" }}>{s.total_possible > 0 ? `${s.total_obtained}/${s.total_possible}` : "—"}</Td>
                   <Td>{s.overall_average != null ? `${s.overall_average}%` : "Not enough data"}</Td>
                   <Td><MiniBtn icon={<ChevronRight size={13} />} onClick={() => onSelect(s.student_id, s.name)} /></Td>
                 </tr>
@@ -3075,6 +3130,7 @@ function StudentProfileView({ loading, data, onBack }) {
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 24 }}>
+        <SmallStat label="Total Marks" value={data.total_possible > 0 ? `${data.total_obtained}/${data.total_possible}` : "—"} icon={<Gauge size={16} />} />
         <SmallStat label="Overall Average" value={overall_average != null ? `${overall_average}%` : "Not enough data"} icon={<Gauge size={16} />} tone="success" />
         <SmallStat label="Subjects Completed" value={subjects_completed} icon={<CheckCircle2 size={16} />} />
         <SmallStat label="Subjects Absent" value={subjects_absent} icon={<AlertCircle size={16} />} tone="danger" />

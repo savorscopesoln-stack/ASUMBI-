@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { sortSubjectsByCode } from "../../utils/subjectOrder";
 import { round2, fmt2 } from "../../utils/format";
 import API from "../../api";
 import html2canvas from "html2canvas";
@@ -60,7 +61,7 @@ useEffect(() => {
     ]);
 
     setAssessments(a.data || []);
-    setSubjects(sub.data || []);   // ✅ FIXED
+    setSubjects(sortSubjectsByCode(sub.data || []));
     setStudents(s.data || []);     // ✅ FIXED
   })();
 }, []);

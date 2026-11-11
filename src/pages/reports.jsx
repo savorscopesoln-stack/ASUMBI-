@@ -1,4 +1,5 @@
 import { round2, fmt2 } from "../utils/format";
+import { sortSubjectsByCode } from "../utils/subjectOrder";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API, { resolveFileUrl } from "../api";
 import QRCode from "qrcode";
@@ -128,7 +129,7 @@ export default function Reports() {
 
       setAssessments(a.data || []);
       setStudents(s.data || []);
-      setSubjects(sub.data || []);
+      setSubjects(sortSubjectsByCode(sub.data || []));
     })();
   }, []);
 
@@ -188,6 +189,8 @@ export default function Reports() {
     return {
       studentId,
       student: studentMap[studentId],
+      total,                 // sum of subject marks
+      possible: count * 100, // out of 100 per subject
       avg,
       subjects: subjectBreakdown,
       grade: getGradeForScore(avg, gradingSystem),
@@ -1570,6 +1573,7 @@ onClick={() => printAllReports()}
             ["Student Name", r.student?.name],
             ["Admission Number", r.student?.id],
             ["Class", r.student?.studentClass],
+            ["Total Marks", `${Math.floor(Number(r.total) + 1e-9)}/${r.possible}`],
             ["Average Score", `${fmt2(r.avg)}%`],
             ["Overall Grade", r.grade?.label],
             ["Final Result", r.result],
