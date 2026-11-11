@@ -179,7 +179,9 @@ export default function Reports() {
       return {
         subject: sub.name,
         score,
-        grade: grade.label,
+        grade: grade.grade,                      // GRADE  = grade from the Grading System
+        points: grade.label,                     // POINTS = band label
+        result: getOverallResultForScore(score, gradingSystem), // RESULT = result label
         remark: getRemarkForScore(score, gradingSystem),
       };
     });
@@ -1828,6 +1830,8 @@ onClick={() => printAllReports()}
                 <th style={styles.proTableHead}>Subject</th>
                 <th style={styles.proTableHead}>Score</th>
                 <th style={styles.proTableHead}>Grade</th>
+                <th style={styles.proTableHead}>Points</th>
+                <th style={styles.proTableHead}>Result</th>
                 <th style={styles.proTableHead}>Remark</th>
               </tr>
             </thead>
@@ -1887,6 +1891,14 @@ onClick={() => printAllReports()}
                   </td>
 
                   <td style={styles.proTableCell}>
+                    {s.points}
+                  </td>
+
+                  <td style={styles.proTableCell}>
+                    {s.result}
+                  </td>
+
+                  <td style={styles.proTableCell}>
                     {s.remark}
                   </td>
                 </tr>
@@ -1908,12 +1920,18 @@ onClick={() => printAllReports()}
                 </td>
 
                 <td style={styles.proTableCell}>
+                  {r.grade?.grade}
+                </td>
+
+                <td style={styles.proTableCell}>
                   {r.grade?.label}
                 </td>
 
                 <td style={styles.proTableCell}>
                   {r.result}
                 </td>
+
+                <td style={styles.proTableCell}></td>
               </tr>
             </tbody>
           </table>
