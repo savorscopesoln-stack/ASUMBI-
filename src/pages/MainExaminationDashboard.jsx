@@ -1765,6 +1765,7 @@ function ReportsTab({ id, subjects, classes, showToast }) {
   return (
     <div>
       <SectionHeader title="Reports" />
+      <SubjectCodesCard id={id} showToast={showToast} onSaved={() => setData(null)} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, maxWidth: 680 }} className="dash-two-col">
         <div>
           <FieldLabel>Report Type</FieldLabel>
@@ -1845,6 +1846,143 @@ function ReportsTab({ id, subjects, classes, showToast }) {
         <EmptyState icon={<FileText size={22} />} text="Click View to render this report on-screen, or download it directly as Excel/PDF." />
       ) : (
         <ReportView reportKey={reportKey} data={data} />
+      )}
+    </div>
+  );
+}
+
+/* ── Subject codes & key editor ──
+   The short code heading each subject column on the Nominal Roll /
+   Overall Performance / Class Ranking reports, and the "Code = Subject"
+   key printed under them (screen, Excel and PDF). Leave a box blank to
+   fall back to the generated code / the subject name. Works at any time,
+   even after the exam has run, so a printed code can be corrected. */
+function SubjectCodesCard({ id, showToast, onSaved }) {
+  const C = useC();
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState(null); // [{ session_id, subject, generated_code, code, key }]
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await API.get(`/main-exams/${id}/subject-codes`);
+      setRows((res.data.subjects || []).map((s) => ({
+        session_id: s.session_id, subject: s.subject, generated_code: s.generated_code,
+        code: s.report_code || "", key: s.report_key || "",
+      })));
+      setDirty(false);
+    } catch (err) {
+      console.error(err);
+      showToast?.(err?.response?.data?.message || "Failed to load subject codes", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [id, showToast]);
+
+  useEffect(() => { if (open && rows === null) load(); }, [open, rows, load]);
+
+  const setField = (sessionId, field, value) => {
+    setRows((prev) => prev.map((r) => (r.session_id === sessionId ? { ...r, [field]: value } : r)));
+    setDirty(true);
+  };
+
+  const dupes = useMemo(() => {
+    const count = new Map();
+    (rows || []).forEach((r) => { const c = r.code.trim().toUpperCase(); if (c) count.set(c, (count.get(c) || 0) + 1); });
+    return new Set([...count].filter(([, n]) => n > 1).map(([c]) => c));
+  }, [rows]);
+
+  const save = async () => {
+    if (dupes.size) { showToast?.("Each subject needs its own code — fix the highlighted duplicates.", "error"); return; }
+    try {
+      setSaving(true);
+      await API.put(`/main-exams/${id}/subject-codes`, {
+        items: rows.map((r) => ({ session_id: r.session_id, code: r.code, key: r.key })),
+      });
+      showToast?.("Subject codes and key saved", "success");
+      await load();
+      onSaved?.();
+    } catch (err) {
+      console.error(err);
+      showToast?.(err?.response?.data?.message || "Failed to save subject codes", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputSx = (bad) => ({
+    width: "100%", padding: "8px 10px", borderRadius: 8, boxSizing: "border-box",
+    border: `1px solid ${bad ? C.danger || "#e5484d" : C.border}`, background: C.bgAlt,
+    color: C.textPri, fontSize: 13.5, outline: "none",
+  });
+
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, background: C.card, marginBottom: 18 }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "none", border: "none", cursor: "pointer", color: C.textPri, textAlign: "left" }}
+      >
+        <Key size={16} />
+        <span style={{ fontWeight: 700, fontSize: 14 }}>Subject codes &amp; key</span>
+        <span style={{ fontSize: 12.5, color: C.textMuted, flex: 1 }}>Edit the code and wording shown on the report columns and key</span>
+        <ChevronDown size={16} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+
+      {open && (
+        <div style={{ padding: "0 16px 16px" }}>
+          {loading && rows === null ? (
+            <div className="dash-skeleton" style={{ height: 120, borderRadius: 10 }} />
+          ) : !rows || rows.length === 0 ? (
+            <EmptyState icon={<FileText size={22} />} text="No subjects with an attached assessment yet — codes appear here once a paper is attached." />
+          ) : (
+            <>
+              <div style={{ fontSize: 12.5, color: C.textSec, marginBottom: 10 }}>
+                Leave a box empty to use the automatic code / the subject name. Changes apply to the on-screen reports, Excel and PDF.
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
+                  <thead><tr><Th>Subject</Th><Th>Code</Th><Th>Key (what the code means)</Th></tr></thead>
+                  <tbody>
+                    {rows.map((r) => {
+                      const bad = dupes.has(r.code.trim().toUpperCase());
+                      return (
+                        <tr key={r.session_id}>
+                          <Td style={{ fontWeight: 700, color: C.textPri }}>{r.subject}</Td>
+                          <Td style={{ width: 150 }}>
+                            <input value={r.code} maxLength={20} placeholder={r.generated_code}
+                              onChange={(e) => setField(r.session_id, "code", e.target.value.toUpperCase())}
+                              style={inputSx(bad)} aria-label={`Code for ${r.subject}`} />
+                          </Td>
+                          <Td>
+                            <input value={r.key} maxLength={150} placeholder={r.subject}
+                              onChange={(e) => setField(r.session_id, "key", e.target.value)}
+                              style={inputSx(false)} aria-label={`Key for ${r.subject}`} />
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {dupes.size > 0 && (
+                <div style={{ marginTop: 8, fontSize: 12.5, color: C.danger || "#e5484d" }}>
+                  Duplicate code: {[...dupes].join(", ")} — each subject must have a unique code.
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                <ActionButton primary onClick={save} disabled={saving || !dirty || dupes.size > 0}>
+                  {saving ? "Saving…" : "Save codes & key"}
+                </ActionButton>
+                <ActionButton icon={<Undo2 size={14} />} onClick={() => { setRows((p) => p.map((r) => ({ ...r, code: "", key: "" }))); setDirty(true); }} disabled={saving}>
+                  Reset all to automatic
+                </ActionButton>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
@@ -2110,7 +2248,7 @@ function RankedCandidatesTable({ rows, subjects, positionKey, emptyText }) {
           <span style={{ fontWeight: 600, color: C.textPri }}>Key: </span>
           {subjectList.map((s, i) => (
             <span key={s.session_id}>
-              <strong style={{ color: C.textPri }}>{s.code}</strong> = {s.subject}
+              <strong style={{ color: C.textPri }}>{s.code}</strong> = {s.key || s.subject}
               {i < subjectList.length - 1 ? " · " : ""}
             </span>
           ))}
@@ -2194,7 +2332,7 @@ function NominalRollTable({ data }) {
           <span style={{ fontWeight: 600, color: C.textPri }}>Key: </span>
           {subjects.map((s, i) => (
             <span key={s.session_id}>
-              <strong style={{ color: C.textPri }}>{s.code}</strong> = {s.subject}
+              <strong style={{ color: C.textPri }}>{s.code}</strong> = {s.key || s.subject}
               {i < subjects.length - 1 ? " · " : ""}
             </span>
           ))}
