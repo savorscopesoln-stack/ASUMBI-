@@ -477,8 +477,13 @@ export default function StudentReport() {
     () => new Set(visibleMarks.map((m) => m.subjectName)),
     [visibleMarks]
   );
+  // A subject whose name contains "(Optional)" (e.g. "9829 -- French (Optional)")
+  // is not required: without a mark it is simply not taken, and must NOT
+  // turn the overall grade/result into CRNM. If it DOES have a mark it is
+  // counted like any other subject.
+  const isOptionalSubject = (name) => /\(\s*optional\s*\)/i.test(String(name || ""));
   const hasCrnm = useMemo(
-    () => visibleSubjects.some((s) => !visibleMarkedNames.has(s.name)),
+    () => visibleSubjects.some((s) => !visibleMarkedNames.has(s.name) && !isOptionalSubject(s.name)),
     [visibleSubjects, visibleMarkedNames]
   );
 
@@ -977,7 +982,7 @@ export default function StudentReport() {
                               fontSize: 8,
                               color: s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c"
                             }}>{Math.floor(Number(s.score)+1e-9)}%</span>
-                          ) : <span style={styles.crnmTag}>CRNM</span>}
+                          ) : isOptionalSubject(s.subject) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
                           {valid ? (
@@ -991,7 +996,7 @@ export default function StudentReport() {
                               display: "inline-block",
                               letterSpacing: "0.02em",
                             }}>{badge.text}</span>
-                          ) : <span style={styles.crnmTag}>CRNM</span>}
+                          ) : isOptionalSubject(s.subject) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
                         <td style={{ ...styles.td, textAlign: "left", color: "#64748b" }}>{remark || "—"}</td>
                       </tr>
