@@ -315,6 +315,7 @@ export default function StudentReport() {
   // { mode: "none" | "assessment" | "exam", name, subjects: [{id,name,code}] }
   const [source, setSource] = useState({ mode: "none", name: null, subjects: [] });
   const [students, setStudents] = useState([]);
+  const [positions, setPositions] = useState({ classPosition: null, overallPosition: null });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
@@ -333,17 +334,23 @@ export default function StudentReport() {
       setLoading(true);
       setLoadError(false);
       try {
-        const [m, s, st, src] = await Promise.all([
+        const rankingStudentId = user.id || admissionNo;
+        const [m, s, st, src, rank] = await Promise.all([
           API.get("/student/marks", { params: { studentId: admissionNo, reportCard: 1 } }),
           API.get("/subjects"),
           API.get("/students"),
           API.get("/report-card-source"),
+          API.get("/student/positions", { params: { studentId: rankingStudentId } }),
         ]);
         if (cancelled) return;
         setSource(src.data || { mode: "none", name: null, subjects: [] });
         setMarks(m.data || []);
         setSubjects(s.data || []);
         setStudents(st.data || []);
+        setPositions({
+          classPosition: rank.data?.classPosition ?? null,
+          overallPosition: rank.data?.overallPosition ?? null,
+        });
       } catch (err) {
         console.error("STUDENT REPORT LOAD ERROR:", err);
         if (!cancelled) setLoadError(true);
@@ -440,32 +447,12 @@ export default function StudentReport() {
     return marks.filter((m) => visibleSubjectNames.has(m.subjectName));
   }, [marks, source, visibleSubjectNames]);
 
-  /* ================= POSITION (unchanged ranking logic) =================
-     Two ranks off the same underlying method: `overallPosition` ranks
-     the student against every student returned by /students (the
-     whole school), and `classPosition` ranks them against just the
-     students who share their class/stream. */
-  const rankAmong = (pool) => {
-    if (!pool.length) return "-";
-    const ranked = pool
-      .map((s) => {
-        const sm = visibleMarks.filter((m) => m.studentId === s.id);
-        const scores = sm.map((x) => Number(x.percentage || 0));
-        const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-        return { id: s.id, avg };
-      })
-      .sort((a, b) => b.avg - a.avg);
-    return ranked.findIndex((r) => r.id === admissionNo) + 1;
-  };
-
-  const overallPosition = useMemo(() => rankAmong(students), [students, visibleMarks, admissionNo]);
-
-  const classPosition = useMemo(() => {
-    const classmates = students.filter(
-      (s) => (s?.class || s?.className || s?.studentClass) === studentClass
-    );
-    return rankAmong(classmates);
-  }, [students, visibleMarks, admissionNo, studentClass]);
+  /* ================= POSITIONS =================
+     These are calculated by the backend from all students' marks in
+     the selected report-card source. The current student's marks array
+     is intentionally not used to rank other students. */
+  const overallPosition = positions.overallPosition ?? "-";
+  const classPosition = positions.classPosition ?? "-";
 
   /* ================= CRNM PROPAGATION =================
      If any subject the admin has chosen to show is missing a score
