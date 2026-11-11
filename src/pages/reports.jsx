@@ -87,7 +87,7 @@ const LetterHead = ({ mode, school }) => (
 const COLORS = ["#16a34a", "#facc15", "#f97316", "#dc2626"];
 
 export default function Reports() {
-  const { settings: school, getOfficial, signatory, signatories } = useSchoolSettings();
+  const { settings: school, getOfficial, signatory, signatories, getClassTeachers } = useSchoolSettings();
   const { gradingSystem } = useGradingSystem();
   const passMark = getPassMark(gradingSystem);
   const dean = getOfficial("dean");
@@ -1927,136 +1927,92 @@ onClick={() => printAllReports()}
           }}
         >
 
-          {/* REMARKS */}
-          <div
-            style={{
-              border: "1px solid #e2e8f0",
-              borderRadius: 24,
-              padding: 24,
-            }}
-          >
-            <h3
-              style={{
-                marginTop: 0,
-                color: "#0f172a",
-              }}
-            >
-              Lecturer Remarks
-            </h3>
+          {/* Same authorisation block as the student Report Form:
+              one remarks box per Class Teacher / Lecturer of this
+              student's class (name, uploaded signature, own stamp),
+              then one "Approved By" card per signatory with their
+              own uploaded signature + stamp. Falls back to the
+              blank hand-signed lines when nothing is uploaded. */}
+          {(() => {
+            const schoolStampSrc = resolveFileUrl(school?.stampUrl);
+            const teachers = getClassTeachers(r.student?.studentClass);
+            const approvers = signatories.length > 0 ? signatories : [null];
+            const fbSig = dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl;
+            const fbStamp = dean?.stampUrl || principal?.stampUrl || signatory?.stampUrl;
 
-            <div
-              style={{
-                minHeight: 110,
-                border: "2px dashed #cbd5e1",
-                borderRadius: 16,
-                padding: 16,
-                color: "#64748b",
-                marginBottom: 20,
-              }}
-            >
-              Class Lecturer’s remarks and recommendations.
-            </div>
+            const sigLine = <div style={styles.tSigLine} />;
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 18,
-              }}
-            >
-              {["Lecturer", "Signature", "Date"].map(
-                (item, i) => (
-                  <div key={i}>
-                    <p
-                      style={{
-                        marginBottom: 28,
-                        fontSize: 12,
-                        color: "#64748b",
-                      }}
-                    >
-                      {item}
-                    </p>
-
-                    <div
-                      style={{
-                        borderBottom:
-                          "1px solid #0f172a",
-                      }}
-                    />
+            const teacherCards = (teachers.length > 0 ? teachers : [null]).map((ct, i) => {
+              const stampSrc = ct ? (resolveFileUrl(ct.stampUrl) || schoolStampSrc) : null;
+              return (
+                <div style={styles.tAuthCard} key={ct?.id ?? `t${i}`}>
+                  {stampSrc && <img src={stampSrc} alt="" style={styles.tStampOverlay} />}
+                  <h3 style={{ marginTop: 0, color: "#0f172a" }}>
+                    {ct?.title ? `${ct.title}'s Remarks` : "Class Lecturer’s Remarks"}
+                  </h3>
+                  <div
+                    style={{
+                      minHeight: 90,
+                      border: "2px dashed #cbd5e1",
+                      borderRadius: 16,
+                      padding: 16,
+                      color: "#64748b",
+                      marginBottom: 20,
+                    }}
+                  >
+                    Class Lecturer’s remarks and recommendations.
                   </div>
-                )
-              )}
-            </div>
-          </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 18 }}>
+                    <div>
+                      <p style={styles.tSigLabel}>Lecturer</p>
+                      {ct?.name ? (
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "#0f172a" }}>{ct.name}</p>
+                      ) : sigLine}
+                    </div>
+                    <div>
+                      <p style={styles.tSigLabel}>Signature</p>
+                      {ct?.signatureUrl ? (
+                        <img src={resolveFileUrl(ct.signatureUrl)} alt="" style={styles.tSigImage} />
+                      ) : sigLine}
+                    </div>
+                    <div>
+                      <p style={styles.tSigLabel}>Date</p>
+                      {sigLine}
+                    </div>
+                  </div>
+                </div>
+              );
+            });
 
-          {/* APPROVAL */}
-          <div
-            style={{
-              border: "1px solid #e2e8f0",
-              borderRadius: 24,
-              padding: 24,
-            }}
-          >
-            <h3
-              style={{
-                marginTop: 0,
-                color: "#0f172a",
-              }}
-            >
-              Approval & Authentication
-            </h3>
+            const approverCards = approvers.map((sg, i) => {
+              const stampSrc = resolveFileUrl(sg ? sg.stampUrl : fbStamp) || schoolStampSrc;
+              const sigUrl = sg ? sg.signatureUrl : fbSig;
+              const name = sg ? sg.name : (dean?.name || principal?.name || signatory?.name);
+              const title = sg
+                ? sg.title
+                : (dean?.title || principal?.title || signatory?.title || "Chief Principal");
+              return (
+                <div style={styles.tAuthCard} key={sg?.id ?? `a${i}`}>
+                  {stampSrc && <img src={stampSrc} alt="" style={styles.tStampOverlay} />}
+                  <h3 style={{ marginTop: 0, color: "#0f172a" }}>Approval & Authentication</h3>
+                  <div style={{ marginTop: 25 }}>
+                    <h2 style={{ margin: 0, color: "#7f1d1d" }}>{name || "—"}</h2>
+                    <p style={{ marginTop: 6, color: "#475569" }}>{title || "—"}</p>
+                    <div style={{ marginTop: 30 }}>
+                      <small style={{ color: "#64748b" }}>Authorized Signature</small>
+                      {sigUrl ? (
+                        <img src={resolveFileUrl(sigUrl)} alt="" style={{ ...styles.tSigImage, marginTop: 6 }} />
+                      ) : (
+                        <div style={{ marginTop: 10, borderBottom: "1px solid #0f172a" }} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            });
 
-            <div style={{ marginTop: 25 }}>
-              <h2
-                style={{
-                  margin: 0,
-                  color: "#7f1d1d",
-                }}
-              >
-                {dean?.name || "—"}
-              </h2>
-
-              <p
-                style={{
-                  marginTop: 6,
-                  color: "#475569",
-                }}
-              >
-                {dean?.title || "Dean of Curriculum"}
-              </p>
-
-              <p
-                style={{
-                  marginTop: -5,
-                  color: "#64748b",
-                }}
-              >
-                For: {principal?.title || signatory?.title || "Chief Principal"}
-              </p>
-
-              <div
-                style={{
-                  marginTop: 50,
-                }}
-              >
-                <small
-                  style={{
-                    color: "#64748b",
-                  }}
-                >
-                  Authorized Signature
-                </small>
-
-                <div
-                  style={{
-                    marginTop: 10,
-                    borderBottom:
-                      "1px solid #0f172a",
-                  }}
-                />
-              </div>
-            </div>
-          </div>
+            return <>{teacherCards}{approverCards}</>;
+          })()}
         </div>
 
         {/* =========================================================
@@ -2388,6 +2344,36 @@ const styles = {
     marginTop: 25,
     marginLeft: "40%",
     marginRight: "50%",
+  },
+
+  /* ================= TRANSCRIPT AUTHORISATION (mirrors Report Form) ================= */
+  tAuthCard: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 24,
+    padding: 24,
+    position: "relative",
+    overflow: "visible",
+  },
+  tSigLabel: { marginBottom: 14, marginTop: 0, fontSize: 12, color: "#64748b" },
+  tSigLine: { borderBottom: "1px solid #0f172a", width: "100%" },
+  tSigImage: {
+    display: "block",
+    maxWidth: "90%",
+    maxHeight: 40,
+    objectFit: "contain",
+  },
+  tStampOverlay: {
+    position: "absolute",
+    top: 6,
+    right: 10,
+    width: "2in",
+    height: "1in",
+    objectFit: "contain",
+    opacity: 0.85,
+    transform: "rotate(-8deg)",
+    mixBlendMode: "multiply",
+    pointerEvents: "none",
+    zIndex: 5,
   },
 
   /* ================= REPORT GRID ================= */
