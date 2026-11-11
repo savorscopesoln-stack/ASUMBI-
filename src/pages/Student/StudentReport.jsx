@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import API, { resolveFileUrl } from "../../api";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import QRCode from "react-qr-code";
+import QRCode from "../../utils/QRCode";
 import {
   ResponsiveContainer,
   BarChart,

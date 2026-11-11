@@ -10,7 +10,7 @@ import {
   Tooltip,
   Cell,
 } from "recharts";
-import QRCode from "react-qr-code";
+import QRCode from "../../utils/QRCode";
 import {
   BarChart3, DoorOpen, Utensils, Percent, Award, TrendingUp, TrendingDown,
   CheckCircle2, Clock, AlertTriangle, Inbox, Sun, Moon, LogIn, MapPin, CalendarClock,

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { round2, fmt2 } from "../../utils/format";
 import API from "../../api";
 import html2canvas from "html2canvas";
-import QRCode from "react-qr-code";
+import QRCode from "../../utils/QRCode";
 import jsPDF from "jspdf";
 import useSchoolSettings from "../../hooks/useSchoolSettings";
 import useGradingSystem from "../../hooks/useGradingSystem";
