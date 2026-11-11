@@ -497,10 +497,15 @@ export default function StudentReport() {
      actually meaningful on their own: average, highest, lowest, and
      how many learning areas were assessed. */
   const analytics = useMemo(() => {
-    const scores = visibleMarks.map((m) => Number(m.percentage)).filter((v) => !isNaN(v));
+    const scores = visibleMarks
+      .filter((m) => m.percentage !== null && m.percentage !== undefined && m.percentage !== "")
+      .map((m) => Number(m.percentage))
+      .filter(Number.isFinite);
     const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     return {
       avg: round2(avg),
+      totalMarks: scores.reduce((a, b) => a + b, 0),
+      maximumMarks: scores.length * 100,
       highest: scores.length ? round2(Math.max(...scores)) : null,
       lowest: scores.length ? round2(Math.min(...scores)) : null,
       assessedCount: scores.length,
@@ -513,7 +518,30 @@ export default function StudentReport() {
   const subjectMap = useMemo(() => {
     const map = {};
     visibleMarks.forEach((m) => { map[m.subjectName] = round2(Number(m.percentage)); });
-    return visibleSubjects.map((s) => ({ subject: s.name, code: s.code, score: map[s.name] ?? null }));
+
+    // Sort by the first four-digit subject number in the code (or name),
+    // lowest number first. Subjects without a numeric code come last.
+    const getSubjectNumber = (subject) => {
+      const value = String(subject.code ?? subject.name ?? "");
+      const match = value.match(/\d{1,4}/);
+      return match ? Number(match[0]) : null;
+    };
+
+    return visibleSubjects
+      .map((s, originalIndex) => ({
+        subject: s.name,
+        code: s.code,
+        score: map[s.name] ?? null,
+        originalIndex,
+        subjectNumber: getSubjectNumber(s),
+      }))
+      .sort((a, b) => {
+        if (a.subjectNumber == null && b.subjectNumber == null) return a.originalIndex - b.originalIndex;
+        if (a.subjectNumber == null) return 1;
+        if (b.subjectNumber == null) return -1;
+        return a.subjectNumber - b.subjectNumber || a.originalIndex - b.originalIndex;
+      })
+      .map(({ originalIndex, subjectNumber, ...subject }) => subject);
   }, [visibleMarks, visibleSubjects]);
 
 
@@ -1002,6 +1030,17 @@ export default function StudentReport() {
                       </tr>
                     );
                   })}
+
+                  {/* TOTAL MARKS ROW — sum of graded subject percentages,
+                      shown against 100 marks for each graded subject. */}
+                  <tr style={styles.totalRow}>
+                    <td style={styles.td} colSpan={2}>TOTAL MARKS</td>
+                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 800, color: "#ffffff", fontSize: 9 }}>
+                      {Math.floor(analytics.totalMarks + 1e-9)} / {analytics.maximumMarks}
+                    </td>
+                    <td style={styles.td}></td>
+                    <td style={styles.td}></td>
+                  </tr>
 
                   {/* AVERAGE ROW — a mean of percentages, correctly
                       labelled (this used to be a mis-labelled sum). */}
