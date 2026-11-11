@@ -1100,30 +1100,6 @@ export default function StudentReport() {
             )}
 
             {/* ══════════════════════════════════════════════
-                PERFORMANCE CHART (screen only — kept off the
-                printed/exported sheet so the document stays a
-                clean, predictable single page)
-            ══════════════════════════════════════════════ */}
-            {chartData.length > 0 && (
-              <div style={styles.section} className="no-print">
-                <div style={styles.sectionLabelBar}>
-                  <span style={styles.sectionLabel}>Score Overview (screen only)</span>
-                </div>
-                <div style={styles.chartWrap}>
-                  <ResponsiveContainer width="100%" height={Math.max(80, chartData.length * 26)}>
-                    <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
-                      <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9 }} stroke="#94a3b8" />
-                      <YAxis type="category" dataKey="subject" width={110} tick={{ fontSize: 9 }} stroke="#94a3b8" />
-                      <Tooltip formatter={(v) => [`${v}%`, "Score"]} />
-                      <Bar dataKey="score" fill={reportTheme.primary} radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            )}
-
-            {/* ══════════════════════════════════════════════
                 REMARKS & APPROVAL
             ══════════════════════════════════════════════ */}
             <div style={styles.section}>
