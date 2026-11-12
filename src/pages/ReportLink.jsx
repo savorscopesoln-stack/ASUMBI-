@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import API from "../api";
-import StudentReport from "./Student/StudentReport";
+import StudentDownloadHub from "../components/StudentDownloadHub";
 
 /* =========================================================================
    REPORT LINK PAGE  —  /r/:token   (public, no login)
@@ -17,6 +17,7 @@ import StudentReport from "./Student/StudentReport";
 export default function ReportLink() {
   const { token } = useParams();
   const [state, setState] = useState({ status: "loading", message: "" });
+  const [downloads, setDownloads] = useState({ mode: "report" });
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +29,7 @@ export default function ReportLink() {
         if (cancelled) return;
         sessionStorage.setItem("report_link_token", res.data.token);
         sessionStorage.setItem("report_link_user", JSON.stringify(res.data.user));
+        setDownloads(res.data.downloads || { mode: "report" });
         setState({ status: "ready", message: "" });
       } catch (err) {
         if (cancelled) return;
@@ -40,7 +42,7 @@ export default function ReportLink() {
     return () => { cancelled = true; };
   }, [token]);
 
-  if (state.status === "ready") return <StudentReport />;
+  if (state.status === "ready") return <StudentDownloadHub downloads={downloads} />;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "var(--bg, #f8fafc)", color: "var(--text, #0f172a)" }}>

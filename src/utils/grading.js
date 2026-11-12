@@ -20,6 +20,7 @@
 export const DEFAULT_GRADING_SYSTEM = {
   systemName: "KNEC Standard",
   passMark: 40,
+  totalMarks: null,
   gradeBands: [
     { minScore: 80, grade: "1", label: "Distinction", remark: "Excellent Performance" },
     { minScore: 75, grade: "2", label: "Distinction", remark: "Good Performance" },
@@ -81,4 +82,13 @@ export function getOverallResultForScore(avg, gradingSystem) {
 export function getPassMark(gradingSystem) {
   const n = Number(gradingSystem?.passMark);
   return Number.isFinite(n) ? n : DEFAULT_GRADING_SYSTEM.passMark;
+}
+
+/** Total marks that can be achieved on a report. Uses the "Total marks" set in
+    Admin → E-Assessments → Grading System; when that is blank it falls back to
+    (counted subjects x 100), the original behaviour. */
+export function getTotalMarksPossible(gradingSystem, countedSubjects) {
+  const n = Number(gradingSystem?.totalMarks);
+  if (Number.isFinite(n) && n > 0) return n;
+  return (Number(countedSubjects) || 0) * 100;
 }

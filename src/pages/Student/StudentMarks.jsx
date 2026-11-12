@@ -126,7 +126,7 @@ const predictGrade = (avg) => {
    below so its 3-tier advice text is what's shown. */
 const generateInsights = (marks, avg) => {
   const crnmSubjects = marks
-    .filter((m) => m.score === null || m.percentage === null)
+    .filter((m) => !m.optional && (m.score === null || m.percentage === null))
     .map((m) => m.subjectName)
     .filter(Boolean);
 
@@ -177,6 +177,10 @@ export default function StudentMarks() {
 
   const [marks, setMarks] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  // Subjects flagged OPTIONAL (E-Assessments → Report Form Subjects). An optional
+  // subject the student didn't take is shown as "—", never CRNM; if they did take
+  // it, it counts like any other subject.
+  const [optionalNames, setOptionalNames] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -207,6 +211,11 @@ export default function StudentMarks() {
 
       setMarks(marksRes.data || []);
       setSubjects(subjectsRes.data || []);
+
+      try {
+        const src = await API.get("/report-card-source");
+        setOptionalNames(new Set((src.data?.subjects || []).filter((x) => x.optional).map((x) => x.name)));
+      } catch (_) { /* optional flag is best-effort */ }
     } catch (err) {
       console.log(err);
       setError("Failed to load marks");
@@ -231,14 +240,19 @@ export default function StudentMarks() {
     return subjects.map((s) => {
       const m = map[s.name];
 
+      const optional = optionalNames.has(s.name) || /\(\s*optional\s*\)/i.test(String(s.name || ""));
+      const taken = m && m.percentage !== null && m.percentage !== undefined;
+
       return {
         subjectName: s.name,
+        optional,
         score: m?.score ?? null,
         percentage: m?.percentage ?? null,
-        grade: m?.grade ?? "CRNM",
+        // not taken: compulsory → CRNM, optional → "—" (no CRNM)
+        grade: m?.grade ?? (optional && !taken ? "—" : "CRNM"),
       };
     });
-  }, [marks, subjects]);
+  }, [marks, subjects, optionalNames]);
 
   /* ================= STRICT CLASSIFICATION (unchanged) ================= */
   const classified = useMemo(() => {
@@ -252,7 +266,7 @@ export default function StudentMarks() {
 
       const pct = Number(m.percentage || 0);
 
-      if (hasNoMark) crnm.push(m.subjectName);
+      if (hasNoMark) { if (!m.optional) crnm.push(m.subjectName); }
       else if (pct >= 70) strong.push(m.subjectName);
       else if (pct < 50) weak.push(m.subjectName);
     });
@@ -449,8 +463,8 @@ export default function StudentMarks() {
                       return (
                         <tr key={i} className="dash-row">
                           <td style={D.td}>{m.subjectName}</td>
-                          <td style={D.td}>{m.score ?? "CRNM"}</td>
-                          <td style={D.td}>{m.percentage ?? "CRNM"}</td>
+                          <td style={D.td}>{m.score ?? (m.optional ? "—" : "CRNM")}</td>
+                          <td style={D.td}>{m.percentage ?? (m.optional ? "—" : "CRNM")}</td>
                           <td style={D.td}>
                             <span style={{ ...D.badge, background: t.bg, color: t.fg }}>{m.grade}</span>
                           </td>

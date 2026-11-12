@@ -7,7 +7,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import useSchoolSettings from "../hooks/useSchoolSettings";
 import useGradingSystem from "../hooks/useGradingSystem";
-import { getGradeForScore, getOverallResultForScore, getRemarkForScore, getPassMark } from "../utils/grading";
+import { getGradeForScore, getOverallResultForScore, getRemarkForScore, getPassMark, getTotalMarksPossible } from "../utils/grading";
 import {
   ResponsiveContainer,
   BarChart,
@@ -98,6 +98,9 @@ export default function Reports() {
   const [marks, setMarks] = useState([]);
   const [students, setStudents] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  // E-Assessments → "Report Form Subjects": which subjects the report form shows
+  // and which of them are optional (shown, but never averaged).
+  const [reportForm, setReportForm] = useState({ configured: false, subjects: [] });
   const [assessments, setAssessments] = useState([]);
 
   const [mode, setMode] = useState("DTE1");
@@ -130,6 +133,13 @@ export default function Reports() {
       setAssessments(a.data || []);
       setStudents(s.data || []);
       setSubjects(sortSubjectsByCode(sub.data || []));
+
+      try {
+        const src = await API.get("/report-card-source");
+        setReportForm({ configured: !!src.data?.configured, subjects: src.data?.subjects || [] });
+      } catch {
+        setReportForm({ configured: false, subjects: [] });
+      }
     })();
   }, []);
 
@@ -165,19 +175,31 @@ export default function Reports() {
     let total = 0;
     let count = 0;
 
-    const subjectBreakdown = subjects.map((sub) => {
-      const score =
-        studentScores[sub.id] !== undefined
-          ? Number(studentScores[sub.id])
-          : 0;
+    // Configured Report Form Subjects replace the full subject list; an optional
+    // one counts toward the total, the count and so the average ONLY if this
+    // student did it (has a mark) — otherwise it is left out for them alone.
+    const listedSubjects = reportForm.configured
+      ? reportForm.subjects.map((ss) => {
+          const full = subjects.find((x) => x.id === ss.id || x.name === ss.name);
+          return { ...(full || { id: ss.id, name: ss.name, code: ss.code }), optional: !!ss.optional };
+        })
+      : subjects;
 
-      total += score;
-      count++;
+    const subjectBreakdown = listedSubjects.map((sub) => {
+      const marked = studentScores[sub.id] !== undefined;
+      const score = marked ? Number(studentScores[sub.id]) : 0;
+
+      if (!sub.optional || marked) {
+        total += score;
+        count++;
+      }
 
       const grade = getGradeForScore(score, gradingSystem);
 
       return {
         subject: sub.name,
+        optional: !!sub.optional,
+        marked,
         score,
         grade: grade.grade,                      // GRADE  = grade from the Grading System
         points: grade.label,                     // POINTS = band label
@@ -192,7 +214,7 @@ export default function Reports() {
       studentId,
       student: studentMap[studentId],
       total,                 // sum of subject marks
-      possible: count * 100, // out of 100 per subject
+      possible: getTotalMarksPossible(gradingSystem, count), // Grading System "Total Marks That Can Be Achieved" (blank → count × 100)
       avg,
       subjects: subjectBreakdown,
       grade: getGradeForScore(avg, gradingSystem),
@@ -202,7 +224,7 @@ export default function Reports() {
 
   // 🔥 SORT BY PERFORMANCE (THIS FIXES EVERYTHING)
   return list.sort((a, b) => b.avg - a.avg);
-}, [marks, students, subjects, studentMap, gradingSystem]);
+}, [marks, students, subjects, studentMap, gradingSystem, reportForm]);
 
   /* ================= MERIT LIST ================= */
   const meritList = useMemo(() => {
@@ -1561,13 +1583,26 @@ onClick={() => printAllReports()}
         {/* =========================================================
             STUDENT PROFILE
         ========================================================= */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 30 }}>
+        {resolveFileUrl(r.student?.photoUrl) && (
+          <img
+            src={resolveFileUrl(r.student?.photoUrl)}
+            alt={r.student?.name ? `${r.student.name} — photo` : "Student photo"}
+            crossOrigin="anonymous"
+            style={{
+              width: 110, height: 138, objectFit: "cover", flexShrink: 0,
+              border: "1px solid #cbd5e1", borderRadius: 8, background: "#f1f5f9",
+            }}
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+          />
+        )}
         <div
           style={{
             display: "grid",
             gridTemplateColumns:
               "repeat(auto-fit,minmax(220px,1fr))",
             gap: 18,
-            marginBottom: 30,
+            flex: 1,
           }}
         >
 
@@ -1613,6 +1648,7 @@ onClick={() => printAllReports()}
               </div>
             </div>
           ))}
+        </div>
         </div>
 
         {/* =========================================================
@@ -1849,6 +1885,9 @@ onClick={() => printAllReports()}
                 >
                   <td style={styles.proTableCell}>
                     {s.subject}
+                    {s.optional && (
+                      <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: "#64748b", border: "1px solid #cbd5e1", borderRadius: 999, padding: "1px 8px" }}>OPTIONAL</span>
+                    )}
                   </td>
 
                   <td
@@ -1857,7 +1896,7 @@ onClick={() => printAllReports()}
                       fontWeight: 700,
                     }}
                   >
-                    {s.score}%
+                    {s.optional && !s.marked ? "—" : `${s.score}%`}
                   </td>
 
                   <td style={styles.proTableCell}>
@@ -1935,6 +1974,11 @@ onClick={() => printAllReports()}
               </tr>
             </tbody>
           </table>
+          {r.subjects.some((x) => x.optional) && (
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: "#64748b", fontStyle: "italic" }}>
+              Optional subjects count toward the total, average, grade and position only for students who took them; a dash (—) means the student did not take that subject.
+            </p>
+          )}
         </div>
 
         {/* =========================================================
