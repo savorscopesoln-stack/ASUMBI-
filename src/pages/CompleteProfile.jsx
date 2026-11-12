@@ -65,8 +65,8 @@ export default function CompleteProfile() {
     e.preventDefault();
     setError("");
 
-    if (!studentClass.trim() || !gender.trim() || !email.trim() || !phone.trim()) {
-      setError("Class, gender, email, and phone are required.");
+    if (!studentClass.trim() || !gender.trim() || !email.trim() || !phone.trim() || !assessmentNumber.trim()) {
+      setError("Class, gender, email, phone, and assessment number are required.");
       return;
     }
 
@@ -184,7 +184,7 @@ export default function CompleteProfile() {
 
         <div style={styles.field}>
           <label style={styles.label} htmlFor="assessmentNumber">
-            Assessment Number <span style={styles.optional}>(optional)</span>
+            Assessment Number
           </label>
           <input
             id="assessmentNumber"

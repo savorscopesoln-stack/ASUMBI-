@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { sortSubjectsByCode } from "../../utils/subjectOrder";
-import API, { resolveFileUrl } from "../../api";
+import API, { resolveFileUrl, isReportLinkPath } from "../../api";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import QRCode from "../../utils/QRCode";
@@ -305,7 +305,7 @@ export default function StudentReport() {
   // On a report link (/r/…) the student is the one named by that link's own session
   // (see pages/ReportLink.jsx); everywhere else it is the logged-in student.
   const user = JSON.parse(
-    (window.location.pathname.startsWith("/r/") && sessionStorage.getItem("report_link_user")) ||
+    (isReportLinkPath(window.location.pathname) && sessionStorage.getItem("report_link_user")) ||
     localStorage.getItem("user") || "{}"
   );
   const admissionNo = user.admissionNo || user.id;
@@ -970,16 +970,18 @@ export default function StudentReport() {
                 <thead>
                   <tr style={styles.theadRow}>
                     <th style={{ ...styles.th, width: "8%" }}>Code</th>
-                    <th style={{ ...styles.th, textAlign: "left", width: "34%" }}>Learning Area / Subject</th>
-                    <th style={{ ...styles.th, width: "12%" }}>Score</th>
-                    <th style={{ ...styles.th, width: "14%" }}>Grade</th>
-                    <th style={{ ...styles.th, textAlign: "left", width: "32%" }}>Remarks</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "28%" }}>Learning Area / Subject</th>
+                    <th style={{ ...styles.th, width: "10%" }}>Score</th>
+                    <th style={{ ...styles.th, width: "8%" }}>Grade</th>
+                    <th style={{ ...styles.th, width: "15%" }}>Points</th>
+                    <th style={{ ...styles.th, width: "15%" }}>Result</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "16%" }}>Remarks</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportBlank && (
                     <tr>
-                      <td colSpan={5} style={{ ...styles.td, padding: "28px 12px", color: "#64748b", fontStyle: "italic" }}>
+                      <td colSpan={7} style={{ ...styles.td, padding: "28px 12px", color: "#64748b", fontStyle: "italic" }}>
                         No assessment or examination has been selected for the report card yet.
                       </td>
                     </tr>
@@ -988,6 +990,11 @@ export default function StudentReport() {
                     const valid = s.score !== null && s.score !== undefined;
                     const badge = valid ? getScoreBadgeStyle(s.score, gradingSystem) : null;
                     const remark = valid ? getRemarkForScore(s.score, gradingSystem) : "";
+                    // GRADE = the band's grade, POINTS = the band's label,
+                    // RESULT = the result label — all from the Grading System.
+                    const band = valid ? getGradeForScore(s.score, gradingSystem) : null;
+                    const resultLabel = valid ? getOverallResultForScore(s.score, gradingSystem) : "";
+                    const crnmOrDash = isOptionalSubject(s.subject) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : reportTheme.zebra }}>
                         <td style={{ ...styles.td, color: "#64748b", fontSize: 8 }}>{s.code || `L/A-${i + 1}`}</td>
@@ -1001,19 +1008,25 @@ export default function StudentReport() {
                             }}>{Math.floor(Number(s.score)+1e-9)}%</span>
                           ) : isOptionalSubject(s.subject) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
+                        <td style={{ ...styles.td, textAlign: "center", fontWeight: 700 }}>
+                          {valid ? (band.grade || "—") : crnmOrDash}
+                        </td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
                           {valid ? (
                             <span style={{
                               background: badge.bg,
                               color: badge.color,
-                              padding: "3px 12px",
+                              padding: "3px 10px",
                               borderRadius: 20,
                               fontWeight: 600,
                               fontSize: 8,
                               display: "inline-block",
                               letterSpacing: "0.02em",
                             }}>{badge.text}</span>
-                          ) : isOptionalSubject(s.subject) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
+                          ) : crnmOrDash}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: "center", fontWeight: 600, fontSize: 8 }}>
+                          {valid ? (resultLabel || "—") : crnmOrDash}
                         </td>
                         <td style={{ ...styles.td, textAlign: "left", color: "#64748b" }}>{remark || "—"}</td>
                       </tr>
@@ -1029,6 +1042,8 @@ export default function StudentReport() {
                     </td>
                     <td style={styles.td}></td>
                     <td style={styles.td}></td>
+                    <td style={styles.td}></td>
+                    <td style={styles.td}></td>
                   </tr>
 
                   {/* AVERAGE ROW — a mean of percentages, correctly
@@ -1036,16 +1051,22 @@ export default function StudentReport() {
                   <tr style={styles.totalRow}>
                     <td style={styles.td} colSpan={2}>AVERAGE</td>
                     <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{Math.floor(Number(analytics.avg)+1e-9)}%</td>
+                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#ffffff" }}>
+                      {analytics.grade.grade || "—"}
+                    </td>
                     <td style={{ ...styles.td, textAlign: "center" }}>
                       <span style={{
                         background: "#dbeafe",
                         color: "#1e3a8a",
-                        padding: "3px 12px",
+                        padding: "3px 10px",
                         borderRadius: 20,
                         fontWeight: 700,
                         fontSize: 8,
                         display: "inline-block",
                       }}>{analytics.grade.label || "—"}</span>
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#ffffff", fontSize: 8 }}>
+                      {analytics.result || "—"}
                     </td>
                     <td style={styles.td}></td>
                   </tr>

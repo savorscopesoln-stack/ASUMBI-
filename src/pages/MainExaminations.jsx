@@ -5,9 +5,10 @@ import { useTheme } from "../context/ThemeContext";
 import {
   ArrowLeft, Plus, RefreshCw, CalendarRange, Users, BookOpenCheck,
   CheckCircle2, Archive, ClipboardList, ClipboardCheck, Download, GraduationCap,
-  Wallet, AlertTriangle, Send,
+  Wallet, AlertTriangle, Send, Link2,
 } from "lucide-react";
 import SendReportLinksModal from "../components/mainExams/SendReportLinksModal";
+import ReportDownloadLinkModal from "../components/mainExams/ReportDownloadLinkModal";
 import TranscriptsModal from "../components/mainExams/TranscriptsModal";
 import {
   injectStyles, useC, extract, ThemeToggle, EmptyState, ActionButton,
@@ -163,6 +164,11 @@ export default function MainExaminations() {
      "ReferenceError: linksOpen is not defined". */
   const [linksOpen, setLinksOpen] = useState(false);
 
+  /* ---------------- Report Download Link ----------------
+     "Report Download Link" opens ReportDownloadLinkModal: the one public link
+     (/report-download) students use to download their own report form. */
+  const [downloadLinkOpen, setDownloadLinkOpen] = useState(false);
+
   // "Show on Report Cards" (§ student report card exam selection) — picks
   // which Main Examination's marks/name students see on their report
   // card (StudentReport.jsx). Only one exam can be active at a time; the
@@ -261,6 +267,7 @@ export default function MainExaminations() {
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <ActionButton icon={<GraduationCap size={14} />} onClick={() => setTranscriptOpen(true)}>Download Transcripts</ActionButton>
           <ActionButton icon={<Send size={14} />} onClick={() => setLinksOpen(true)}>Send Report Links</ActionButton>
+          <ActionButton icon={<Link2 size={14} />} onClick={() => setDownloadLinkOpen(true)}>Report Download Link</ActionButton>
           <ActionButton
             primary
             icon={<Plus size={14} />}
@@ -315,6 +322,7 @@ export default function MainExaminations() {
       )}
 
       {linksOpen && <SendReportLinksModal onClose={() => setLinksOpen(false)} onToast={showToast} />}
+      {downloadLinkOpen && <ReportDownloadLinkModal onClose={() => setDownloadLinkOpen(false)} onToast={showToast} />}
 
       {createOpen && (
         <Modal title="Create Main Examination" onClose={() => setCreateOpen(false)}>

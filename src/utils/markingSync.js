@@ -292,9 +292,66 @@ function pointsInText(text, minChars = SHORTFALL_MIN_CHARS) {
   return out;
 }
 
+/* ── sentence rule ─────────────────────────────────────────
+   If ANY word of a sentence is marked right, the WHOLE sentence is right: the
+   automatic wrongs (the red underline + ✗ put on every point nobody
+   highlighted) are never added anywhere inside that sentence — not on the
+   words either side of the right mark, not on the rest of it. An automatic ✗
+   only lands on a sentence that has no right mark at all. A ✗ the teacher
+   placed by hand stays exactly where they placed it.
+
+   A sentence is what the answer's text says between . ! ? ; or a line break,
+   read ACROSS the highlights (so a right mark in the middle of a sentence
+   still belongs to that sentence) and within one paragraph / list item / table
+   cell. */
+const SENTENCE_BLOCKS = "p, div, li, td, th, tr, ul, ol, table, blockquote, pre, h1, h2, h3, h4, h5, h6";
+
+function sentenceMap(root) {
+  const blocks = new Map(); // block element -> { text, segs: [{ start, end, right }] }
+  const segByNode = new Map(); // text node -> { block, start }
+  const blockOf = (node) => {
+    let el = node.parentElement;
+    while (el && el !== root) { if (el.matches(SENTENCE_BLOCKS)) return el; el = el.parentElement; }
+    return root;
+  };
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n) => {
+      if (n.nodeType === 1) return n.tagName === "BR" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      if (!n.nodeValue || !n.parentElement) return NodeFilter.FILTER_REJECT;
+      if (n.parentElement.closest(".hl-status, script, style, [data-music-sheet]")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  while (walker.nextNode()) {
+    const n = walker.currentNode;
+    const block = n.nodeType === 1 ? blockOf(n.firstChild || n) : blockOf(n);
+    let b = blocks.get(block);
+    if (!b) { b = { text: "", segs: [] }; blocks.set(block, b); }
+    if (n.nodeType === 1) { b.text += "\n"; continue; } // <br> ends a sentence
+    const mark = n.parentElement.closest(".hl-mark");
+    const start = b.text.length;
+    b.text += n.nodeValue;
+    b.segs.push({ start, end: b.text.length, right: !!mark && mark.dataset.status !== "wrong" });
+    segByNode.set(n, { block, start });
+  }
+  const rightRanges = new Map(); // block -> [[start, end], ...] of sentences holding a right mark
+  blocks.forEach((b, block) => {
+    const re = /[^.!?;\n]+[.!?;]*/g;
+    const ranges = [];
+    let m;
+    while ((m = re.exec(b.text))) {
+      const s0 = m.index, e0 = m.index + m[0].length;
+      if (b.segs.some((sg) => sg.right && sg.start < e0 && sg.end > s0)) ranges.push([s0, e0]);
+    }
+    if (ranges.length) rightRanges.set(block, ranges);
+  });
+  return { segByNode, rightRanges };
+}
+
 /* Wraps every point in the unmarked text of `root` (up to `budget`) in a red
-   ✗ mark. Text already inside a mark is never touched. Returns the highlight
-   entries it added. */
+   ✗ mark. Text already inside a mark is never touched, and neither is any
+   sentence that has a right mark in it (see the sentence rule above). Returns
+   the highlight entries it added. */
 function markPoints(root, answerId, budget, { prefix, minChars, auto, reason }) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => {
@@ -309,10 +366,19 @@ function markPoints(root, answerId, budget, { prefix, minChars, auto, reason }) 
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
 
+  const { segByNode, rightRanges } = sentenceMap(root);
+  const inRightSentence = (node, pt) => {
+    const info = segByNode.get(node);
+    const ranges = info && rightRanges.get(info.block);
+    if (!ranges) return false;
+    const a = info.start + pt.start, z = info.start + pt.end;
+    return ranges.some(([s0, e0]) => a < e0 && z > s0);
+  };
+
   const added = [];
   for (const node of nodes) {
     if (budget <= 0) break;
-    const pts = pointsInText(node.nodeValue, minChars).slice(0, budget);
+    const pts = pointsInText(node.nodeValue, minChars).filter((pt) => !inRightSentence(node, pt)).slice(0, budget);
     if (!pts.length) continue;
     const text = node.nodeValue;
     const frag = document.createDocumentFragment();

@@ -18,7 +18,7 @@ const isMobileDevice = () => {
   return /Macintosh/.test(ua) && navigator.maxTouchPoints > 1; // iPadOS reports a Mac user agent
 };
 
-const SKIP_PATHS = ["/login", "/take-assessment", "/force-password-change", "/register", "/complete-profile"];
+const SKIP_PATHS = ["/login", "/take-assessment", "/report-download", "/force-password-change", "/register", "/complete-profile"];
 
 const readUser = () => { try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; } };
 const keyFor = (kind, u) => `doravo_bio_${kind}_${String(u?.role || "").toLowerCase()}_${u?.id}`;

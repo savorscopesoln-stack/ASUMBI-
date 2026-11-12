@@ -100,6 +100,7 @@ import StudentMarks from "./pages/Student/StudentMarks";
 import StudentProfile from "./pages/Student/StudentProfile";
 import StudentReport from "./pages/Student/StudentReport";
 import ReportLink from "./pages/ReportLink";
+import ReportDownload from "./pages/ReportDownload";
 import GuardianView from "./pages/lms/GuardianView";
 import GuardianLinks from "./pages/lms/GuardianLinks";
 import TranscriptLink from "./pages/TranscriptLink";
@@ -410,6 +411,10 @@ export default function App() {
           </PublicRoute>
         }
       />
+
+      {/* REPORT DOWNLOAD — public page, no login (like /take-assessment): a student verifies with their username +
+          password, updates their profile if it was never filled in, then downloads their report form */}
+      <Route path="/report-download" element={<ExamThemeScope><ReportDownload /></ExamThemeScope>} />
 
       {/* REPORT LINK — a student opens their report form from the link the school sent (no login) */}
       <Route path="/r/:token" element={<ReportLink />} />

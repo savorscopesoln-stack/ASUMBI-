@@ -86,11 +86,15 @@ const clientDeviceHeader = () => {
   }
 };
 
+/* Pages that run on their own throw-away REPORT-ONLY session (kept in sessionStorage, never the
+   normal login): /r/… report link, /t/… transcript link, /report-download public download page. */
+export const isReportLinkPath = (pathname) => /^\/(r|t|report-download)(\/|$)/.test(String(pathname || ""));
+
 API.interceptors.request.use(
   (req) => {
     // On a student link page (/r/… report form, /t/… transcript) use ONLY that page's own report-only session, kept in
     // sessionStorage — never the normal login in localStorage (see pages/ReportLink.jsx).
-    const onReportLink = typeof window !== "undefined" && /^\/(r|t)\//.test(window.location.pathname);
+    const onReportLink = typeof window !== "undefined" && isReportLinkPath(window.location.pathname);
     const token = onReportLink ? sessionStorage.getItem("report_link_token") : localStorage.getItem("token");
 
     if (token) {
@@ -118,7 +122,7 @@ API.interceptors.response.use(
 
     // A report link has its own throw-away session: never wipe the normal login
     // (localStorage) or redirect to /login because of it — the page shows its own message.
-    if (typeof window !== "undefined" && /^\/(r|t)\//.test(window.location.pathname)) {
+    if (typeof window !== "undefined" && isReportLinkPath(window.location.pathname)) {
       return Promise.reject(error);
     }
 

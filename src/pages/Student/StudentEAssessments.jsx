@@ -17,6 +17,12 @@ const windowState = (a) => {
   return { open: true, text: "" };
 };
 
+// schedule_state comes from the server: "active" (switch on), "upcoming" (opens later), "closed".
+// A granted resit is listed even though its paper is closed.
+const stateOf = (a) =>
+  a.schedule_state || (String(a.active_status || "").toLowerCase() === "active" ? "active" : "closed");
+const isListed = (a) => stateOf(a) !== "closed" || !!a.my_resit_allowed;
+
 /* ─── shared design-token stylesheet — identical id/tokens to the
    rest of the app; a no-op if already mounted by the layout or
    another page. ─── */
@@ -123,16 +129,14 @@ export default function StudentEAssessments() {
 
       const data = res.data?.assessments || res.data?.data || res.data || [];
 
-      // Only exams that are approved AND currently switched on are shown.
-      // "status" is the review state; "active_status" is the Start/Stop
-      // switch the admin controls.
-      const active = data.filter(
-        (a) =>
-          String(a.status || "").toLowerCase() === "approved" &&
-          String(a.active_status || "").toLowerCase() === "active"
-      );
-
-      setAssessments(active);
+      // The server already decides what this student may see (their class / year, the
+      // access list, and the Start/Stop switch + schedule — NOT the review status; see
+      // getEAssessments in eAssessment.controller.js, same rule as the /take-assessment
+      // picker). This page used to filter AGAIN, requiring status "approved" AND the
+      // switch on, which silently dropped every paper that is scheduled to open later
+      // ("upcoming"), every granted resit of a closed paper, and every started paper that
+      // was never marked approved. Show exactly what the server returned.
+      setAssessments(data.filter(isListed));
     } catch (err) {
       console.log(err);
       setError(err?.response?.data?.message || "Failed to load assessments");
@@ -182,7 +186,7 @@ export default function StudentEAssessments() {
                   <h2 style={D.cardTitle}>{a.title}</h2>
                   <p style={D.subject}>{a.subject}</p>
                 </div>
-                <span style={D.badge}>Active</span>
+                <span style={D.badge}>{stateOf(a) === "upcoming" ? "Upcoming" : "Active"}</span>
               </div>
 
               {a.cover_page_url && !a.my_submission_id && (
