@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import API from "../api";
-import StudentReport from "./Student/StudentReport";
+import StudentDownloadHub from "../components/StudentDownloadHub";
+import PassportPhotoStep from "../components/PassportPhotoStep";
 
 /* =========================================================================
    REPORT LINK PAGE  —  /r/:token   (public, no login)
@@ -17,6 +18,8 @@ import StudentReport from "./Student/StudentReport";
 export default function ReportLink() {
   const { token } = useParams();
   const [state, setState] = useState({ status: "loading", message: "" });
+  const [downloads, setDownloads] = useState({ mode: "report" });
+  const [photoStep, setPhotoStep] = useState(null); // { token, name } while the student still has to add a passport photo
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +31,9 @@ export default function ReportLink() {
         if (cancelled) return;
         sessionStorage.setItem("report_link_token", res.data.token);
         sessionStorage.setItem("report_link_user", JSON.stringify(res.data.user));
+        setDownloads(res.data.downloads || { mode: "report" });
+        // No passport photo on file yet: ask for it right here before showing the report form.
+        if (!res.data.user?.photoUrl) setPhotoStep({ token: res.data.token, name: res.data.user?.name || "" });
         setState({ status: "ready", message: "" });
       } catch (err) {
         if (cancelled) return;
@@ -40,7 +46,24 @@ export default function ReportLink() {
     return () => { cancelled = true; };
   }, [token]);
 
-  if (state.status === "ready") return <StudentReport />;
+  if (state.status === "ready" && photoStep) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "var(--bg, #f8fafc)" }}>
+        <PassportPhotoStep
+          name={photoStep.name}
+          token={photoStep.token}
+          onDone={(data) => {
+            sessionStorage.setItem("report_link_token", data.token);
+            sessionStorage.setItem("report_link_user", JSON.stringify(data.user));
+            setDownloads(data.downloads || downloads);
+            setPhotoStep(null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (state.status === "ready") return <StudentDownloadHub downloads={downloads} />;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "var(--bg, #f8fafc)", color: "var(--text, #0f172a)" }}>

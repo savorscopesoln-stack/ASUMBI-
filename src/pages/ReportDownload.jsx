@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import API from "../api";
-import StudentReport from "./Student/StudentReport";
+import StudentDownloadHub from "../components/StudentDownloadHub";
+import PassportPhotoStep from "../components/PassportPhotoStep";
 
 /* =========================================================================
    REPORT DOWNLOAD  —  /report-download   (public, no portal login)
@@ -12,7 +13,10 @@ import StudentReport from "./Student/StudentReport";
      1. "profile_required"  – their profile was never filled in. They fill it
                               in right here (POST /report-access/profile) and
                               the download stays locked until it is saved.
-     2. "ready"             – a 2-hour REPORT-ONLY session. It lives in this
+     2. "photo_required"    – no passport photo on file yet. They upload one or
+                              take one with the camera right here (POST
+                              /report-access/photo) and the download unlocks.
+     3. "ready"             – a 2-hour REPORT-ONLY session. It lives in this
                               tab's sessionStorage (never localStorage), so it
                               cannot sign anyone in to, or out of, the normal
                               portal on a shared computer. api.js and
@@ -42,7 +46,7 @@ const S = {
 };
 
 export default function ReportDownload() {
-  const [step, setStep] = useState("verify"); // verify | profile | ready
+  const [step, setStep] = useState("verify"); // verify | profile | photo | ready
   const [username, setUsername] = useState("");
   const [profileToken, setProfileToken] = useState("");
   const [who, setWho] = useState({ name: "", username: "" });
@@ -50,6 +54,7 @@ export default function ReportDownload() {
   const [form, setForm] = useState({ studentClass: "", gender: "", email: "", phone: "", assessmentNumber: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [downloads, setDownloads] = useState({ mode: "report" }); // what the school offers (report form / transcript / both)
 
   // A fresh visit always starts logged out of this page (shared lab computers).
   useEffect(() => { clearSession(); return clearSession; }, []);
@@ -58,7 +63,19 @@ export default function ReportDownload() {
     sessionStorage.setItem("report_link_token", data.token);
     sessionStorage.setItem("report_link_user", JSON.stringify(data.user));
     setProfileToken("");
+    setDownloads(data.downloads || { mode: "report" });
     setStep("ready");
+  };
+
+  // One place decides what the server's answer means: ask for the photo, or open the report.
+  const handleResult = (data) => {
+    if (data.status === "photo_required") {
+      setProfileToken(data.token);
+      setWho(data.student || { name: "", username: username.trim() });
+      setStep("photo");
+    } else {
+      openReport(data);
+    }
   };
 
   const verify = async (e) => {
@@ -76,7 +93,7 @@ export default function ReportDownload() {
         setForm((f) => ({ ...f, ...(data.profile || {}) }));
         setStep("profile");
       } else {
-        openReport(data);
+        handleResult(data);
       }
     } catch (err) {
       setError(err?.response?.data?.message || "Could not verify you. Check your connection and try again.");
@@ -97,7 +114,7 @@ export default function ReportDownload() {
       setBusy(true);
       clearSession();
       const { data } = await API.post("/report-access/profile", form, { headers: { Authorization: `Bearer ${profileToken}` } });
-      openReport(data);
+      handleResult(data);
     } catch (err) {
       const expired = err?.response?.data?.expired;
       if (expired) { setStep("verify"); setProfileToken(""); }
@@ -124,8 +141,22 @@ export default function ReportDownload() {
           <span>Signed in as <b>{name || "student"}</b></span>
           <button type="button" style={S.link} onClick={finish}>Finish &amp; sign out</button>
         </div>
-        <StudentReport />
+        <StudentDownloadHub downloads={downloads} />
       </>
+    );
+  }
+
+  if (step === "photo") {
+    return (
+      <div style={S.page}>
+        <PassportPhotoStep
+          name={who.name || who.username}
+          token={profileToken}
+          onDone={openReport}
+          onExpired={() => { setStep("verify"); setProfileToken(""); setError("That step timed out. Please enter your username again."); }}
+          onCancel={finish}
+        />
+      </div>
     );
   }
 
@@ -133,8 +164,8 @@ export default function ReportDownload() {
     <div style={S.page}>
       {step === "verify" ? (
         <form onSubmit={verify} style={S.card} autoComplete="off">
-          <h1 style={S.h1}>Download your report form</h1>
-          <p style={S.sub}>Type your student username to get your report form. You don't need to log in to the portal.</p>
+          <h1 style={S.h1}>Download your results</h1>
+          <p style={S.sub}>Type your student username to download your report form or transcript. You don't need to log in to the portal.</p>
           {error && <div style={S.err} role="alert">{error}</div>}
           <div style={S.field}>
             <label style={S.label} htmlFor="rd-username">Username</label>

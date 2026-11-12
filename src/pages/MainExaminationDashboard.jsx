@@ -1628,7 +1628,7 @@ function ResultsTab({ id, classes, showToast }) {
                   <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
                   <Td>{r.admission_no || "—"}</Td>
                   {r.subjects.map((sm, i) => (
-                    <Td key={i}>{sm.score != null ? `${sm.score}/${sm.total_marks}` : "—"}</Td>
+                    <Td key={i}>{sm.percentage != null ? `${sm.percentage}%` : "—"}</Td>
                   ))}
                   <Td>{r.total_marks_obtained != null ? `${r.total_marks_obtained}/${r.total_marks_possible}` : "—"}</Td>
                   <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "Not enough data"}</Td>
@@ -2281,7 +2281,7 @@ function RankedCandidatesTable({ rows, subjects, positionKey, emptyText }) {
                 <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
                 <Td>{r.class || "—"}</Td>
                 {(r.marks || []).map((m, i) => (
-                  <Td key={i}>{m.not_registered || m.score == null ? "—" : m.score}</Td>
+                  <Td key={i}>{m.not_registered || m.percentage == null ? "—" : `${m.percentage}%`}</Td>
                 ))}
                 <Td style={{ whiteSpace: "nowrap" }}>{(r.total_obtained != null && r.total_possible) ? `${r.total_obtained}/${r.total_possible}` : "—"}</Td>
                 <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
@@ -2362,7 +2362,7 @@ function NominalRollTable({ data }) {
                 <Td>{r.gender || "—"}</Td>
                 <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
                 {r.marks.map((m, i) => (
-                  <Td key={i}>{m.not_registered || m.score == null ? "—" : m.score}</Td>
+                  <Td key={i}>{m.not_registered || m.percentage == null ? "—" : `${m.percentage}%`}</Td>
                 ))}
                 <Td style={{ whiteSpace: "nowrap" }}>{(r.total_obtained != null && r.total_possible) ? `${r.total_obtained}/${r.total_possible}` : "—"}</Td>
                 <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
@@ -2439,7 +2439,7 @@ function ClassResultsReportView({ data }) {
                 <tr key={r.student_id}>
                   <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
                   <Td>{r.admission_no || "—"}</Td>
-                  {r.subjects.map((sm, i) => <Td key={i}>{sm.score != null ? `${sm.score}/${sm.total_marks}` : "—"}</Td>)}
+                  {r.subjects.map((sm, i) => <Td key={i}>{sm.percentage != null ? `${sm.percentage}%` : "—"}</Td>)}
                   <Td>{r.total_marks_obtained != null ? `${r.total_marks_obtained}/${r.total_marks_possible}` : "—"}</Td>
                   <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
                 </tr>
@@ -2881,11 +2881,8 @@ function ClassAnalyticsView({ label, loading, data, onBack, onSelectStudent }) {
                 <tr key={r.student_id} style={{ cursor: "pointer" }} onClick={() => onSelectStudent?.(r.student_id, r.name)}>
                   <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
                   <Td>{r.admission_no || "—"}</Td>
-                  {r.subjects.map((sm, i) => <Td key={i}>{sm.score != null ? `${sm.score}/${sm.total_marks}` : "—"}</Td>)}
-                  <Td style={{ whiteSpace: "nowrap" }}>{(() => {
-                    const got = r.subjects.filter((sm) => sm.score != null && sm.total_marks > 0);
-                    return got.length ? `${got.reduce((a, sm) => a + Number(sm.score), 0)}/${got.reduce((a, sm) => a + Number(sm.total_marks), 0)}` : "—";
-                  })()}</Td>
+                  {r.subjects.map((sm, i) => <Td key={i}>{sm.percentage != null ? `${sm.percentage}%` : "—"}</Td>)}
+                  <Td style={{ whiteSpace: "nowrap" }}>{r.total_marks_obtained != null ? `${r.total_marks_obtained}/${r.total_marks_possible}` : "—"}</Td>
                   <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "Not enough data"}</Td>
                   <Td><MiniBtn icon={<ChevronRight size={13} />} onClick={() => onSelectStudent?.(r.student_id, r.name)} /></Td>
                 </tr>
@@ -3154,14 +3151,12 @@ function StudentProfileView({ loading, data, onBack }) {
 
       <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 10 }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead><tr><Th>Subject</Th><Th>Status</Th><Th>Score</Th><Th>Total Marks</Th><Th>Percentage</Th></tr></thead>
+          <thead><tr><Th>Subject</Th><Th>Status</Th><Th>Percentage</Th></tr></thead>
           <tbody>
             {subjects.map((s) => (
               <tr key={s.session_id}>
                 <Td style={{ fontWeight: 600, color: C.textPri }}>{s.subject}</Td>
                 <Td><Chip text={s.status} tone={{ completed: "success", absent: "danger", upcoming: "info" }[s.status] || "neutral"} uppercase /></Td>
-                <Td>{s.score ?? "—"}</Td>
-                <Td>{s.total_marks ?? "—"}</Td>
                 <Td>{s.percentage != null ? `${s.percentage}%` : "—"}</Td>
               </tr>
             ))}

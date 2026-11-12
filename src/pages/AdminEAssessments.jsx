@@ -302,6 +302,7 @@ export default function AdminEAssessments() {
   const [editOpen,     setEditOpen]     = useState(false);
   const [assignOpen,   setAssignOpen]   = useState(false);
   const [reportCardOpen, setReportCardOpen] = useState(false);
+  const [reportFormOpen, setReportFormOpen] = useState(false);
   const [selected,     setSelected]     = useState(null);
   const [remarkModal,  setRemarkModal]  = useState(null);
   const [markingView, setMarkingView] = useState("leaderboard"); // "leaderboard" | "option" | "deadline" | "suggested" | "remarks"
@@ -1425,6 +1426,7 @@ export default function AdminEAssessments() {
       const res = await API.put("/e-assessments/admin/grading-system", {
         systemName: gradingDraft.systemName,
         passMark: gradingDraft.passMark,
+        totalMarks: gradingDraft.totalMarks === "" ? null : gradingDraft.totalMarks,
         gradeBands,
         overallBands,
       });
@@ -1542,6 +1544,7 @@ export default function AdminEAssessments() {
           <ActionButton icon={<IconClipboardList size={14} />} onClick={() => navigate("/main-exams")}>Main Examinations</ActionButton>
           
           <ActionButton icon={<IconAward size={14} />} onClick={() => setReportCardOpen(true)}>Report Card Marks</ActionButton>
+          <ActionButton icon={<IconClipboardList size={14} />} onClick={() => setReportFormOpen(true)}>Report Form Subjects</ActionButton>
           <ActionButton icon={<IconUserPlus size={14} />} onClick={() => setAssignOpen(true)}>Assign Teacher</ActionButton>
           <ActionButton icon={<IconDownload size={14} />} onClick={() => exportCSV(list, "assessments.csv")}>Export</ActionButton>
           <button style={sx.iconBtn} className="dash-icon-btn" onClick={loadAll} title="Refresh data"><IconRefresh size={15} /></button>
@@ -2084,7 +2087,7 @@ export default function AdminEAssessments() {
                 const info = markInfo(m, gradingSystem);
                 return {
                   student: m.student_name, assessment: m.assessment_title,
-                  subject: m.subject_name, score: m.score, total: info.total,
+                  subject: m.subject_name,
                   percentage: info.pct != null ? fmt2(info.pct) : "",
                   grade: info.g?.grade ?? "", grade_label: info.g?.label ?? "",
                   released: m.released_at,
@@ -2093,10 +2096,10 @@ export default function AdminEAssessments() {
             )}>Export CSV</ActionButton>
             <ActionButton icon={<IconDownload size={14} />} onClick={() => downloadTablesPdf({
               title: "Released Marks", subtitle: `${releasedMarks.length} record(s)`, filename: "released-marks",
-              sections: [{ head: ["Student", "Assessment", "Subject", "Score", "Total", "%", "Grade", "Released"],
+              sections: [{ head: ["Student", "Assessment", "Subject", "%", "Grade", "Released"],
                 body: releasedMarks.map((m) => { const info = markInfo(m, gradingSystem);
-                  return [m.student_name || "", m.assessment_title || "", m.subject_name || "", m.score ?? "—", info.total ?? "",
-                    info.pct != null ? fmt2(info.pct) : "", info.g?.grade ?? "", fmtDate(m.released_at)]; }) }],
+                  return [m.student_name || "", m.assessment_title || "", m.subject_name || "",
+                    info.pct != null ? `${fmt2(info.pct)}%` : "—", info.g?.grade ?? "", fmtDate(m.released_at)]; }) }],
             })}>Download PDF</ActionButton>
           </div>
 
@@ -2108,17 +2111,16 @@ export default function AdminEAssessments() {
             <div className="dash-card" style={sx.tableWrap}>
               <table style={sx.table}>
                 <thead>
-                  <tr>{["Student","Assessment","Subject","Mark","Pct","Grade","Released"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                  <tr>{["Student","Assessment","Subject","Mark %","Grade","Released"].map((h) => <Th key={h}>{h}</Th>)}</tr>
                 </thead>
                 <tbody>
                   {releasedMarks.map((m) => {
-                    const { total, pct, pass, gradeText } = markInfo(m, gradingSystem);
+                    const { pct, pass, gradeText } = markInfo(m, gradingSystem);
                     return (
                       <tr key={m.id} className="row-hover">
                         <Td><span style={{ fontWeight: 600, color: C.textPri }}>{m.student_name || m.student_id}</span></Td>
                         <Td style={{ color: C.textSec }}>{m.assessment_title || "—"}</Td>
                         <Td style={{ color: C.textSec }}>{m.subject_name || "—"}</Td>
-                        <Td><ScoreBadge score={m.score} total={total} /></Td>
                         <Td style={{ color: pct == null ? C.textMuted : pass ? C.success : C.danger, fontWeight: 700 }}>{pct != null ? `${fmt2(pct)}%` : "—"}</Td>
                         <Td><Chip text={gradeText} tone={pct == null ? "neutral" : pass ? "success" : "danger"} /></Td>
                         <Td style={{ color: C.textMuted, fontSize: 12 }}>{fmtDate(m.released_at)}</Td>
@@ -2447,6 +2449,13 @@ export default function AdminEAssessments() {
       {reportCardOpen && (
         <ReportCardMarksModal
           onClose={() => setReportCardOpen(false)}
+          showToast={showToast}
+        />
+      )}
+
+      {reportFormOpen && (
+        <ReportFormSubjectsModal
+          onClose={() => setReportFormOpen(false)}
           showToast={showToast}
         />
       )}
@@ -3607,6 +3616,16 @@ function GradingSystemTab({
           <input type="number" value={draft.passMark ?? ""} placeholder="40"
             onChange={(e) => setDraft((d) => ({ ...d, passMark: e.target.value }))}
             style={cellInput} />
+        </div>
+        <div style={{ flex: "1 1 260px" }}>
+          <FieldLabel>Total Marks That Can Be Achieved</FieldLabel>
+          <input type="number" min="1" step="1" value={draft.totalMarks ?? ""} placeholder="e.g. 1700 (blank = subjects × 100)"
+            onChange={(e) => setDraft((d) => ({ ...d, totalMarks: e.target.value }))}
+            style={cellInput} />
+          <p style={{ margin: "6px 0 0", fontSize: 11.5, color: C.textMuted }}>
+            Shown as the "out of" figure next to a student's Total Marks on every report
+            (e.g. 1450 / 1700). Leave blank to use number of subjects × 100.
+          </p>
         </div>
       </div>
 
@@ -4942,6 +4961,135 @@ function Modal({ title, children, onClose }) {
         {children}
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REPORT FORM SUBJECTS — choose every subject that appears on the report
+   form and mark the OPTIONAL ones.
+     • Optional subjects are still shown on the report form, but are never
+       part of the total / average / grade / position — for ALL students.
+       20 subjects with 1 optional  =>  everyone is averaged over 19.
+     • Nothing selected  =>  the report form shows every subject scheduled
+       in the chosen main examination (the previous behaviour).
+   Applies when the report-card source is "A main examination".
+═══════════════════════════════════════════════════════════ */
+function ReportFormSubjectsModal({ onClose, showToast }) {
+  const C = useC();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [rows, setRows] = useState([]); // [{ id, name, code, selected, isOptional }]
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await API.get("/e-assessments/admin/report-form-subjects");
+        const list = (data?.subjects || []).slice().sort((a, b) =>
+          String(a.code || a.name).localeCompare(String(b.code || b.name), undefined, { numeric: true, sensitivity: "base" }));
+        setRows(list);
+      } catch (err) {
+        showToast(err?.response?.data?.message || "Could not load subjects", "error");
+        onClose();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const update = (id, patch) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const q = filter.trim().toLowerCase();
+  const visible = rows.filter((r) => !q || `${r.code || ""} ${r.name}`.toLowerCase().includes(q));
+  const selected = rows.filter((r) => r.selected);
+  const optional = selected.filter((r) => r.isOptional);
+  const counted = selected.length - optional.length;
+
+  const setAll = (value) => setRows((rs) => rs.map((r) => (
+    !q || `${r.code || ""} ${r.name}`.toLowerCase().includes(q)
+      ? { ...r, selected: value, isOptional: value ? r.isOptional : false }
+      : r)));
+
+  const save = async () => {
+    if (selected.length > 0 && counted === 0) return showToast("At least one subject must be non-optional", "error");
+    setSaving(true);
+    try {
+      await API.put("/e-assessments/admin/report-form-subjects", {
+        subjects: selected.map((r) => ({ id: r.id, isOptional: !!r.isOptional })),
+      });
+      showToast(selected.length === 0
+        ? "Report form will show every subject scheduled in the exam"
+        : `Saved — ${selected.length} subject${selected.length === 1 ? "" : "s"} on the report form, averaged over ${counted}`);
+      onClose();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Could not save", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const small = { fontSize: 11.5, color: C.textMuted };
+
+  return (
+    <Modal title="Report Form Subjects" onClose={onClose}>
+      {loading ? (
+        <p style={{ color: C.textMuted }}>Loading…</p>
+      ) : (
+        <>
+          <p style={{ ...small, fontSize: 13, marginTop: 0 }}>
+            Tick every subject that should appear on the report form. Mark a subject <b>Optional</b> and it
+            is still shown, but is left out of everyone’s total, average, grade and position — so with 20
+            subjects and 1 optional, all students are averaged over the other 19.
+          </p>
+          <p style={{ ...small, marginTop: 0 }}>
+            Leave nothing ticked to show every subject scheduled in the report-card examination (default).
+          </p>
+
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search subjects…"
+            style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textPri, fontSize: 13, marginBottom: 10 }}
+          />
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setAll(true)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textPri, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+              Select {q ? "shown" : "all"}
+            </button>
+            <button type="button" onClick={() => setAll(false)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textPri, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+              Clear {q ? "shown" : "all"}
+            </button>
+          </div>
+
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, maxHeight: 340, overflowY: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 78px", gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, ...small, fontWeight: 700, position: "sticky", top: 0, background: C.card }}>
+              <span>Show on report form</span><span style={{ textAlign: "center" }}>Optional</span>
+            </div>
+            {visible.length === 0 && <p style={{ ...small, padding: 12, margin: 0 }}>No subjects found.</p>}
+            {visible.map((r) => (
+              <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 78px", gap: 8, alignItems: "center", padding: "7px 12px", borderBottom: `1px solid ${C.border}`, background: r.selected ? C.bgAlt : "transparent" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", color: C.textPri, fontSize: 13 }}>
+                  <input type="checkbox" checked={!!r.selected}
+                    onChange={(e) => update(r.id, { selected: e.target.checked, isOptional: e.target.checked ? r.isOptional : false })} />
+                  <span>{r.code ? <span style={{ color: C.textMuted, marginRight: 6 }}>{r.code}</span> : null}{r.name}</span>
+                </label>
+                <label style={{ textAlign: "center", opacity: r.selected ? 1 : 0.35, cursor: r.selected ? "pointer" : "not-allowed" }} title={r.selected ? "Optional: shown but not averaged" : "Tick the subject first"}>
+                  <input type="checkbox" disabled={!r.selected} checked={!!r.isOptional}
+                    onChange={(e) => update(r.id, { isOptional: e.target.checked })} />
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: C.bgAlt, color: C.textPri, fontSize: 13 }}>
+            {selected.length === 0
+              ? "Nothing selected — the report form shows every subject scheduled in the exam."
+              : <><b>{selected.length}</b> subject{selected.length === 1 ? "" : "s"} on the report form · <b>{optional.length}</b> optional · average is taken over <b>{counted}</b></>}
+          </div>
+
+          <SaveButton onClick={save} loading={saving} label="Save report form subjects" />
+        </>
+      )}
+    </Modal>
   );
 }
 

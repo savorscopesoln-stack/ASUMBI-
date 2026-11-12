@@ -173,8 +173,7 @@ export default function StudentResults() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
                   <div style={{ textAlign: "right" }}>
-                    <div style={D.rowScore}>{score} / {total || "—"}</div>
-                    {pct !== null && <div style={D.rowPct}>{fmt2(pct)}%</div>}
+                    <div style={D.rowScore}>{pct !== null ? `${fmt2(pct)}%` : "—"}</div>
                   </div>
                   <span style={{ ...D.gradeBadge, background: grade.bg, color: grade.fg }}>{grade.label}</span>
                   <ChevronRight size={16} color="var(--text-muted)" />
