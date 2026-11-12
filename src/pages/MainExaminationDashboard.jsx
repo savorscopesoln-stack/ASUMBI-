@@ -1858,11 +1858,14 @@ function ReportsTab({ id, subjects, classes, showToast }) {
    Overall Performance / Class Ranking reports, and the "Code = Subject"
    key printed under them (screen, Excel and PDF). Leave a box blank to
    fall back to the generated code / the subject name. Works at any time,
-   even after the exam has run, so a printed code can be corrected. */
+   even after the exam has run, so a printed code can be corrected.
+   COMBINE: a subject can be combined into another one. The two then show as
+   ONE subject (the main subject's code, one key line) on every report, and
+   that one subject is what the Total and the Mean are built from. */
 function SubjectCodesCard({ id, showToast, onSaved }) {
   const C = useC();
   const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState(null); // [{ session_id, subject, generated_code, code, key }]
+  const [rows, setRows] = useState(null); // [{ session_id, subject, generated_code, code, key, combine_with }]
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -1874,6 +1877,7 @@ function SubjectCodesCard({ id, showToast, onSaved }) {
       setRows((res.data.subjects || []).map((s) => ({
         session_id: s.session_id, subject: s.subject, generated_code: s.generated_code,
         code: s.report_code || "", key: s.report_key || "",
+        combine_with: s.combine_with || null,
       })));
       setDirty(false);
     } catch (err) {
@@ -1902,7 +1906,7 @@ function SubjectCodesCard({ id, showToast, onSaved }) {
     try {
       setSaving(true);
       await API.put(`/main-exams/${id}/subject-codes`, {
-        items: rows.map((r) => ({ session_id: r.session_id, code: r.code, key: r.key })),
+        items: rows.map((r) => ({ session_id: r.session_id, code: r.code, key: r.key, combine_with: r.combine_with || null })),
       });
       showToast?.("Subject codes and key saved", "success");
       await load();
@@ -1920,6 +1924,12 @@ function SubjectCodesCard({ id, showToast, onSaved }) {
     border: `1px solid ${bad ? C.danger || "#e5484d" : C.border}`, background: C.bgAlt,
     color: C.textPri, fontSize: 13.5, outline: "none",
   });
+
+  // Combine into: a subject can join one MAIN subject; a main subject cannot itself be merged
+  // into another (no chains), so those choices are hidden / locked.
+  const nameOf = (sid) => (rows || []).find((x) => x.session_id === sid)?.subject || "";
+  const mergedInto = (sid) => (rows || []).filter((x) => x.combine_with === sid);
+  const setCombine = (sessionId, target) => setField(sessionId, "combine_with", target ? Number(target) : null);
 
   return (
     <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, background: C.card, marginBottom: 18 }}>
@@ -1944,22 +1954,52 @@ function SubjectCodesCard({ id, showToast, onSaved }) {
               <div style={{ fontSize: 12.5, color: C.textSec, marginBottom: 10 }}>
                 Leave a box empty to use the automatic code / the subject name. Changes apply to the on-screen reports, Excel and PDF.
               </div>
+              <div style={{ fontSize: 12.5, color: C.textSec, marginBottom: 10 }}>
+                <strong>Combine into</strong>: pick another subject to show the two as ONE subject on the reports. The combined subject uses the main subject's code and its mark
+                (both papers added together, out of both totals; if one of the two is 0, the other one is used on its own) is the one counted in the Total and the Mean. Give the main subject a key such as "English + Literature", or leave it empty to use both names.
+              </div>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
-                  <thead><tr><Th>Subject</Th><Th>Code</Th><Th>Key (what the code means)</Th></tr></thead>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
+                  <thead><tr><Th>Subject</Th><Th>Combine into</Th><Th>Code</Th><Th>Key (what the code means)</Th></tr></thead>
                   <tbody>
                     {rows.map((r) => {
                       const bad = dupes.has(r.code.trim().toUpperCase());
                       return (
                         <tr key={r.session_id}>
-                          <Td style={{ fontWeight: 700, color: C.textPri }}>{r.subject}</Td>
+                          <Td style={{ fontWeight: 700, color: C.textPri }}>
+                            {r.subject}
+                            {mergedInto(r.session_id).length > 0 && (
+                              <div style={{ fontWeight: 500, fontSize: 12, color: C.textSec, marginTop: 2 }}>
+                                Main subject — combined with {mergedInto(r.session_id).map((x) => x.subject).join(", ")}
+                              </div>
+                            )}
+                          </Td>
+                          <Td style={{ width: 190 }}>
+                            <select
+                              value={r.combine_with || ""}
+                              onChange={(e) => setCombine(r.session_id, e.target.value)}
+                              disabled={mergedInto(r.session_id).length > 0}
+                              title={mergedInto(r.session_id).length > 0 ? "Other subjects are combined into this one, so it cannot be combined into another" : undefined}
+                              style={inputSx(false)} aria-label={`Combine ${r.subject} into`}
+                            >
+                              <option value="">— not combined —</option>
+                              {rows
+                                .filter((o) => o.session_id !== r.session_id && !o.combine_with)
+                                .map((o) => <option key={o.session_id} value={o.session_id}>{o.subject}</option>)}
+                            </select>
+                            {r.combine_with && (
+                              <div style={{ fontSize: 11.5, color: C.textSec, marginTop: 3 }}>
+                                Shown as one subject with {nameOf(r.combine_with)} — its own code and key are not printed.
+                              </div>
+                            )}
+                          </Td>
                           <Td style={{ width: 150 }}>
                             <input value={r.code} maxLength={20} placeholder={r.generated_code}
                               onChange={(e) => setField(r.session_id, "code", e.target.value.toUpperCase())}
                               style={inputSx(bad)} aria-label={`Code for ${r.subject}`} />
                           </Td>
                           <Td>
-                            <input value={r.key} maxLength={150} placeholder={r.subject}
+                            <input value={r.key} maxLength={150} placeholder={mergedInto(r.session_id).length ? [r.subject, ...mergedInto(r.session_id).map((x) => x.subject)].join(" + ") : r.subject}
                               onChange={(e) => setField(r.session_id, "key", e.target.value)}
                               style={inputSx(false)} aria-label={`Key for ${r.subject}`} />
                           </Td>
