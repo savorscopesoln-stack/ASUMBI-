@@ -27,13 +27,16 @@ export default function ReportLink() {
       try {
         sessionStorage.removeItem("report_link_token");
         sessionStorage.removeItem("report_link_user");
+        sessionStorage.removeItem("report_link_downloads");
         const res = await API.post("/auth/report-link", {}, { headers: { Authorization: `Bearer ${token}` } });
         if (cancelled) return;
         sessionStorage.setItem("report_link_token", res.data.token);
         sessionStorage.setItem("report_link_user", JSON.stringify(res.data.user));
+        sessionStorage.setItem("report_link_downloads", JSON.stringify(res.data.downloads || {}));
         setDownloads(res.data.downloads || { mode: "report" });
-        // No passport photo on file yet: ask for it right here before showing the report form.
-        if (!res.data.user?.photoUrl) setPhotoStep({ token: res.data.token, name: res.data.user?.name || "" });
+        // No passport photo on file yet: ask for it right here before showing the report form
+        // (unless the school has switched the photo requirement off).
+        if (!res.data.user?.photoUrl && res.data.downloads?.requirePhoto !== false) setPhotoStep({ token: res.data.token, name: res.data.user?.name || "" });
         setState({ status: "ready", message: "" });
       } catch (err) {
         if (cancelled) return;
@@ -55,6 +58,7 @@ export default function ReportLink() {
           onDone={(data) => {
             sessionStorage.setItem("report_link_token", data.token);
             sessionStorage.setItem("report_link_user", JSON.stringify(data.user));
+            sessionStorage.setItem("report_link_downloads", JSON.stringify(data.downloads || downloads || {}));
             setDownloads(data.downloads || downloads);
             setPhotoStep(null);
           }}

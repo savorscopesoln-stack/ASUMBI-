@@ -294,6 +294,12 @@ const ScreenState = ({ icon, title, text, action, styles }) => (
 );
 
 /* ================= MAIN COMPONENT ================= */
+/* The download page / report link tells us (in the "downloads" answer it saves with the session) whether the
+   school still requires a passport photo. Anything unreadable means "required" — the safe default. */
+const readPhotoRequirement = () => {
+  try { return JSON.parse(sessionStorage.getItem("report_link_downloads") || "{}").requirePhoto; } catch { return true; }
+};
+
 export default function StudentReport() {
   useReportGlobalStyles();
   useTheme();
@@ -398,6 +404,16 @@ export default function StudentReport() {
   const yearOfStudy = Number(student?.yearOfStudy || 0);
   // Student's profile photo (from the Students list, or the logged-in / report-link session).
   const studentPhotoSrc = resolveFileUrl(student?.photoUrl || user.photoUrl);
+  // The school can switch the passport-photo requirement OFF (Report Download Link → "Require passport photo").
+  // Only the link pages are told so; the normal portal keeps requiring it.
+  const photoRequired = !(isReportLinkPath(window.location.pathname) && readPhotoRequirement() === false);
+  const photoMissing = photoRequired && !studentPhotoSrc;
+  // Tells the server a report form was really downloaded / printed, for the school's download history.
+  const recordDownload = (method) => {
+    if (!isReportLinkPath(window.location.pathname)) return;
+    const source = /^\/report-download/.test(window.location.pathname) ? "download-page" : "report-link";
+    API.post("/report-access/log", { method, source }).catch(() => { /* history is best-effort */ });
+  };
 
   // The Class Teacher / Lecturer assigned to this student's class in
   // School Settings (see useSchoolSettings.getClassTeacher) — printed
@@ -669,7 +685,7 @@ export default function StudentReport() {
      out" look in the exported PDF versus the on-screen preview. */
   const downloadPDF = async () => {
     // A report form needs the student's photo on file — ask them to upload one first.
-    if (!studentPhotoSrc) { setPhotoNotice(true); return; }
+    if (photoMissing) { setPhotoNotice(true); return; }
     setIsExporting(true);
 
     if (document.fonts && document.fonts.ready) {
@@ -738,14 +754,16 @@ export default function StudentReport() {
     // missing for some reason.
     const safeName = String(user.name || "Student").trim().replace(/\s+/g, "_").replace(/[^\w-]/g, "");
     pdf.save(`${safeName}_ReportCard.pdf`);
+    recordDownload("pdf");
 
     setIsExporting(false);
   };
 
   /* ================= PRINT (unchanged) ================= */
   const printReportCard = () => {
-    if (!studentPhotoSrc) { setPhotoNotice(true); return; }
+    if (photoMissing) { setPhotoNotice(true); return; }
     window.print();
+    recordDownload("print");
   };
 
   /* ================= LOADING ================= */
@@ -828,7 +846,7 @@ export default function StudentReport() {
         </div>
       </div>
 
-      {(photoNotice || !studentPhotoSrc) && (
+      {(photoNotice || photoMissing) && (
         <div
           role="alert"
           className="no-print"

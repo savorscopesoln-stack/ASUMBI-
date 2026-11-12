@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import API from "../api";
 import StudentReport from "../pages/Student/StudentReport";
 
@@ -38,6 +38,19 @@ function TranscriptPanel({ closesAt }) {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const file = useRef(null);
+  // Exams the student may choose from (the school's allowed list). They can tick one or more.
+  const [exams, setExams] = useState([]);
+  const [picked, setPicked] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    API.get("/report-access/transcript-exams").then((r) => {
+      if (cancelled) return;
+      const list = r.data?.exams || [];
+      setExams(list); setPicked(list.map((e) => e.id));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const toggle = (id) => { setDone(false); setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id])); };
 
   const save = () => {
     if (!file.current) return;
@@ -52,7 +65,9 @@ function TranscriptPanel({ closesAt }) {
     setError(""); setDone(false);
     try {
       setBusy(true);
-      const res = await API.get("/report-access/transcript", { responseType: "blob" });
+      // Every exam ticked = no filter (the server then uses the school's full list).
+      const params = exams.length > 1 && picked.length < exams.length ? { examIds: picked.join(",") } : undefined;
+      const res = await API.get("/report-access/transcript", { responseType: "blob", params });
       const disposition = res.headers?.["content-disposition"] || "";
       const name = /filename="?([^"]+)"?/i.exec(disposition)?.[1] || "transcript.pdf";
       file.current = { blob: new Blob([res.data], { type: "application/pdf" }), name };
@@ -77,9 +92,26 @@ function TranscriptPanel({ closesAt }) {
         <p style={{ margin: "0 0 18px", color: "var(--text-muted, #64748b)", lineHeight: 1.5, fontSize: 14 }}>
           A PDF of all your released examination results.
         </p>
+        {exams.length > 1 && (
+          <div style={{ textAlign: "left", margin: "0 0 16px" }}>
+            <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700 }}>Choose the exams to include</p>
+            <div style={{ border: "1px solid var(--border, #e2e8f0)", borderRadius: 9, padding: "6px 10px", maxHeight: 190, overflow: "auto" }}>
+              {exams.map((ex) => (
+                <label key={ex.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 14, cursor: "pointer" }}>
+                  <input type="checkbox" checked={picked.includes(ex.id)} onChange={() => toggle(ex.id)} />
+                  <span>{ex.name}{ex.academic_year ? ` · ${ex.academic_year}` : ""}{ex.term ? ` · ${ex.term}` : ""}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ marginTop: 6, display: "flex", gap: 12 }}>
+              <button type="button" style={{ background: "none", border: "none", padding: 0, color: "var(--primary, #1d4ed8)", fontWeight: 600, cursor: "pointer", fontSize: 12.5 }} onClick={() => { setDone(false); setPicked(exams.map((e) => e.id)); }}>Select all</button>
+              <button type="button" style={{ background: "none", border: "none", padding: 0, color: "var(--primary, #1d4ed8)", fontWeight: 600, cursor: "pointer", fontSize: 12.5 }} onClick={() => { setDone(false); setPicked([]); }}>Clear</button>
+            </div>
+          </div>
+        )}
         {error && <div style={S.err} role="alert">{error}</div>}
         {done && !error && <p style={{ margin: "0 0 14px", fontSize: 13.5, color: "#15803d", fontWeight: 600 }}>Downloaded. Use the button to download it again.</p>}
-        <button type="button" style={{ ...S.btn, opacity: busy ? 0.7 : 1 }} onClick={download} disabled={busy}>
+        <button type="button" style={{ ...S.btn, opacity: busy ? 0.7 : 1 }} onClick={download} disabled={busy || (exams.length > 1 && picked.length === 0)}>
           {busy ? "Preparing…" : done ? "Download again" : "Download transcript"}
         </button>
         {closesAt && <p style={S.note}>Downloads close on {fmtWhen(closesAt)}.</p>}
