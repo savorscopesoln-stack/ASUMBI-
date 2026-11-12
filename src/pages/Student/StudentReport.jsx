@@ -19,6 +19,7 @@ import useSchoolSettings from "../../hooks/useSchoolSettings";
 import useReportTheme from "../../hooks/useReportTheme";
 import useGradingSystem from "../../hooks/useGradingSystem";
 import { getGradeForScore, getOverallResultForScore, getRemarkForScore, getTotalMarksPossible } from "../../utils/grading";
+import { buildGeneralRemarks } from "../../utils/generalRemarks";
 
 /* ================= GRADING =================
    Sourced from Admin → E-Assessments → Grading System (see
@@ -303,7 +304,7 @@ const readPhotoRequirement = () => {
 export default function StudentReport() {
   useReportGlobalStyles();
   useTheme();
-  const { settings: school, getOfficial, signatory, signatories, getClassTeachers } = useSchoolSettings();
+  const { settings: school, getOfficial, signatory, signatories } = useSchoolSettings();
   const { gradingSystem } = useGradingSystem();
   const dean = getOfficial("dean");
   const principal = getOfficial("principal");
@@ -422,7 +423,6 @@ export default function StudentReport() {
   // Every Class Teacher / Lecturer assigned to this class (main +
   // any assistants), so the report can print one remarks box per
   // teacher instead of only the single top-ranked one.
-  const classTeachersForClass = getClassTeachers(studentClass);
 
   // Report Theme (School Settings → Report Theme) — resolves the full
   // color palette { primary, onPrimary, zebra, rule } for whatever key
@@ -457,7 +457,7 @@ export default function StudentReport() {
       // the form but never counted in the total / average / grade / position.
       // split / paper_label / split_group: split (concurrent) papers of one subject, e.g. 9819 + 9820 —
       // both are listed, but the subject counts once (the paper the student sat).
-      return { ...(full || { id: ss.id, name: ss.name, code: ss.code }), optional: !!ss.optional, split: !!ss.split, paper_label: ss.paper_label || null, split_group: ss.split_group || null };
+      return { ...(full || { id: ss.id, name: ss.name, code: ss.code }), over: !!ss.over, optional: !!ss.optional, split: !!ss.split, paper_label: ss.paper_label || null, split_group: ss.split_group || null };
     }));
   }, [subjects, source]);
 
@@ -568,6 +568,7 @@ export default function StudentReport() {
         split: !!s.split,
         paperLabel: s.paper_label || null,
         splitGroup: s.split_group || null,
+        over: !!s.over,
         score: map[s.name] ?? null,
         originalIndex,
         subjectNumber: getSubjectNumber(s),
@@ -605,6 +606,15 @@ export default function StudentReport() {
     () => subjectMap.filter((s) => s.score !== null && s.score < passMark),
     [subjectMap, passMark]
   );
+
+  // General remarks (replace the class teacher's remarks): subjects under the pass mark + absent papers (AB).
+  const generalRemarks = useMemo(() => buildGeneralRemarks({
+    passMark,
+    weak: subjectMap.filter((s) => s.score !== null && s.score < passMark).map((s) => ({ name: s.subject, score: s.score })),
+    absent: subjectMap.filter((s) => s.score === null && s.over && !s.optional && !isOptionalSubject(s.subject)
+      && !(s.splitGroup && subjectMap.some((o) => o.splitGroup === s.splitGroup && o.score !== null))).map((s) => s.subject),
+    all: subjectMap.filter((s) => s.score !== null).map((s) => ({ name: s.subject, score: s.score })),
+  }), [subjectMap, passMark]);
 
   /* ================= EXAM NAME =================
      Report cards need to say WHICH exam/term this is for. Marks
@@ -1056,19 +1066,18 @@ export default function StudentReport() {
               <table style={styles.table}>
                 <thead>
                   <tr style={styles.theadRow}>
-                    <th style={{ ...styles.th, width: "8%" }}>Code</th>
-                    <th style={{ ...styles.th, textAlign: "left", width: "28%" }}>Learning Area / Subject</th>
-                    <th style={{ ...styles.th, width: "10%" }}>Score</th>
-                    <th style={{ ...styles.th, width: "8%" }}>Grade</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "30%" }}>Learning Area / Subject</th>
+                    <th style={{ ...styles.th, width: "11%" }}>Score</th>
+                    <th style={{ ...styles.th, width: "9%" }}>Grade</th>
                     <th style={{ ...styles.th, width: "15%" }}>Points</th>
-                    <th style={{ ...styles.th, width: "15%" }}>Result</th>
-                    <th style={{ ...styles.th, textAlign: "left", width: "16%" }}>Remarks</th>
+                    <th style={{ ...styles.th, width: "15%" }}>Description</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "20%" }}>Remarks</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportBlank && (
                     <tr>
-                      <td colSpan={7} style={{ ...styles.td, padding: "28px 12px", color: "#64748b", fontStyle: "italic" }}>
+                      <td colSpan={6} style={{ ...styles.td, padding: "28px 12px", color: "#64748b", fontStyle: "italic" }}>
                         No assessment or examination has been selected for the report card yet.
                       </td>
                     </tr>
@@ -1083,10 +1092,12 @@ export default function StudentReport() {
                     const resultLabel = valid ? getOverallResultForScore(s.score, gradingSystem) : "";
                     // the unsat paper of a split subject whose other paper was sat: nothing is missing
                     const splitSpare = !!s.splitGroup && subjectMap.some((o) => o.splitGroup === s.splitGroup && o.score !== null && o.score !== undefined);
-                    const crnmOrDash = (s.optional || splitSpare || isOptionalSubject(s.subject)) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
+                    const notRequired = s.optional || splitSpare || isOptionalSubject(s.subject);
+                    // Paper finished and no mark: the student was absent -> AB. Not finished yet -> CRNM as before.
+                    const isAbsent = !valid && !notRequired && s.over;
+                    const crnmOrDash = notRequired || isAbsent ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : reportTheme.zebra }}>
-                        <td style={{ ...styles.td, color: "#64748b", fontSize: 8 }}>{s.code || `L/A-${i + 1}`}</td>
                         <td style={{ ...styles.td, textAlign: "left", fontWeight: 500 }}>
                           {s.subject}
                           {s.split && (
@@ -1105,7 +1116,8 @@ export default function StudentReport() {
                               fontSize: 8,
                               color: s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c"
                             }}>{Math.floor(Number(s.score)+1e-9)}%</span>
-                          ) : (s.optional || splitSpare || isOptionalSubject(s.subject)) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
+                          ) : isAbsent ? <span style={{ fontWeight: 700, fontSize: 8, color: "#b91c1c" }}>AB</span>
+                            : notRequired ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
                         <td style={{ ...styles.td, textAlign: "center", fontWeight: 700 }}>
                           {valid ? (band.grade || "—") : crnmOrDash}
@@ -1135,11 +1147,10 @@ export default function StudentReport() {
                   {/* TOTAL MARKS ROW — sum of graded subject percentages,
                       shown against the Grading System's "Total Marks That Can Be Achieved". */}
                   <tr style={styles.totalRow}>
-                    <td style={styles.td} colSpan={2}>TOTAL MARKS</td>
+                    <td style={styles.td}>TOTAL MARKS</td>
                     <td style={{ ...styles.td, textAlign: "center", fontWeight: 800, color: "#ffffff", fontSize: 9 }}>
                       {Math.floor(analytics.totalMarks + 1e-9)} / {analytics.maximumMarks}
                     </td>
-                    <td style={styles.td}></td>
                     <td style={styles.td}></td>
                     <td style={styles.td}></td>
                     <td style={styles.td}></td>
@@ -1148,7 +1159,7 @@ export default function StudentReport() {
                   {/* AVERAGE ROW — a mean of percentages, correctly
                       labelled (this used to be a mis-labelled sum). */}
                   <tr style={styles.totalRow}>
-                    <td style={styles.td} colSpan={2}>AVERAGE</td>
+                    <td style={styles.td}>AVERAGE</td>
                     <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{Math.floor(Number(analytics.avg)+1e-9)}%</td>
                     <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#ffffff" }}>
                       {analytics.grade.grade || "—"}
@@ -1171,7 +1182,7 @@ export default function StudentReport() {
                   </tr>
                   {optionalNames.size > 0 && (
                     <tr>
-                      <td colSpan={7} style={{ ...styles.td, textAlign: "left", fontSize: 7.5, color: "#64748b", fontStyle: "italic" }}>
+                      <td colSpan={6} style={{ ...styles.td, textAlign: "left", fontSize: 7.5, color: "#64748b", fontStyle: "italic" }}>
                         Optional subjects count toward the total, average, grade and position only for students who took them; a dash (—) means the student did not take that subject.
                       </td>
                     </tr>
@@ -1224,63 +1235,14 @@ export default function StudentReport() {
               </div>
               <div style={styles.authGrid}>
 
-                {/* Comments — one remarks box per Class Teacher / Lecturer
-                    assigned to this class (main + any assistants), so
-                    every teacher present on the report gets their own
-                    remarks + sign-off line instead of only the top-ranked
-                    one. Falls back to a single blank box when nobody has
-                    been assigned yet, exactly like before this feature
-                    existed. Each teacher's OWN uploaded stamp (School
-                    Settings → Class Teachers) floats over their own card —
-                    falling back to the shared school stamp only if that
-                    particular teacher hasn't uploaded a personal one. */}
-                {classTeachersForClass.length > 0 ? (
-                  classTeachersForClass.map((ct, i) => {
-                    const ctStampSrc = resolveFileUrl(ct.stampUrl) || schoolStampSrc;
-                    return (
-                      <div style={styles.authCard} key={ct.id ?? i}>
-                        {ctStampSrc && (
-                          <img src={ctStampSrc} alt="" style={styles.stampOverlayImage} />
-                        )}
-                        <p style={styles.authCardTitle}>{ct.title ? `${ct.title}'s Remarks` : "Class Teacher / Lecturer's Remarks"}</p>
-                        <div style={styles.remarksBox}>
-                          <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
-                        </div>
-                        <div style={styles.sigGrid}>
-                          <div style={styles.sigItem}>
-                            <p style={styles.sigLabel}>Name</p>
-                            {ct.name ? (
-                              <p style={{ margin: 0, fontWeight: 700, fontSize: 11.5, color: "#0f172a" }}>{ct.name}</p>
-                            ) : (
-                              <div style={styles.sigLine} />
-                            )}
-                          </div>
-                          <div style={styles.sigItem}>
-                            <p style={styles.sigLabel}>Signature</p>
-                            {ct.signatureUrl ? (
-                              <img src={resolveFileUrl(ct.signatureUrl)} alt="" style={styles.sigImage} />
-                            ) : (
-                              <div style={styles.sigLine} />
-                            )}
-                          </div>
-                          <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div style={styles.authCard}>
-                    <p style={styles.authCardTitle}>Class Teacher / Lecturer's Remarks</p>
-                    <div style={styles.remarksBox}>
-                      <p style={{ color: "#94a3b8", fontSize: 8, margin: 0 }}>&nbsp;</p>
-                    </div>
-                    <div style={styles.sigGrid}>
-                      <div style={styles.sigItem}><p style={styles.sigLabel}>Name</p><div style={styles.sigLine} /></div>
-                      <div style={styles.sigItem}><p style={styles.sigLabel}>Signature</p><div style={styles.sigLine} /></div>
-                      <div style={styles.sigItem}><p style={styles.sigLabel}>Date</p><div style={styles.sigLine} /></div>
-                    </div>
-                  </div>
-                )}
+                {/* General Remarks — automatic (replaces the class teacher's remarks): the subjects
+                    that fell below the pass mark, advice to work on them, and any paper missed (AB). */}
+                <div style={styles.authCard}>
+                  <p style={styles.authCardTitle}>General Remarks</p>
+                  <p style={{ margin: 0, fontSize: 10.5, lineHeight: 1.5, color: "#334155" }}>
+                    {reportBlank ? "—" : (generalRemarks || "No remarks.")}
+                  </p>
+                </div>
 
                 {/* Approval — one card per official flagged as a
                     signatory in School Settings (in rank/order), or the
