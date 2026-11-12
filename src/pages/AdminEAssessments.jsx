@@ -1427,6 +1427,8 @@ export default function AdminEAssessments() {
         systemName: gradingDraft.systemName,
         passMark: gradingDraft.passMark,
         totalMarks: gradingDraft.totalMarks === "" ? null : gradingDraft.totalMarks,
+        minFailsForOverallFail: gradingDraft.minFailsForOverallFail === "" || gradingDraft.minFailsForOverallFail == null ? null : gradingDraft.minFailsForOverallFail,
+        failOverallLabel: gradingDraft.failOverallLabel || "FAIL",
         gradeBands,
         overallBands,
       });
@@ -3625,6 +3627,22 @@ function GradingSystemTab({
           <p style={{ margin: "6px 0 0", fontSize: 11.5, color: C.textMuted }}>
             Shown as the "out of" figure next to a student's Total Marks on every report
             (e.g. 1450 / 1700). Leave blank to use number of subjects × 100.
+          </p>
+        </div>
+        <div style={{ flex: "1 1 320px" }}>
+          <FieldLabel>Minimum Failed Subjects for an Overall Fail</FieldLabel>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <input type="number" min="0" step="1" value={draft.minFailsForOverallFail ?? ""} placeholder="e.g. 4 (blank = off)"
+              onChange={(e) => setDraft((d) => ({ ...d, minFailsForOverallFail: e.target.value }))}
+              style={{ ...cellInput, flex: "1 1 140px" }} />
+            <input value={draft.failOverallLabel ?? ""} placeholder="Result shown, e.g. FAIL" maxLength={50}
+              onChange={(e) => setDraft((d) => ({ ...d, failOverallLabel: e.target.value }))}
+              style={{ ...cellInput, flex: "1 1 160px" }} />
+          </div>
+          <p style={{ margin: "6px 0 0", fontSize: 11.5, color: C.textMuted }}>
+            If a student scores below the pass mark in this many subjects or more, their overall result
+            becomes the name on the right (default FAIL) on the transcript, report form and report
+            lists, whatever their average. Leave blank to switch the rule off.
           </p>
         </div>
       </div>

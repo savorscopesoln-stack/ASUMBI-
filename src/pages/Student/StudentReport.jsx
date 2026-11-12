@@ -18,7 +18,7 @@ import ThemeToggle from "../../components/ThemeToggle";
 import useSchoolSettings from "../../hooks/useSchoolSettings";
 import useReportTheme from "../../hooks/useReportTheme";
 import useGradingSystem from "../../hooks/useGradingSystem";
-import { getGradeForScore, getOverallResultForScore, getRemarkForScore, getTotalMarksPossible } from "../../utils/grading";
+import { getGradeForScore, getOverallResultForScore, getOverallResult, countFailedSubjects, getRemarkForScore, getTotalMarksPossible } from "../../utils/grading";
 import { buildGeneralRemarks } from "../../utils/generalRemarks";
 
 /* ================= GRADING =================
@@ -543,7 +543,8 @@ export default function StudentReport() {
       lowest: scores.length ? round2(Math.min(...scores)) : null,
       assessedCount: scores.length,
       grade: reportBlank ? { grade: "", label: "—", remark: "" } : hasCrnm ? { grade: "", label: "CRNM", remark: "" } : getGradeForScore(avg, gradingSystem),
-      result: reportBlank ? "—" : hasCrnm ? "CRNM" : getOverallResultForScore(avg, gradingSystem),
+      failedCount: countFailedSubjects(scores, gradingSystem),
+      result: reportBlank ? "—" : hasCrnm ? "CRNM" : getOverallResult(avg, countFailedSubjects(scores, gradingSystem), gradingSystem),
     };
   }, [visibleMarks, visibleSubjects, gradingSystem, hasCrnm, reportBlank]);
 
@@ -826,6 +827,8 @@ export default function StudentReport() {
 
   /* ================= UI ================= */
   const logoSrc = resolveFileUrl(school?.logoUrl);
+  // Government / ministry emblem from School Settings — top right, balancing the school logo (top left).
+  const govLogoSrc = resolveFileUrl(school?.governmentLogoUrl);
   // Fallback-only school-wide stamp (School Settings → main tab). Used
   // when a signatory/class teacher hasn't uploaded their OWN personal
   // stamp — never as the only source, since each official can now
@@ -981,6 +984,13 @@ export default function StudentReport() {
                   </div>
                   <p style={styles.verifyCodeHeader}>VERIFY: {verificationCode}</p>
                 </div>
+
+                {/* Government logo — top right */}
+                {govLogoSrc && (
+                  <div style={styles.crestBox}>
+                    <img src={govLogoSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: "50%" }} />
+                  </div>
+                )}
               </div>
               <div style={styles.headerBandFoot} />
               {/* ── ANTI-FORGERY: microprint line ──

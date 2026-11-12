@@ -53,6 +53,9 @@ export function schoolInfoFromSettings(s) {
     website: s?.website || "",
     logoUrl: s?.logoUrl ? resolveFileUrl(s.logoUrl) : null,
     logoDataUrl: null,
+    // Government / ministry emblem (School Settings) — printed top right, opposite the school logo.
+    governmentLogoUrl: s?.governmentLogoUrl ? resolveFileUrl(s.governmentLogoUrl) : null,
+    governmentLogoDataUrl: null,
   };
   info.contactLine = [
     info.address,
@@ -76,6 +79,8 @@ export async function getSchoolInfo() {
     } catch { /* fall through to an empty header */ }
     const logoUrl = s?.logoUrl ? resolveFileUrl(s.logoUrl) : null;
     const logoDataUrl = logoUrl ? await toDataUrl(logoUrl) : null;
+    const governmentLogoUrl = s?.governmentLogoUrl ? resolveFileUrl(s.governmentLogoUrl) : null;
+    const governmentLogoDataUrl = governmentLogoUrl ? await toDataUrl(governmentLogoUrl) : null;
     const info = {
       name: s?.schoolName || "",
       shortName: s?.shortName || "",
@@ -86,6 +91,8 @@ export async function getSchoolInfo() {
       website: s?.website || "",
       logoUrl,
       logoDataUrl,
+      governmentLogoUrl,
+      governmentLogoDataUrl,
     };
     info.contactLine = [
       info.address,
@@ -112,13 +119,21 @@ export function drawSchoolHeader(doc, info, { margin, top, color = [139, 30, 45]
   const y0 = top ?? u(26);
   const LOGO = u(46);
 
-  if (!info || (!info.name && !info.contactLine && !info.logoDataUrl)) return y0;
+  if (!info || (!info.name && !info.contactLine && !info.logoDataUrl && !info.governmentLogoDataUrl)) return y0;
 
   if (info.logoDataUrl) {
     try {
       const fmt = /^data:image\/jpe?g/i.test(info.logoDataUrl) ? "JPEG" : "PNG";
       doc.addImage(info.logoDataUrl, fmt, m, y0 - u(6), LOGO, LOGO);
     } catch { /* unsupported image: skip the logo, keep the text */ }
+  }
+
+  // government logo at the top RIGHT, balancing the school logo on the left
+  if (info.governmentLogoDataUrl) {
+    try {
+      const fmt = /^data:image\/jpe?g/i.test(info.governmentLogoDataUrl) ? "JPEG" : "PNG";
+      doc.addImage(info.governmentLogoDataUrl, fmt, pageW - m - LOGO, y0 - u(6), LOGO, LOGO);
+    } catch { /* unsupported image: skip it, keep the text */ }
   }
 
   // keep the text centred on the page but clear of the logo on both sides
@@ -171,6 +186,8 @@ export function schoolHeaderHtml(info, color = "#8B1E2D") {
         ${info.motto ? `<div style="font-size:11px;font-style:italic;color:#555;">"${esc(info.motto)}"</div>` : ""}
         ${info.contactLine ? `<div style="font-size:11px;color:#555;">${esc(info.contactLine)}</div>` : ""}
       </div>
-      ${info.logoUrl ? `<div style="width:54px;"></div>` : ""}
+      ${info.governmentLogoUrl
+        ? `<img src="${esc(info.governmentLogoUrl)}" alt="" style="width:54px;height:54px;object-fit:contain;" />`
+        : (info.logoUrl ? `<div style="width:54px;"></div>` : "")}
     </div>`;
 }

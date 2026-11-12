@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import API from "../api";
+import API, { resolveFileUrl } from "../api";
 import { useTheme } from "../context/ThemeContext";
 import {
   ArrowLeft, RefreshCw, Plus, Pencil, Trash2, Link2, CalendarRange, Users,
@@ -1395,6 +1395,7 @@ function TimetablePrintSheet({ examination, byDay, unscheduled }) {
           <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748B" }}>Examination Timetable</div>
           <div style={{ fontSize: 10, color: "#64748B" }}>Generated {generated}</div>
         </div>
+        {settings?.governmentLogoUrl && <img src={resolveFileUrl(settings.governmentLogoUrl)} alt="" style={{ width: 52, height: 52, objectFit: "contain" }} />}
       </div>
 
       <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 2 }}>{examination?.name}</div>

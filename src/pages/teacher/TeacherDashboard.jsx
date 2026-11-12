@@ -391,6 +391,9 @@ export default function TeacherReports() {
             {school?.logoUrl && (
               <img src={resolveFileUrl(school.logoUrl)} alt="" crossOrigin="anonymous" style={{ width: 54, height: 54, objectFit: "contain", marginBottom: 6 }} />
             )}
+            {school?.governmentLogoUrl && (
+              <img src={resolveFileUrl(school.governmentLogoUrl)} alt="" crossOrigin="anonymous" style={{ position: "absolute", top: 0, right: 0, width: 54, height: 54, objectFit: "contain" }} />
+            )}
             <h2 style={printStyles.collegeTitle}>{(school?.schoolName || "").toUpperCase()}</h2>
             {school?.motto && <p style={{ ...printStyles.collegeMeta, fontStyle: "italic" }}>"{school.motto}"</p>}
             <p style={printStyles.collegeMeta}>

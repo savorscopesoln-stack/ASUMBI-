@@ -81,7 +81,7 @@ const sx = {
 
 const emptyForm = {
   schoolName: "", shortName: "", motto: "", centreCode: "",
-  address: "", phone: "", email: "", website: "", numberOfClasses: "", logoUrl: "", stampUrl: "",
+  address: "", phone: "", email: "", website: "", numberOfClasses: "", logoUrl: "", governmentLogoUrl: "", stampUrl: "",
   reportTheme: "", reportSubjects: [],
 };
 
@@ -94,8 +94,10 @@ export default function SchoolSettings() {
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(null);
   const [uploadingStamp, setUploadingStamp] = useState(false);
+  const [uploadingGovLogo, setUploadingGovLogo] = useState(false);
   const fileInputRef = useRef(null);
   const stampInputRef = useRef(null);
+  const govLogoInputRef = useRef(null);
 
   // Fixed catalog of downloaded-PDF-report color palettes — see backend
   // utils/reportThemes.js. Fetched once; falls back to just the default
@@ -293,6 +295,7 @@ export default function SchoolSettings() {
         website: settings.website || "",
         numberOfClasses: settings.numberOfClasses ?? "",
         logoUrl: settings.logoUrl || "",
+        governmentLogoUrl: settings.governmentLogoUrl || "",
         stampUrl: settings.stampUrl || "",
         reportTheme: settings.reportTheme || "",
         reportSubjects: Array.isArray(settings.reportSubjects) ? settings.reportSubjects : [],
@@ -324,6 +327,26 @@ export default function SchoolSettings() {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleGovLogoPick = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingGovLogo(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await API.post("/school-settings/government-logo", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setForm((f) => ({ ...f, governmentLogoUrl: res.data.url }));
+      showToast("success", "Government logo uploaded — remember to save.");
+    } catch (err) {
+      showToast("error", err?.response?.data?.message || "Government logo upload failed");
+    } finally {
+      setUploadingGovLogo(false);
+      if (govLogoInputRef.current) govLogoInputRef.current.value = "";
     }
   };
 
@@ -540,6 +563,28 @@ export default function SchoolSettings() {
                 <Upload size={14} /> {uploading ? "Uploading…" : form.logoUrl ? "Replace logo" : "Upload logo"}
               </button>
               <span style={{ fontSize: 11.5, color: C.textMuted }}>Shown on the login screen and at the top of downloaded reports.</span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 16, marginBottom: 18 }}>
+            <div style={sx.logoBox}>
+              {form.governmentLogoUrl ? (
+                <img src={resolvePhotoUrl(form.governmentLogoUrl)} alt="Government logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              ) : (
+                <Building2 size={28} color={C.textMuted} />
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 8 }}>
+              <input ref={govLogoInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: "none" }} onChange={handleGovLogoPick} />
+              <button type="button" style={sx.secondaryBtn} onClick={() => govLogoInputRef.current?.click()} disabled={uploadingGovLogo}>
+                <Upload size={14} /> {uploadingGovLogo ? "Uploading…" : form.governmentLogoUrl ? "Replace government logo" : "Upload government logo"}
+              </button>
+              {form.governmentLogoUrl && (
+                <button type="button" style={sx.secondaryBtn} onClick={() => setForm((f) => ({ ...f, governmentLogoUrl: "" }))}>
+                  <Trash2 size={14} /> Remove government logo
+                </button>
+              )}
+              <span style={{ fontSize: 11.5, color: C.textMuted }}>Printed at the top right of downloaded documents, opposite the school logo (top left).</span>
             </div>
           </div>
 

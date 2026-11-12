@@ -219,6 +219,7 @@ export default function StudentLeaveOut() {
     const sch = schoolInfoFromSettings(schoolSettings);
     const schoolTitle = (sch.name || "School").toUpperCase();
     const schoolLogo = sch.logoUrl || "";
+    const govLogo = sch.governmentLogoUrl || "";
     const schoolSub = sch.contactLine || "Institutional Student Leave Authorization System";
     const win = window.open("", "", "width=1100,height=900");
 
@@ -505,6 +506,7 @@ export default function StudentLeaveOut() {
               <p><b>Permit No:</b> ${permitId}</p>
               <p><b>Status:</b> Approved</p>
             </div>
+            ${govLogo ? `<div class="logoBox" style="margin-left:16px;"><img src="${govLogo}" alt="" style="width:100%;height:100%;object-fit:contain;" /></div>` : ""}
           </div>
           <div class="infoGrid">
             <div class="infoCard">

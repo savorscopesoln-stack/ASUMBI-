@@ -21,6 +21,10 @@ export const DEFAULT_GRADING_SYSTEM = {
   systemName: "KNEC Standard",
   passMark: 40,
   totalMarks: null,
+  // "Minimum failed subjects" rule (Grading System): failing this many subjects makes
+  // the overall result failOverallLabel. null = rule off.
+  minFailsForOverallFail: null,
+  failOverallLabel: "FAIL",
   gradeBands: [
     { minScore: 80, grade: "1", label: "Distinction", remark: "Excellent Performance" },
     { minScore: 75, grade: "2", label: "Distinction", remark: "Good Performance" },
@@ -76,6 +80,24 @@ export function getOverallResultForScore(avg, gradingSystem) {
     : DEFAULT_GRADING_SYSTEM.overallBands;
   const band = matchBand(avg, bands);
   return band?.label || "";
+}
+
+/** How many of these subject scores are below the pass mark (blank/absent ignored). */
+export function countFailedSubjects(scores, gradingSystem) {
+  const pm = getPassMark(gradingSystem);
+  return (scores || []).filter((s) => s !== null && s !== undefined && s !== "" && Number.isFinite(Number(s)) && Number(s) < pm).length;
+}
+
+/** Overall result for a student. When the Grading System has a "minimum failed subjects"
+    rule and the student failed that many subjects or more, the result is the configured
+    fail label (default "FAIL") whatever the average; otherwise the normal overall band.
+    Mirrors getOverallResultWithFails in backend/utils/grading.js. */
+export function getOverallResult(avg, failedCount, gradingSystem) {
+  const min = Number(gradingSystem?.minFailsForOverallFail);
+  if (Number.isInteger(min) && min > 0 && Number(failedCount) >= min) {
+    return String(gradingSystem?.failOverallLabel || "FAIL").trim() || "FAIL";
+  }
+  return getOverallResultForScore(avg, gradingSystem);
 }
 
 /** The configured pass mark (falls back to 40), e.g. for pass-rate analytics. */

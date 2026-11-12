@@ -9,7 +9,7 @@ import useSchoolSettings from "../hooks/useSchoolSettings";
 import useGradingSystem from "../hooks/useGradingSystem";
 import useReportTheme from "../hooks/useReportTheme";
 import OfficialAuthorisation from "../components/OfficialAuthorisation";
-import { getGradeForScore, getOverallResultForScore, getRemarkForScore, getPassMark, getTotalMarksPossible } from "../utils/grading";
+import { getGradeForScore, getOverallResultForScore, getOverallResult, getRemarkForScore, getPassMark, getTotalMarksPossible } from "../utils/grading";
 import {
   ResponsiveContainer,
   BarChart,
@@ -177,6 +177,7 @@ export default function Reports() {
 
     let total = 0;
     let count = 0;
+    let failedCount = 0; // counted subjects below the pass mark (Grading System "minimum failed subjects" rule)
 
     // Configured Report Form Subjects replace the full subject list; an optional
     // one counts toward the total, the count and so the average ONLY if this
@@ -195,6 +196,7 @@ export default function Reports() {
       if (!sub.optional || marked) {
         total += score;
         count++;
+        if (score < getPassMark(gradingSystem)) failedCount++;
       }
 
       const grade = getGradeForScore(score, gradingSystem);
@@ -221,7 +223,8 @@ export default function Reports() {
       avg,
       subjects: subjectBreakdown,
       grade: getGradeForScore(avg, gradingSystem),
-      result: getOverallResultForScore(avg, gradingSystem),
+      failedCount,
+      result: getOverallResult(avg, failedCount, gradingSystem),
     };
   });
 
@@ -1497,7 +1500,9 @@ onClick={() => printAllReports()}
             boxShadow: "0 10px 25px rgba(127,29,29,0.25)",
           }}
         >
-          🎓
+          {school?.logoUrl
+            ? <img src={resolveFileUrl(school.logoUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 24 }} />
+            : "🎓"}
         </div>
 
         {/* CENTER */}
@@ -1576,6 +1581,13 @@ onClick={() => printAllReports()}
             <b>Position:</b> #{index + 1}
           </div>
         </div>
+
+        {/* GOVERNMENT LOGO — top right, balancing the school logo (top left) */}
+        {school?.governmentLogoUrl && (
+          <div style={{ width: 95, height: 95, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <img src={resolveFileUrl(school.governmentLogoUrl)} alt="" crossOrigin="anonymous" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+          </div>
+        )}
       </div>
 
       {/* =========================================================

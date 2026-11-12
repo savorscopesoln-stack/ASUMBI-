@@ -146,6 +146,7 @@ export default function Graduation() {
           text-align: center;
           border-bottom: 2px solid #800000;
           margin-bottom: 20px;
+          position: relative;
         }
 
         .content {
@@ -166,6 +167,7 @@ export default function Graduation() {
 
         <div class="header">
           ${school?.logoUrl ? `<img src="${resolveFileUrl(school.logoUrl)}" alt="" style="width:60px;height:60px;object-fit:contain;" />` : ""}
+          ${school?.governmentLogoUrl ? `<img src="${resolveFileUrl(school.governmentLogoUrl)}" alt="" style="position:absolute;top:0;right:0;width:60px;height:60px;object-fit:contain;" />` : ""}
           <h1>${(school?.schoolName || "").toUpperCase()}</h1>
           ${[school?.address, school?.phone && `Tel: ${school.phone}`, school?.email].filter(Boolean).length ? `<p style="font-size:12px;color:#444;margin:2px 0;">${[school?.address, school?.phone && `Tel: ${school.phone}`, school?.email].filter(Boolean).join(" | ")}</p>` : ""}
           <h3>OFFICIAL COMPLETION LETTER</h3>
