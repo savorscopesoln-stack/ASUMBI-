@@ -7,6 +7,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import useSchoolSettings from "../hooks/useSchoolSettings";
 import useGradingSystem from "../hooks/useGradingSystem";
+import useReportTheme from "../hooks/useReportTheme";
+import OfficialAuthorisation from "../components/OfficialAuthorisation";
 import { getGradeForScore, getOverallResultForScore, getRemarkForScore, getPassMark, getTotalMarksPossible } from "../utils/grading";
 import {
   ResponsiveContainer,
@@ -93,6 +95,7 @@ export default function Reports() {
   const passMark = getPassMark(gradingSystem);
   const dean = getOfficial("dean");
   const principal = getOfficial("principal");
+  const reportTheme = useReportTheme(school?.reportTheme);
   const [printClass, setPrintClass] = useState("ALL");
   const [assessmentId, setAssessmentId] = useState("");
   const [marks, setMarks] = useState([]);
@@ -1982,103 +1985,19 @@ onClick={() => printAllReports()}
         </div>
 
         {/* =========================================================
-            SIGNATURE SECTION
+            OFFICIAL AUTHORISATION — identical to the Report Form's
+            (components/OfficialAuthorisation.jsx is a 1:1 copy of it)
         ========================================================= */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 25,
-            marginBottom: 35,
-          }}
-        >
-
-          {/* Same authorisation block as the student Report Form:
-              one remarks box per Class Teacher / Lecturer of this
-              student's class (name, uploaded signature, own stamp),
-              then one "Approved By" card per signatory with their
-              own uploaded signature + stamp. Falls back to the
-              blank hand-signed lines when nothing is uploaded. */}
-          {(() => {
-            const schoolStampSrc = resolveFileUrl(school?.stampUrl);
-            const teachers = getClassTeachers(r.student?.studentClass);
-            const approvers = signatories.length > 0 ? signatories : [null];
-            const fbSig = dean?.signatureUrl || principal?.signatureUrl || signatory?.signatureUrl;
-            const fbStamp = dean?.stampUrl || principal?.stampUrl || signatory?.stampUrl;
-
-            const sigLine = <div style={styles.tSigLine} />;
-
-            const teacherCards = (teachers.length > 0 ? teachers : [null]).map((ct, i) => {
-              const stampSrc = ct ? (resolveFileUrl(ct.stampUrl) || schoolStampSrc) : null;
-              return (
-                <div style={styles.tAuthCard} key={ct?.id ?? `t${i}`}>
-                  {stampSrc && <img src={stampSrc} alt="" style={styles.tStampOverlay} />}
-                  <h3 style={{ marginTop: 0, color: "#0f172a" }}>
-                    {ct?.title ? `${ct.title}'s Remarks` : "Class Lecturer’s Remarks"}
-                  </h3>
-                  <div
-                    style={{
-                      minHeight: 90,
-                      border: "2px dashed #cbd5e1",
-                      borderRadius: 16,
-                      padding: 16,
-                      color: "#64748b",
-                      marginBottom: 20,
-                    }}
-                  >
-                    Class Lecturer’s remarks and recommendations.
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 18 }}>
-                    <div>
-                      <p style={styles.tSigLabel}>Lecturer</p>
-                      {ct?.name ? (
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "#0f172a" }}>{ct.name}</p>
-                      ) : sigLine}
-                    </div>
-                    <div>
-                      <p style={styles.tSigLabel}>Signature</p>
-                      {ct?.signatureUrl ? (
-                        <img src={resolveFileUrl(ct.signatureUrl)} alt="" style={styles.tSigImage} />
-                      ) : sigLine}
-                    </div>
-                    <div>
-                      <p style={styles.tSigLabel}>Date</p>
-                      {sigLine}
-                    </div>
-                  </div>
-                </div>
-              );
-            });
-
-            const approverCards = approvers.map((sg, i) => {
-              const stampSrc = resolveFileUrl(sg ? sg.stampUrl : fbStamp) || schoolStampSrc;
-              const sigUrl = sg ? sg.signatureUrl : fbSig;
-              const name = sg ? sg.name : (dean?.name || principal?.name || signatory?.name);
-              const title = sg
-                ? sg.title
-                : (dean?.title || principal?.title || signatory?.title || "Chief Principal");
-              return (
-                <div style={styles.tAuthCard} key={sg?.id ?? `a${i}`}>
-                  {stampSrc && <img src={stampSrc} alt="" style={styles.tStampOverlay} />}
-                  <h3 style={{ marginTop: 0, color: "#0f172a" }}>Approval & Authentication</h3>
-                  <div style={{ marginTop: 25 }}>
-                    <h2 style={{ margin: 0, color: "#7f1d1d" }}>{name || "—"}</h2>
-                    <p style={{ marginTop: 6, color: "#475569" }}>{title || "—"}</p>
-                    <div style={{ marginTop: 30 }}>
-                      <small style={{ color: "#64748b" }}>Authorized Signature</small>
-                      {sigUrl ? (
-                        <img src={resolveFileUrl(sigUrl)} alt="" style={{ ...styles.tSigImage, marginTop: 6 }} />
-                      ) : (
-                        <div style={{ marginTop: 10, borderBottom: "1px solid #0f172a" }} />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            });
-
-            return <>{teacherCards}{approverCards}</>;
-          })()}
+        <div style={{ marginBottom: 35 }}>
+          <OfficialAuthorisation
+            primary={reportTheme?.primary}
+            classTeachers={getClassTeachers(r.student?.studentClass)}
+            signatories={signatories}
+            dean={dean}
+            principal={principal}
+            signatory={signatory}
+            schoolStampUrl={school?.stampUrl}
+          />
         </div>
 
         {/* =========================================================
@@ -2093,44 +2012,6 @@ onClick={() => printAllReports()}
             flexWrap: "wrap",
           }}
         >
-
-          {/* STAMP — the same individual-official stamp uploaded in
-              School Settings that the "Approval & Authentication"
-              box above credits (dean, falling back to principal /
-              first configured signatory); the dashed placeholder
-              only shows while nobody has uploaded one yet. */}
-          {(() => {
-            const transcriptStampSrc = resolveFileUrl(dean?.stampUrl || principal?.stampUrl || signatory?.stampUrl);
-            return transcriptStampSrc ? (
-              <img
-                src={transcriptStampSrc}
-                alt="Official stamp"
-                style={{ width: 160, height: 160, objectFit: "contain" }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 160,
-                  height: 160,
-                  border: "5px dashed #7f1d1d21",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  color: "#7f1d1d3b",
-                  fontWeight: 900,
-                  fontSize: 16,
-                  letterSpacing: 1,
-                }}
-              >
-                OFFICIAL
-                <br />
-                COLLEGE
-                <br />
-                STAMP
-              </div>
-            );
-          })()}
 
           {/* SECURITY TEXT */}
           <div
