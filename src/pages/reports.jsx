@@ -1545,7 +1545,7 @@ onClick={() => printAllReports()}
               letterSpacing: 0.5,
             }}
           >
-            INTERNAL FORMATIVE ASSESSMENT REPORT (IFA) — 2026
+            {assessments.find((a) => String(a.id) === String(assessmentId))?.name || "INTERNAL FORMATIVE ASSESSMENT REPORT (IFA)"}
           </div>
         </div>
 
@@ -1627,7 +1627,6 @@ onClick={() => printAllReports()}
             ["Class", r.student?.studentClass],
             ["Total Marks", `${Math.floor(Number(r.total) + 1e-9)}/${r.possible}`],
             ["Average Score", `${fmt2(r.avg)}%`],
-            ["Overall Grade", r.grade?.label],
             ["Final Result", r.result],
           ].map(([label, value], i) => (
             <div
@@ -1679,6 +1678,24 @@ onClick={() => printAllReports()}
           }}
         >
 
+          {/* TOTAL MARKS */}
+          <div
+            style={{
+              background: "#334155",
+              color: "#fff",
+              padding: 24,
+              borderRadius: 22,
+              textAlign: "center",
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 12, opacity: 0.8, letterSpacing: 1 }}>
+              TOTAL MARKS
+            </p>
+            <h1 style={{ margin: "12px 0 0", fontSize: 34 }}>
+              {Math.floor(Number(r.total) + 1e-9)}/{r.possible}
+            </h1>
+          </div>
+
           {/* MEAN */}
           <div
             style={{
@@ -1708,37 +1725,6 @@ onClick={() => printAllReports()}
             >
               {fmt2(r.avg)}%
             </h1>
-          </div>
-
-          {/* GRADE */}
-          <div
-            style={{
-              background: "#7f1d1d",
-              color: "#fff",
-              padding: 24,
-              borderRadius: 22,
-              textAlign: "center",
-            }}
-          >
-            <p
-              style={{
-                margin: 0,
-                fontSize: 12,
-                opacity: 0.8,
-                letterSpacing: 1,
-              }}
-            >
-              OVERALL GRADE
-            </p>
-
-            <h2
-              style={{
-                margin: "12px 0 0",
-                fontSize: 28,
-              }}
-            >
-              {r.grade?.label}
-            </h2>
           </div>
 
           {/* RESULT */}
@@ -1880,7 +1866,6 @@ onClick={() => printAllReports()}
               <tr>
                 <th style={styles.proTableHead}>Subject</th>
                 <th style={styles.proTableHead}>Score</th>
-                <th style={styles.proTableHead}>Grade</th>
                 <th style={styles.proTableHead}>Points</th>
                 <th style={styles.proTableHead}>Result</th>
                 <th style={styles.proTableHead}>Remark</th>
@@ -1915,36 +1900,6 @@ onClick={() => printAllReports()}
                   </td>
 
                   <td style={styles.proTableCell}>
-                    <span
-                      style={{
-                        padding: "7px 14px",
-                        borderRadius: 999,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        background:
-                          s.score >= 80
-                            ? "#dcfce7"
-                            : s.score >= 70
-                            ? "#dbeafe"
-                            : s.score >= 60
-                            ? "#fef3c7"
-                            : "#fee2e2",
-
-                        color:
-                          s.score >= 80
-                            ? "#166534"
-                            : s.score >= 70
-                            ? "#1d4ed8"
-                            : s.score >= 60
-                            ? "#92400e"
-                            : "#b91c1c",
-                      }}
-                    >
-                      {s.grade}
-                    </span>
-                  </td>
-
-                  <td style={styles.proTableCell}>
                     {s.points}
                   </td>
 
@@ -1957,6 +1912,15 @@ onClick={() => printAllReports()}
                   </td>
                 </tr>
               ))}
+
+              {/* TOTAL MARKS — sits above the mean */}
+              <tr style={{ background: "#cbd5e1", fontWeight: 800 }}>
+                <td style={styles.proTableCell}>TOTAL MARKS</td>
+                <td style={styles.proTableCell}>{Math.floor(Number(r.total) + 1e-9)}/{r.possible}</td>
+                <td style={styles.proTableCell}></td>
+                <td style={styles.proTableCell}></td>
+                <td style={styles.proTableCell}></td>
+              </tr>
 
               {/* TOTAL */}
               <tr
@@ -1971,10 +1935,6 @@ onClick={() => printAllReports()}
 
                 <td style={styles.proTableCell}>
                   {fmt2(r.avg)}%
-                </td>
-
-                <td style={styles.proTableCell}>
-                  {r.grade?.grade}
                 </td>
 
                 <td style={styles.proTableCell}>

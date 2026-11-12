@@ -1076,18 +1076,17 @@ export default function StudentReport() {
               <table style={styles.table}>
                 <thead>
                   <tr style={styles.theadRow}>
-                    <th style={{ ...styles.th, textAlign: "left", width: "30%" }}>Learning Area / Subject</th>
-                    <th style={{ ...styles.th, width: "11%" }}>Score</th>
-                    <th style={{ ...styles.th, width: "9%" }}>Grade</th>
-                    <th style={{ ...styles.th, width: "15%" }}>Points</th>
-                    <th style={{ ...styles.th, width: "15%" }}>Description</th>
+                    <th style={{ ...styles.th, textAlign: "left", width: "35%" }}>Learning Area / Subject</th>
+                    <th style={{ ...styles.th, width: "12%" }}>Score</th>
+                    <th style={{ ...styles.th, width: "16%" }}>Points</th>
+                    <th style={{ ...styles.th, width: "17%" }}>Description</th>
                     <th style={{ ...styles.th, textAlign: "left", width: "20%" }}>Remarks</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportBlank && (
                     <tr>
-                      <td colSpan={6} style={{ ...styles.td, padding: "28px 12px", color: "#64748b", fontStyle: "italic" }}>
+                      <td colSpan={5} style={{ ...styles.td, padding: "28px 12px", color: "#64748b", fontStyle: "italic" }}>
                         No assessment or examination has been selected for the report card yet.
                       </td>
                     </tr>
@@ -1129,9 +1128,6 @@ export default function StudentReport() {
                           ) : isAbsent ? <span style={{ fontWeight: 700, fontSize: 8, color: "#b91c1c" }}>AB</span>
                             : notRequired ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
-                        <td style={{ ...styles.td, textAlign: "center", fontWeight: 700 }}>
-                          {valid ? (band.grade || "—") : crnmOrDash}
-                        </td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
                           {valid ? (
                             <span style={{
@@ -1163,7 +1159,6 @@ export default function StudentReport() {
                     </td>
                     <td style={styles.td}></td>
                     <td style={styles.td}></td>
-                    <td style={styles.td}></td>
                   </tr>
 
                   {/* AVERAGE ROW — a mean of percentages, correctly
@@ -1171,9 +1166,6 @@ export default function StudentReport() {
                   <tr style={styles.totalRow}>
                     <td style={styles.td}>AVERAGE</td>
                     <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#93c5fd" }}>{Math.floor(Number(analytics.avg)+1e-9)}%</td>
-                    <td style={{ ...styles.td, textAlign: "center", fontWeight: 700, color: "#ffffff" }}>
-                      {analytics.grade.grade || "—"}
-                    </td>
                     <td style={{ ...styles.td, textAlign: "center" }}>
                       <span style={{
                         background: "#dbeafe",
@@ -1192,7 +1184,7 @@ export default function StudentReport() {
                   </tr>
                   {optionalNames.size > 0 && (
                     <tr>
-                      <td colSpan={6} style={{ ...styles.td, textAlign: "left", fontSize: 7.5, color: "#64748b", fontStyle: "italic" }}>
+                      <td colSpan={5} style={{ ...styles.td, textAlign: "left", fontSize: 7.5, color: "#64748b", fontStyle: "italic" }}>
                         Optional subjects count toward the total, average, grade and position only for students who took them; a dash (—) means the student did not take that subject.
                       </td>
                     </tr>
