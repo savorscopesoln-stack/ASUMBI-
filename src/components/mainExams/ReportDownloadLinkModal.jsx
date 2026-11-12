@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../../api";
-import { Copy, ExternalLink, MessageCircle } from "lucide-react";
+import { Copy, ExternalLink, MessageCircle, History } from "lucide-react";
 import QRCode from "../../utils/QRCode";
-import { useC, Modal, FieldLabel, ModalTextarea, SaveButton } from "./shared";
+import { useC, Modal, FieldLabel, ModalTextarea, SaveButton, fmtDateTime } from "./shared";
 import { copyText, miniBtn } from "./LinksResult";
 
 /* =========================================================================
@@ -33,6 +33,10 @@ const MODE_OPTIONS = [
   { key: "both", label: "Both" },
 ];
 
+const KIND_LABEL = { report: "Report form", transcript: "Transcript" };
+const SOURCE_LABEL = { "download-page": "Download page", "report-link": "Report link", "transcript-link": "Transcript link" };
+const METHOD_LABEL = { pdf: "PDF", print: "Print", "transcript-pdf": "PDF" };
+
 const DEFAULT_MESSAGE =
   "Hello, you can download your report form here: {link} — type your username, update your details if asked, then tap Download PDF.";
 
@@ -44,7 +48,7 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
   const btn = miniBtn(C);
 
   /* What students may download, and when (utils/downloadAccess.js on the server). */
-  const [access, setAccess] = useState({ mode: "report", opensAt: "", closesAt: "" });
+  const [access, setAccess] = useState({ mode: "report", opensAt: "", closesAt: "", requirePhoto: true });
   const [state, setState] = useState("open");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -52,7 +56,7 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
     let cancelled = false;
     API.get("/main-exams/download-access").then((r) => {
       if (cancelled) return;
-      setAccess({ mode: r.data.mode || "report", opensAt: toLocalInput(r.data.opensAt), closesAt: toLocalInput(r.data.closesAt) });
+      setAccess({ mode: r.data.mode || "report", opensAt: toLocalInput(r.data.opensAt), closesAt: toLocalInput(r.data.closesAt), requirePhoto: r.data.requirePhoto !== false });
       setState(r.data.state || "open");
       setLoaded(true);
     }).catch(() => { if (!cancelled) setLoaded(true); });
@@ -64,14 +68,33 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
       setSaving(true);
       const r = await API.put("/main-exams/download-access", {
         mode: access.mode, opensAt: fromLocalInput(access.opensAt), closesAt: fromLocalInput(access.closesAt),
+        requirePhoto: access.requirePhoto,
       });
-      setAccess({ mode: r.data.mode, opensAt: toLocalInput(r.data.opensAt), closesAt: toLocalInput(r.data.closesAt) });
+      setAccess({ mode: r.data.mode, opensAt: toLocalInput(r.data.opensAt), closesAt: toLocalInput(r.data.closesAt), requirePhoto: r.data.requirePhoto !== false });
       setState(r.data.state || "open");
       onToast?.("Download settings saved", "success");
     } catch (err) {
       onToast?.(err?.response?.data?.message || "Could not save the download settings", "error");
     } finally { setSaving(false); }
   };
+
+  /* Download history: who downloaded which report form / transcript, and when. */
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState({ items: [], total: 0, students: 0 });
+  const [histLoading, setHistLoading] = useState(false);
+  const [histError, setHistError] = useState("");
+  const [histKind, setHistKind] = useState("all");
+  const [histSearch, setHistSearch] = useState("");
+  const loadHistory = async (kind = histKind, search = histSearch) => {
+    try {
+      setHistLoading(true); setHistError("");
+      const r = await API.get("/main-exams/download-history", { params: { limit: 100, kind: kind === "all" ? undefined : kind, search: search.trim() || undefined } });
+      setHistory({ items: r.data.items || [], total: r.data.total || 0, students: r.data.students || 0 });
+    } catch (err) {
+      setHistError(err?.response?.data?.message || "Could not load the download history");
+    } finally { setHistLoading(false); }
+  };
+  useEffect(() => { if (showHistory) loadHistory(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [showHistory, histKind]);
 
   const stateText = { open: "Downloads are open now", not_open: "Downloads have not opened yet", closed: "Downloads are closed" }[state] || "";
   const stateColor = state === "open" ? C.success : state === "closed" ? C.danger : C.textMuted;
@@ -122,10 +145,81 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
           Leave a time empty for no limit. Outside this window nobody can open the report download page, a student link
           or a transcript. Applies to this page, the links sent to students, and transcript links.
         </p>
+        {/* Passport photo on/off */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 0", margin: "0 0 12px", borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: C.textPri }}>Require passport photo</div>
+            <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.45 }}>
+              {access.requirePhoto
+                ? "ON: a student with no photo on file is asked to add one before the report form or transcript unlocks."
+                : "OFF: students can download without a passport photo."}
+            </div>
+          </div>
+          <button type="button" role="switch" aria-checked={access.requirePhoto} aria-label="Require passport photo"
+            onClick={() => setAccess((a) => ({ ...a, requirePhoto: !a.requirePhoto }))}
+            style={{ flex: "none", width: 46, height: 26, borderRadius: 999, border: "none", padding: 3, cursor: "pointer",
+              background: access.requirePhoto ? C.accent : C.border, display: "flex", justifyContent: access.requirePhoto ? "flex-end" : "flex-start", transition: "background .15s" }}>
+            <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />
+          </button>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div style={{ width: 130 }}><SaveButton onClick={saveAccess} loading={saving} label="Save" disabled={!loaded} /></div>
           {loaded && <span style={{ fontSize: 12.5, fontWeight: 700, color: stateColor }}>{stateText}</span>}
         </div>
+      </div>
+
+      {/* ── Download history ── */}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, margin: "0 0 18px", background: C.card }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <FieldLabel>Download history</FieldLabel>
+            <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.45 }}>See who downloaded which report form or transcript, and when.</div>
+          </div>
+          <button type="button" style={btn} onClick={() => setShowHistory((v) => !v)}><History size={13} /> {showHistory ? "Hide" : "View history"}</button>
+        </div>
+        {showHistory && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "0 0 10px" }}>
+              {[["all", "All"], ["report", "Report forms"], ["transcript", "Transcripts"]].map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setHistKind(k)}
+                  style={{ padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    border: `1px solid ${histKind === k ? C.accent : C.border}`, background: histKind === k ? C.accent : "transparent", color: histKind === k ? "#fff" : C.textPri }}>{label}</button>
+              ))}
+              <form onSubmit={(e) => { e.preventDefault(); loadHistory(); }} style={{ display: "flex", gap: 6, flex: "1 1 180px" }}>
+                <input value={histSearch} onChange={(e) => setHistSearch(e.target.value)} placeholder="Search name, username or class"
+                  style={{ flex: 1, minWidth: 0, padding: "6px 10px", fontSize: 12.5, borderRadius: 9, border: `1px solid ${C.border}`, background: C.bgAlt, color: C.textPri }} />
+                <button type="submit" style={btn}>Search</button>
+              </form>
+            </div>
+            {histError && <p style={{ margin: "0 0 8px", fontSize: 12.5, color: C.danger }}>{histError}</p>}
+            <p style={{ margin: "0 0 8px", fontSize: 12, color: C.textMuted }}>
+              {histLoading ? "Loading…" : `${history.total} download${history.total === 1 ? "" : "s"} by ${history.students} student${history.students === 1 ? "" : "s"}${history.total > history.items.length ? ` (showing the latest ${history.items.length})` : ""}`}
+            </p>
+            <div style={{ maxHeight: 280, overflow: "auto", border: `1px solid ${C.border}`, borderRadius: 9 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, color: C.textPri }}>
+                <thead>
+                  <tr style={{ textAlign: "left", background: C.bgAlt, position: "sticky", top: 0 }}>
+                    {["Student", "Class", "Downloaded", "How", "When"].map((h) => <th key={h} style={{ padding: "7px 9px", fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.items.map((row) => (
+                    <tr key={row.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                      <td style={{ padding: "7px 9px" }}>{row.studentName || row.username || `#${row.studentId}`}</td>
+                      <td style={{ padding: "7px 9px", whiteSpace: "nowrap" }}>{row.studentClass || "—"}</td>
+                      <td style={{ padding: "7px 9px", whiteSpace: "nowrap" }}>{KIND_LABEL[row.kind] || row.kind} · {METHOD_LABEL[row.method] || row.method || "—"}</td>
+                      <td style={{ padding: "7px 9px", whiteSpace: "nowrap" }}>{SOURCE_LABEL[row.source] || row.source || "—"}</td>
+                      <td style={{ padding: "7px 9px", whiteSpace: "nowrap" }}>{fmtDateTime(row.createdAt)}</td>
+                    </tr>
+                  ))}
+                  {!histLoading && history.items.length === 0 && (
+                    <tr><td colSpan={5} style={{ padding: 14, textAlign: "center", color: C.textMuted }}>No downloads recorded yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       <FieldLabel>Link</FieldLabel>

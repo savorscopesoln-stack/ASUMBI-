@@ -27,7 +27,7 @@ import PassportPhotoStep from "../components/PassportPhotoStep";
    is what you want on a shared lab computer.
 ========================================================================= */
 
-const SESSION_KEYS = ["report_link_token", "report_link_user"];
+const SESSION_KEYS = ["report_link_token", "report_link_user", "report_link_downloads"];
 const clearSession = () => SESSION_KEYS.forEach((k) => sessionStorage.removeItem(k));
 
 const S = {
@@ -62,6 +62,7 @@ export default function ReportDownload() {
   const openReport = (data) => {
     sessionStorage.setItem("report_link_token", data.token);
     sessionStorage.setItem("report_link_user", JSON.stringify(data.user));
+    sessionStorage.setItem("report_link_downloads", JSON.stringify(data.downloads || {}));
     setProfileToken("");
     setDownloads(data.downloads || { mode: "report" });
     setStep("ready");
