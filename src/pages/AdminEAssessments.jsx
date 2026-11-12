@@ -5043,6 +5043,11 @@ function ReportFormSubjectsModal({ onClose, showToast }) {
           <p style={{ ...small, marginTop: 0 }}>
             Leave nothing ticked to show every subject scheduled in the report-card examination (default).
           </p>
+          <p style={{ ...small, marginTop: 0 }}>
+            <b>SPLIT</b> marks a subject saved as a split / concurrent paper (e.g. codes 9819 and 9820): both are listed,
+            but the subject counts once in the total, average and position — the paper the student sat.
+            <b> POSSIBLE SPLIT</b> marks subjects whose names look like papers of one subject but were never saved as split.
+          </p>
 
           <input
             value={filter}
@@ -5070,7 +5075,20 @@ function ReportFormSubjectsModal({ onClose, showToast }) {
                 <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", color: C.textPri, fontSize: 13 }}>
                   <input type="checkbox" checked={!!r.selected}
                     onChange={(e) => update(r.id, { selected: e.target.checked, isOptional: e.target.checked ? r.isOptional : false })} />
-                  <span>{r.code ? <span style={{ color: C.textMuted, marginRight: 6 }}>{r.code}</span> : null}{r.name}</span>
+                  <span>{r.code ? <span style={{ color: C.textMuted, marginRight: 6 }}>{r.code}</span> : null}{r.name}
+                    {r.split && (
+                      <span title="Saved as a split / concurrent paper: listed, but the subject counts once in the total and average"
+                        style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 10, padding: "1px 7px" }}>
+                        SPLIT{r.paper_label ? ` · ${r.paper_label}` : ""}
+                      </span>
+                    )}
+                    {r.possible_split && (
+                      <span title="The name looks like one paper of a split subject but it is not saved as split. Open the Main Examination → the subject → Edit and tick “Concurrent / split paper”."
+                        style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: "#b45309", border: "1px solid #fcd34d", borderRadius: 10, padding: "1px 7px" }}>
+                        POSSIBLE SPLIT — not saved
+                      </span>
+                    )}
+                  </span>
                 </label>
                 <label style={{ textAlign: "center", opacity: r.selected ? 1 : 0.35, cursor: r.selected ? "pointer" : "not-allowed" }} title={r.selected ? "Optional: shown but not averaged" : "Tick the subject first"}>
                   <input type="checkbox" disabled={!r.selected} checked={!!r.isOptional}

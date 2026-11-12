@@ -514,7 +514,7 @@ function SubjectsTab({ id, subjects, assessments, classes, subjectCatalog, mainE
         <Modal title={editing ? `Edit Schedule — ${editing.subject}` : "Add Subject / Learning Area"} onClose={() => setFormOpen(false)}>
           {locked && (
             <div style={{ marginBottom: 14, padding: "10px 12px", background: C.bgAlt, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12.5, color: C.textSec }}>
-              This subject is {editing.status} — its schedule is locked, but you can still update venue/instructions/assessment.
+              This subject is {editing.status} — its schedule is locked, but you can still update venue/instructions/assessment and the Concurrent / split paper setting.
             </div>
           )}
           <FieldLabel>Subject / Learning Area</FieldLabel>

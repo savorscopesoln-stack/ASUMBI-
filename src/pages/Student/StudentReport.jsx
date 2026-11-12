@@ -439,7 +439,9 @@ export default function StudentReport() {
       const full = subjects.find((x) => (ss.id != null && x.id === ss.id) || x.name === ss.name);
       // `optional` comes from E-Assessments → "Report Form Subjects": shown on
       // the form but never counted in the total / average / grade / position.
-      return { ...(full || { id: ss.id, name: ss.name, code: ss.code }), optional: !!ss.optional };
+      // split / paper_label / split_group: split (concurrent) papers of one subject, e.g. 9819 + 9820 —
+      // both are listed, but the subject counts once (the paper the student sat).
+      return { ...(full || { id: ss.id, name: ss.name, code: ss.code }), optional: !!ss.optional, split: !!ss.split, paper_label: ss.paper_label || null, split_group: ss.split_group || null };
     }));
   }, [subjects, source]);
 
@@ -481,7 +483,11 @@ export default function StudentReport() {
   // counted like any other subject.
   const isOptionalSubject = (name) => /\(\s*optional\s*\)/i.test(String(name || ""));
   const hasCrnm = useMemo(
-    () => visibleSubjects.some((s) => !visibleMarkedNames.has(s.name) && !s.optional && !isOptionalSubject(s.name)),
+    () => {
+      // a split paper whose sibling paper was sat is not "missing": the subject counts once
+      const sat = new Set(visibleSubjects.filter((x) => x.split_group && visibleMarkedNames.has(x.name)).map((x) => x.split_group));
+      return visibleSubjects.some((s) => !visibleMarkedNames.has(s.name) && !s.optional && !isOptionalSubject(s.name) && !(s.split_group && sat.has(s.split_group)));
+    },
     [visibleSubjects, visibleMarkedNames]
   );
 
@@ -498,10 +504,19 @@ export default function StudentReport() {
     // Optional subjects (Report Form Subjects) count ONLY IF the student did
     // them (has a mark): 20 subjects with 1 optional → a student who took it is
     // averaged over 20, one who didn't over the other 19 — and never gets a CRNM.
-    const scores = visibleMarks
+    const groupByName = new Map(visibleSubjects.filter((x) => x.split_group).map((x) => [x.name, x.split_group]));
+    const plain = [];
+    const bestOfGroup = new Map(); // split group -> highest score (only ONE paper of a split subject counts)
+    visibleMarks
       .filter((m) => m.percentage !== null && m.percentage !== undefined && m.percentage !== "")
-      .map((m) => Number(m.percentage))
-      .filter(Number.isFinite);
+      .forEach((m) => {
+        const n = Number(m.percentage);
+        if (!Number.isFinite(n)) return;
+        const g = groupByName.get(m.subjectName);
+        if (!g) plain.push(n);
+        else if (!bestOfGroup.has(g) || n > bestOfGroup.get(g)) bestOfGroup.set(g, n);
+      });
+    const scores = plain.concat([...bestOfGroup.values()]);
     const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     return {
       avg: round2(avg),
@@ -514,7 +529,7 @@ export default function StudentReport() {
       grade: reportBlank ? { grade: "", label: "—", remark: "" } : hasCrnm ? { grade: "", label: "CRNM", remark: "" } : getGradeForScore(avg, gradingSystem),
       result: reportBlank ? "—" : hasCrnm ? "CRNM" : getOverallResultForScore(avg, gradingSystem),
     };
-  }, [visibleMarks, gradingSystem, hasCrnm, reportBlank]);
+  }, [visibleMarks, visibleSubjects, gradingSystem, hasCrnm, reportBlank]);
 
   /* ================= SUBJECT MAP (unchanged) ================= */
   const subjectMap = useMemo(() => {
@@ -534,6 +549,9 @@ export default function StudentReport() {
         subject: s.name,
         code: s.code,
         optional: !!s.optional,
+        split: !!s.split,
+        paperLabel: s.paper_label || null,
+        splitGroup: s.split_group || null,
         score: map[s.name] ?? null,
         originalIndex,
         subjectNumber: getSubjectNumber(s),
@@ -1045,12 +1063,19 @@ export default function StudentReport() {
                     // RESULT = the result label — all from the Grading System.
                     const band = valid ? getGradeForScore(s.score, gradingSystem) : null;
                     const resultLabel = valid ? getOverallResultForScore(s.score, gradingSystem) : "";
-                    const crnmOrDash = (s.optional || isOptionalSubject(s.subject)) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
+                    // the unsat paper of a split subject whose other paper was sat: nothing is missing
+                    const splitSpare = !!s.splitGroup && subjectMap.some((o) => o.splitGroup === s.splitGroup && o.score !== null && o.score !== undefined);
+                    const crnmOrDash = (s.optional || splitSpare || isOptionalSubject(s.subject)) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : reportTheme.zebra }}>
                         <td style={{ ...styles.td, color: "#64748b", fontSize: 8 }}>{s.code || `L/A-${i + 1}`}</td>
                         <td style={{ ...styles.td, textAlign: "left", fontWeight: 500 }}>
                           {s.subject}
+                          {s.split && (
+                            <span title="Split paper: listed with its other paper(s), but the subject counts once in the total and average" style={{ marginLeft: 6, fontSize: 7, fontWeight: 700, letterSpacing: "0.04em", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 10, padding: "1px 6px" }}>
+                              SPLIT{s.paperLabel ? ` · ${s.paperLabel}` : ""}
+                            </span>
+                          )}
                           {s.optional && (
                             <span style={{ marginLeft: 6, fontSize: 7, fontWeight: 700, letterSpacing: "0.04em", color: "#64748b", border: "1px solid #cbd5e1", borderRadius: 10, padding: "1px 6px" }}>OPTIONAL</span>
                           )}
@@ -1062,7 +1087,7 @@ export default function StudentReport() {
                               fontSize: 8,
                               color: s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c"
                             }}>{Math.floor(Number(s.score)+1e-9)}%</span>
-                          ) : (s.optional || isOptionalSubject(s.subject)) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
+                          ) : (s.optional || splitSpare || isOptionalSubject(s.subject)) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
                         <td style={{ ...styles.td, textAlign: "center", fontWeight: 700 }}>
                           {valid ? (band.grade || "—") : crnmOrDash}
