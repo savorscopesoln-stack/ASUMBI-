@@ -18,7 +18,7 @@ import ThemeToggle from "../../components/ThemeToggle";
 import useSchoolSettings from "../../hooks/useSchoolSettings";
 import useReportTheme from "../../hooks/useReportTheme";
 import useGradingSystem from "../../hooks/useGradingSystem";
-import { getGradeForScore, getOverallResultForScore, getRemarkForScore } from "../../utils/grading";
+import { getGradeForScore, getOverallResultForScore, getRemarkForScore, getTotalMarksPossible } from "../../utils/grading";
 
 /* ================= GRADING =================
    Sourced from Admin → E-Assessments → Grading System (see
@@ -434,12 +434,19 @@ export default function StudentReport() {
     // source decides the subjects — not the School Settings subject filter.
     return sortSubjectsByCode((source.subjects || []).map((ss) => {
       const full = subjects.find((x) => (ss.id != null && x.id === ss.id) || x.name === ss.name);
-      return full || { id: ss.id, name: ss.name, code: ss.code };
+      // `optional` comes from E-Assessments → "Report Form Subjects": shown on
+      // the form but never counted in the total / average / grade / position.
+      return { ...(full || { id: ss.id, name: ss.name, code: ss.code }), optional: !!ss.optional };
     }));
   }, [subjects, source]);
 
   const visibleSubjectNames = useMemo(
     () => new Set(visibleSubjects.map((s) => s.name)),
+    [visibleSubjects]
+  );
+
+  const optionalNames = useMemo(
+    () => new Set(visibleSubjects.filter((s) => s.optional).map((s) => s.name)),
     [visibleSubjects]
   );
 
@@ -471,7 +478,7 @@ export default function StudentReport() {
   // counted like any other subject.
   const isOptionalSubject = (name) => /\(\s*optional\s*\)/i.test(String(name || ""));
   const hasCrnm = useMemo(
-    () => visibleSubjects.some((s) => !visibleMarkedNames.has(s.name) && !isOptionalSubject(s.name)),
+    () => visibleSubjects.some((s) => !visibleMarkedNames.has(s.name) && !s.optional && !isOptionalSubject(s.name)),
     [visibleSubjects, visibleMarkedNames]
   );
 
@@ -485,6 +492,9 @@ export default function StudentReport() {
      actually meaningful on their own: average, highest, lowest, and
      how many learning areas were assessed. */
   const analytics = useMemo(() => {
+    // Optional subjects (Report Form Subjects) count ONLY IF the student did
+    // them (has a mark): 20 subjects with 1 optional → a student who took it is
+    // averaged over 20, one who didn't over the other 19 — and never gets a CRNM.
     const scores = visibleMarks
       .filter((m) => m.percentage !== null && m.percentage !== undefined && m.percentage !== "")
       .map((m) => Number(m.percentage))
@@ -493,7 +503,8 @@ export default function StudentReport() {
     return {
       avg: round2(avg),
       totalMarks: scores.reduce((a, b) => a + b, 0),
-      maximumMarks: scores.length * 100,
+      // "Total Marks That Can Be Achieved" from the Grading System (blank → subjects × 100)
+      maximumMarks: getTotalMarksPossible(gradingSystem, scores.length),
       highest: scores.length ? round2(Math.max(...scores)) : null,
       lowest: scores.length ? round2(Math.min(...scores)) : null,
       assessedCount: scores.length,
@@ -519,6 +530,7 @@ export default function StudentReport() {
       .map((s, originalIndex) => ({
         subject: s.name,
         code: s.code,
+        optional: !!s.optional,
         score: map[s.name] ?? null,
         originalIndex,
         subjectNumber: getSubjectNumber(s),
@@ -994,11 +1006,16 @@ export default function StudentReport() {
                     // RESULT = the result label — all from the Grading System.
                     const band = valid ? getGradeForScore(s.score, gradingSystem) : null;
                     const resultLabel = valid ? getOverallResultForScore(s.score, gradingSystem) : "";
-                    const crnmOrDash = isOptionalSubject(s.subject) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
+                    const crnmOrDash = (s.optional || isOptionalSubject(s.subject)) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : reportTheme.zebra }}>
                         <td style={{ ...styles.td, color: "#64748b", fontSize: 8 }}>{s.code || `L/A-${i + 1}`}</td>
-                        <td style={{ ...styles.td, textAlign: "left", fontWeight: 500 }}>{s.subject}</td>
+                        <td style={{ ...styles.td, textAlign: "left", fontWeight: 500 }}>
+                          {s.subject}
+                          {s.optional && (
+                            <span style={{ marginLeft: 6, fontSize: 7, fontWeight: 700, letterSpacing: "0.04em", color: "#64748b", border: "1px solid #cbd5e1", borderRadius: 10, padding: "1px 6px" }}>OPTIONAL</span>
+                          )}
+                        </td>
                         <td style={{ ...styles.td, textAlign: "center" }}>
                           {valid ? (
                             <span style={{
@@ -1006,7 +1023,7 @@ export default function StudentReport() {
                               fontSize: 8,
                               color: s.score >= 70 ? "#15803d" : s.score >= 50 ? "#b45309" : "#b91c1c"
                             }}>{Math.floor(Number(s.score)+1e-9)}%</span>
-                          ) : isOptionalSubject(s.subject) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
+                          ) : (s.optional || isOptionalSubject(s.subject)) ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>}
                         </td>
                         <td style={{ ...styles.td, textAlign: "center", fontWeight: 700 }}>
                           {valid ? (band.grade || "—") : crnmOrDash}
@@ -1034,7 +1051,7 @@ export default function StudentReport() {
                   })}
 
                   {/* TOTAL MARKS ROW — sum of graded subject percentages,
-                      shown against 100 marks for each graded subject. */}
+                      shown against the Grading System's "Total Marks That Can Be Achieved". */}
                   <tr style={styles.totalRow}>
                     <td style={styles.td} colSpan={2}>TOTAL MARKS</td>
                     <td style={{ ...styles.td, textAlign: "center", fontWeight: 800, color: "#ffffff", fontSize: 9 }}>
@@ -1070,6 +1087,13 @@ export default function StudentReport() {
                     </td>
                     <td style={styles.td}></td>
                   </tr>
+                  {optionalNames.size > 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ ...styles.td, textAlign: "left", fontSize: 7.5, color: "#64748b", fontStyle: "italic" }}>
+                        Optional subjects count toward the total, average, grade and position only for students who took them; a dash (—) means the student did not take that subject.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

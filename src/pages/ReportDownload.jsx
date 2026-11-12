@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import API from "../api";
-import StudentReport from "./Student/StudentReport";
+import StudentDownloadHub from "../components/StudentDownloadHub";
 
 /* =========================================================================
    REPORT DOWNLOAD  —  /report-download   (public, no portal login)
@@ -50,6 +50,7 @@ export default function ReportDownload() {
   const [form, setForm] = useState({ studentClass: "", gender: "", email: "", phone: "", assessmentNumber: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [downloads, setDownloads] = useState({ mode: "report" }); // what the school offers (report form / transcript / both)
 
   // A fresh visit always starts logged out of this page (shared lab computers).
   useEffect(() => { clearSession(); return clearSession; }, []);
@@ -58,6 +59,7 @@ export default function ReportDownload() {
     sessionStorage.setItem("report_link_token", data.token);
     sessionStorage.setItem("report_link_user", JSON.stringify(data.user));
     setProfileToken("");
+    setDownloads(data.downloads || { mode: "report" });
     setStep("ready");
   };
 
@@ -124,7 +126,7 @@ export default function ReportDownload() {
           <span>Signed in as <b>{name || "student"}</b></span>
           <button type="button" style={S.link} onClick={finish}>Finish &amp; sign out</button>
         </div>
-        <StudentReport />
+        <StudentDownloadHub downloads={downloads} />
       </>
     );
   }
@@ -133,8 +135,8 @@ export default function ReportDownload() {
     <div style={S.page}>
       {step === "verify" ? (
         <form onSubmit={verify} style={S.card} autoComplete="off">
-          <h1 style={S.h1}>Download your report form</h1>
-          <p style={S.sub}>Type your student username to get your report form. You don't need to log in to the portal.</p>
+          <h1 style={S.h1}>Download your results</h1>
+          <p style={S.sub}>Type your student username to download your report form or transcript. You don't need to log in to the portal.</p>
           {error && <div style={S.err} role="alert">{error}</div>}
           <div style={S.field}>
             <label style={S.label} htmlFor="rd-username">Username</label>
