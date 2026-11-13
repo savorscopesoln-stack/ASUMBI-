@@ -1149,7 +1149,7 @@ export default function StudentReport() {
                         <td style={{ ...styles.td, textAlign: "center", fontWeight: 600, fontSize: 8 }}>
                           {valid ? (resultLabel || "—") : isAbsent ? <span style={styles.crnmTag}>CRNM</span> : crnmOrDash}
                         </td>
-                        <td style={{ ...styles.td, textAlign: "left", color: "#64748b" }}>{remark || "—"}</td>
+                        <td style={{ ...styles.td, textAlign: "left", color: isAbsent ? "#b91c1c" : "#64748b", fontWeight: isAbsent ? 700 : 400 }}>{isAbsent ? "DID NOT ATTEMPT THIS ASSESSMENT" : (remark || "—")}</td>
                       </tr>
                     );
                   })}
