@@ -615,7 +615,7 @@ export default function StudentReport() {
     absent: subjectMap.filter((s) => s.score === null && s.over && !s.optional && !isOptionalSubject(s.subject)
       && !(s.splitGroup && subjectMap.some((o) => o.splitGroup === s.splitGroup && o.score !== null))).map((s) => s.subject),
     all: subjectMap.filter((s) => s.score !== null).map((s) => ({ name: s.subject, score: s.score })),
-  }), [subjectMap, passMark]);
+  }), [subjectMap, passMark, visibleMarks]);
 
   /* ================= EXAM NAME =================
      Report cards need to say WHICH exam/term this is for. Marks
@@ -1107,6 +1107,7 @@ export default function StudentReport() {
                     const splitSpare = !!s.splitGroup && subjectMap.some((o) => o.splitGroup === s.splitGroup && o.score !== null && o.score !== undefined);
                     const notRequired = s.optional || splitSpare || isOptionalSubject(s.subject);
                     // Paper finished and no mark: the student was absent -> AB. Not finished yet -> CRNM as before.
+                    // AB only once the exam's marks are released (s.over): a student with no mark then did not sit it. Before release: CRNM.
                     const isAbsent = !valid && !notRequired && s.over;
                     const crnmOrDash = notRequired || isAbsent ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
                     return (
