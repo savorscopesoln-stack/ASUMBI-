@@ -43,7 +43,7 @@ const clearSession = () => SESSION_KEYS.forEach((k) => sessionStorage.removeItem
 const S = {
   page: { minHeight: "100vh", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "22px 2.5vw", boxSizing: "border-box", background: "var(--bg, #f8fafc)", color: "var(--text, #0f172a)" },
   stack: { width: "95%", maxWidth: "none", display: "flex", flexDirection: "column", alignItems: "stretch", gap: 14 },
-  card: { width: "100%", maxWidth: "none", boxSizing: "border-box", background: "var(--card, #fff)", border: "1px solid var(--border, #e2e8f0)", borderRadius: 10, padding: "clamp(20px, 3vw, 34px)", boxShadow: "0 2px 10px rgba(15,23,42,.045)" },
+  card: { width: "100%", maxWidth: "none", minHeight: 460, boxSizing: "border-box", background: "var(--card, #fff)", border: "1px solid var(--border, #e2e8f0)", borderRadius: 10, padding: "clamp(30px, 4.5vw, 52px)", boxShadow: "0 2px 10px rgba(15,23,42,.045)" },
   h1: { margin: "0 0 9px", fontSize: "clamp(24px, 4vw, 30px)", letterSpacing: "-0.8px", lineHeight: 1.15, fontWeight: 850, color: "var(--text, #0f172a)" },
   sub: { margin: "0 0 25px", fontSize: 14.5, lineHeight: 1.7, color: "var(--text-muted, #64748b)" },
   field: { marginBottom: 18 },
@@ -58,7 +58,7 @@ const S = {
   pageWide: { minHeight: "100vh", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "22px 2.5vw", boxSizing: "border-box", background: "var(--bg, #f8fafc)", color: "var(--text, #0f172a)" },
   stackWide: { width: "95%", maxWidth: "none", display: "flex", flexDirection: "column", alignItems: "stretch", gap: 14 },
   cardWide: { maxWidth: "none" },
-  pulse: { margin: "0 0 20px", padding: "14px 16px", borderRadius: 7, fontSize: "clamp(15px, 1.5vw, 17px)", fontWeight: 750, lineHeight: 1.55, color: "var(--text, #0f172a)", background: "#fff", border: "1px solid var(--border, #e2e8f0)", animation: "none" },
+  pulse: { margin: "0 0 22px", padding: "18px 20px", borderRadius: 8, fontSize: "clamp(18px, 2vw, 23px)", fontWeight: 900, lineHeight: 1.35, letterSpacing: ".01em", color: "#b42318", background: "#fff", border: "2px solid #dc2626", textAlign: "center", animation: "rd-alert-pulse 1.15s ease-in-out infinite" },
   bar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "13px clamp(16px, 4vw, 34px)", fontSize: 13.5, background: "#fff", borderBottom: "1px solid #eee8e9", color: "#3c3037", boxShadow: "0 4px 18px rgba(30,20,25,.04)" },
 };
 
@@ -191,6 +191,8 @@ export default function ReportDownload() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');
         .rd-page, .rd-page * { font-family: Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        @keyframes rd-alert-pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(220,38,38,.22); } 50% { opacity: .72; box-shadow: 0 0 0 7px rgba(220,38,38,0); } }
+        .rd-closed-banner { width: 100%; box-sizing: border-box; padding: 17px 22px; margin: 0; border: 2px solid #dc2626; border-radius: 9px; background: #fff; color: #b42318; text-align: center; font-size: clamp(18px, 2vw, 23px); line-height: 1.3; font-weight: 900; letter-spacing: .015em; animation: rd-alert-pulse 1.15s ease-in-out infinite; }
         /* Plain institutional header: no decorative accent bars or oversized effects. */
         .rd-page > div > :first-child { width: 100%; max-width: none; box-sizing: border-box; }
         .rd-page > div > :first-child img { width: clamp(68px, 8vw, 100px) !important; height: clamp(68px, 8vw, 100px) !important; max-width: 100%; object-fit: contain; }
@@ -215,7 +217,7 @@ export default function ReportDownload() {
         .rd-secure span { color: var(--primary, #800000); font-size: 13px; }
         .rd-input-group { display: flex; align-items: stretch; width: 100%; gap: 0; }
         .rd-input-group input { flex: 1; min-width: 0; min-height: 52px; border-radius: 7px 0 0 7px !important; border-right: 0 !important; font-size: 16px !important; font-weight: 600; }
-        .rd-input-group button { flex: 0 0 auto; min-width: 132px; min-height: 52px; padding: 0 20px; border: 1px solid var(--primary, #800000); border-radius: 0 7px 7px 0; background: var(--primary, #800000); color: var(--primary-text, #fff); font-size: 14px; font-weight: 800; cursor: pointer; }
+        .rd-input-group button { flex: 0 0 auto; min-width: 396px; min-height: 78px; padding: 0 30px; border: 1px solid var(--primary, #800000); border-radius: 0 7px 7px 0; background: var(--primary, #800000); color: var(--primary-text, #fff); font-size: 20px; font-weight: 900; cursor: pointer; }
         .rd-input-group button:disabled { opacity: .78; cursor: wait; }
         .rd-wifi-loader { --front-color: var(--primary, #800000); --back-color: rgba(255,255,255,.55); position: relative; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; margin-right: 7px; }
         .rd-wifi-loader svg { position: absolute; width: 24px; height: 24px; transform: rotate(-100deg); }
@@ -227,17 +229,19 @@ export default function ReportDownload() {
           .rd-page, .rd-page[style] { padding: 14px 10px !important; align-items: flex-start !important; }
           .rd-page > div { width: 100% !important; gap: 12px !important; }
           .rd-page > div > :first-child img { width: 58px !important; height: 58px !important; }
-          .rd-card { border-radius: 8px !important; padding: 20px 16px !important; }
+          .rd-card { border-radius: 8px !important; padding: 28px 18px !important; min-height: 0 !important; }
+          .rd-closed-banner { padding: 15px 12px; font-size: 18px; }
           .rd-card h1 { font-size: 23px !important; }
           .rd-input-group { flex-direction: column; gap: 9px; }
           .rd-input-group input, .rd-input-group button { width: 100%; border: 1px solid var(--border, #cbd5e1) !important; border-radius: 7px !important; }
-          .rd-input-group button { border-color: var(--primary, #800000) !important; min-height: 48px; }
+          .rd-input-group button { border-color: var(--primary, #800000) !important; min-height: 68px; font-size: 19px; }
         }
         @media (prefers-reduced-motion: reduce) { *, *:before, *:after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
         @media print { .rd-no-print { display: none !important; } }
       `}</style>
       <div style={closedMode ? S.stackWide : S.stack}>
-        <DownloadBranding info={info} profileHint={profileHint} showStatus={showStatus} />
+        <DownloadBranding info={info} profileHint={profileHint} showStatus={false} />
+        {closedMode && <div className="rd-closed-banner" role="status">DOWNLOADS ARE CLOSED CURRENTLY</div>}
         {children}
       </div>
     </div>
