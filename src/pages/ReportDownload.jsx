@@ -55,6 +55,11 @@ const S = {
   ok: { margin: "0 0 16px", padding: "10px 12px", borderRadius: 9, fontSize: 13.5, lineHeight: 1.45, background: "#f0fdf4", color: "#14532d", border: "1px solid #bbf7d0" },
   note: { margin: "0 0 16px", padding: "10px 12px", borderRadius: 9, fontSize: 13.5, lineHeight: 1.45, background: "#eff6ff", color: "#1e3a8a", border: "1px solid #bfdbfe" },
   link: { background: "none", border: "none", padding: 0, color: "var(--primary, #1d4ed8)", fontWeight: 600, cursor: "pointer", fontSize: 13 },
+  // Downloads closed: the page uses 95% of the screen width.
+  pageWide: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 0", background: "var(--bg, #f8fafc)", color: "var(--text, #0f172a)" },
+  stackWide: { width: "95%", maxWidth: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 18 },
+  cardWide: { maxWidth: "none" },
+  pulse: { margin: "0 0 18px", padding: "14px 16px", borderRadius: 11, fontSize: "clamp(16px, 4.2vw, 20px)", fontWeight: 800, lineHeight: 1.45, color: "#dc2626", background: "#fef2f2", border: "2px solid #dc2626", animation: "rd-pulse 1.1s ease-in-out infinite" },
   bar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 16px", fontSize: 13, background: "var(--card, #fff)", borderBottom: "1px solid var(--border, #e2e8f0)", color: "var(--text, #0f172a)" },
 };
 
@@ -72,6 +77,8 @@ export default function ReportDownload() {
   const [info, setInfo] = useState(null);              // logos, the admin's message, open / closed (GET /report-access/info)
   const [downloadsOpen, setDownloadsOpen] = useState(true);
   const [closedMessage, setClosedMessage] = useState("");
+  // Downloads are closed (or not open yet): the page widens and asks students to update their details instead.
+  const closedMode = !!info && info.state !== "open";
 
   // The page header (logos + admin message + open/closed). A failure just means a plain page.
   const loadInfo = () => API.get("/report-access/info").then((r) => setInfo(r.data)).catch(() => {});
@@ -181,8 +188,9 @@ export default function ReportDownload() {
 
   // Logos + the admin's message above whatever step is showing (a function call, not a component, so inputs keep focus).
   const shell = (children, { profileHint = false, showStatus = true } = {}) => (
-    <div style={S.page}>
-      <div style={S.stack}>
+    <div style={closedMode ? S.pageWide : S.page}>
+      <style>{"@keyframes rd-pulse { 0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(220,38,38,0.55); } 50% { opacity: 0.55; transform: scale(1.015); box-shadow: 0 0 0 10px rgba(220,38,38,0); } } @media (prefers-reduced-motion: reduce) { .rd-pulse { animation: none !important; } }"}</style>
+      <div style={closedMode ? S.stackWide : S.stack}>
         <DownloadBranding info={info} profileHint={profileHint} showStatus={showStatus} />
         {children}
       </div>
@@ -237,7 +245,7 @@ export default function ReportDownload() {
 
   if (step === "saved") {
     return shell(
-      <div style={S.card}>
+      <div style={{ ...S.card, ...(closedMode ? S.cardWide : null) }}>
         <h1 style={S.h1}>Details saved</h1>
         <p style={S.sub}>Thank you{who.name ? `, ${who.name}` : ""}. Your profile is now up to date.</p>
         <div style={S.ok}>
@@ -253,13 +261,25 @@ export default function ReportDownload() {
   return shell(
     <>
       {step === "verify" ? (
-        <form onSubmit={verify} style={S.card} autoComplete="off">
-          <h1 style={S.h1}>Download your results</h1>
-          <p style={S.sub}>Type your username to continue. Students can download their report form or transcript; teachers can download the examination reports. You don't need to log in to the portal.</p>
+        <form onSubmit={verify} style={{ ...S.card, ...(closedMode ? S.cardWide : null) }} autoComplete="off">
+          {closedMode ? (
+            <>
+              <h1 style={S.h1}>Update your details</h1>
+              <p className="rd-pulse" style={S.pulse} role="alert">
+                Please update your details below, then enter your assessment number e.g. (TA 70474------) then click Continue.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 style={S.h1}>Download your results</h1>
+              <p style={S.sub}>Type your username to continue. Students can download their report form or transcript; teachers can download the examination reports. You don't need to log in to the portal.</p>
+            </>
+          )}
           {error && <div style={errorTone === "info" ? S.warn : S.err} role="alert">{error}</div>}
           <div style={S.field}>
-            <label style={S.label} htmlFor="rd-username">Username</label>
+            <label style={S.label} htmlFor="rd-username">{closedMode ? "Assessment number" : "Username"}</label>
             <input id="rd-username" style={S.input} value={username} onChange={(e) => setUsername(e.target.value)}
+              placeholder={closedMode ? "TA 70474------" : undefined}
               autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus />
           </div>
           <button type="submit" style={{ ...S.btn, opacity: busy ? 0.7 : 1 }} disabled={busy}>
@@ -267,7 +287,7 @@ export default function ReportDownload() {
           </button>
         </form>
       ) : (
-        <form onSubmit={saveProfile} style={S.card}>
+        <form onSubmit={saveProfile} style={{ ...S.card, ...(closedMode ? S.cardWide : null) }}>
           <h1 style={S.h1}>Update your details</h1>
           <p style={S.sub}>
             {downloadsOpen
