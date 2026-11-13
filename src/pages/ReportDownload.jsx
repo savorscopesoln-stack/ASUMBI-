@@ -41,26 +41,25 @@ const SESSION_KEYS = ["report_link_token", "report_link_user", "report_link_down
 const clearSession = () => SESSION_KEYS.forEach((k) => sessionStorage.removeItem(k));
 
 const S = {
-  page: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "var(--bg, #f8fafc)", color: "var(--text, #0f172a)" },
-  stack: { width: "100%", maxWidth: 460, display: "flex", flexDirection: "column", alignItems: "center", gap: 18 },
-  card: { width: "100%", maxWidth: 460, boxSizing: "border-box", background: "var(--card, #fff)", border: "1px solid var(--border, #e2e8f0)", borderRadius: 14, padding: "28px 24px", boxShadow: "0 8px 30px rgba(15,23,42,0.06)" },
-  h1: { margin: "0 0 6px", fontSize: 21, fontWeight: 800 },
-  sub: { margin: "0 0 18px", fontSize: 14, lineHeight: 1.5, color: "var(--text-muted, #64748b)" },
-  field: { marginBottom: 14 },
-  label: { display: "block", marginBottom: 6, fontSize: 13, fontWeight: 600 },
-  input: { width: "100%", boxSizing: "border-box", padding: "11px 12px", fontSize: 15, borderRadius: 9, border: "1px solid var(--border, #cbd5e1)", background: "var(--input-bg, #fff)", color: "inherit", outline: "none" },
-  btn: { width: "100%", padding: "12px 14px", fontSize: 15, fontWeight: 700, border: "none", borderRadius: 9, cursor: "pointer", background: "var(--primary, #1d4ed8)", color: "var(--primary-text, #fff)" },
-  err: { margin: "0 0 14px", padding: "10px 12px", borderRadius: 9, fontSize: 13.5, background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" },
-  warn: { margin: "0 0 14px", padding: "10px 12px", borderRadius: 9, fontSize: 13.5, lineHeight: 1.45, background: "#fffbeb", color: "#78350f", border: "1px solid #fcd34d" },
-  ok: { margin: "0 0 16px", padding: "10px 12px", borderRadius: 9, fontSize: 13.5, lineHeight: 1.45, background: "#f0fdf4", color: "#14532d", border: "1px solid #bbf7d0" },
-  note: { margin: "0 0 16px", padding: "10px 12px", borderRadius: 9, fontSize: 13.5, lineHeight: 1.45, background: "#eff6ff", color: "#1e3a8a", border: "1px solid #bfdbfe" },
-  link: { background: "none", border: "none", padding: 0, color: "var(--primary, #1d4ed8)", fontWeight: 600, cursor: "pointer", fontSize: 13 },
-  // Downloads closed: the page uses 95% of the screen width.
-  pageWide: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 0", background: "var(--bg, #f8fafc)", color: "var(--text, #0f172a)" },
-  stackWide: { width: "95%", maxWidth: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 18 },
+  page: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px", boxSizing: "border-box", background: "radial-gradient(circle at 12% 12%, rgba(212,175,55,.13), transparent 28%), radial-gradient(circle at 88% 85%, rgba(122,27,54,.10), transparent 30%), #f7f6f3", color: "#20202a" },
+  stack: { width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 },
+  card: { width: "100%", maxWidth: 520, boxSizing: "border-box", background: "#fff", border: "1px solid #ece8e3", borderRadius: 22, padding: "clamp(25px, 5vw, 38px)", boxShadow: "0 24px 70px rgba(37, 25, 29, .10), 0 3px 10px rgba(37,25,29,.04)" },
+  h1: { margin: "0 0 9px", fontSize: "clamp(24px, 4vw, 30px)", letterSpacing: "-0.8px", lineHeight: 1.15, fontWeight: 850, color: "#321923" },
+  sub: { margin: "0 0 25px", fontSize: 14.5, lineHeight: 1.7, color: "#77717a" },
+  field: { marginBottom: 18 },
+  label: { display: "block", marginBottom: 8, fontSize: 13, fontWeight: 750, letterSpacing: ".01em", color: "#39313a" },
+  input: { width: "100%", boxSizing: "border-box", padding: "14px 15px", fontSize: 15, borderRadius: 11, border: "1px solid #ded9dc", background: "#fcfbfc", color: "#28232a", outline: "none", minHeight: 50, transition: "border-color .2s, box-shadow .2s" },
+  btn: { width: "100%", padding: "15px 18px", fontSize: 15, fontWeight: 800, letterSpacing: ".01em", border: "none", borderRadius: 11, cursor: "pointer", background: "linear-gradient(135deg, #7a1b36, #541326)", color: "#fff", boxShadow: "0 9px 20px rgba(122,27,54,.20)", transition: "transform .2s, box-shadow .2s" },
+  err: { margin: "0 0 18px", padding: "13px 15px", borderRadius: 11, fontSize: 13.5, lineHeight: 1.5, background: "#fff4f3", color: "#a52b27", border: "1px solid #f3d1ce" },
+  warn: { margin: "0 0 18px", padding: "13px 15px", borderRadius: 11, fontSize: 13.5, lineHeight: 1.55, background: "#fff9e9", color: "#79551a", border: "1px solid #f0dfb5" },
+  ok: { margin: "0 0 20px", padding: "15px 16px", borderRadius: 12, fontSize: 14, lineHeight: 1.65, background: "#eff8f1", color: "#245b35", border: "1px solid #cfe7d4" },
+  note: { margin: "0 0 20px", padding: "13px 15px", borderRadius: 11, fontSize: 13.5, lineHeight: 1.55, background: "#f7f3e9", color: "#68552b", border: "1px solid #eadfbe" },
+  link: { background: "none", border: "none", padding: 5, color: "#7a1b36", fontWeight: 750, cursor: "pointer", fontSize: 13 },
+  pageWide: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "30px 0", boxSizing: "border-box", background: "radial-gradient(circle at 12% 12%, rgba(212,175,55,.13), transparent 28%), #f7f6f3", color: "#20202a" },
+  stackWide: { width: "min(94%, 1240px)", maxWidth: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 22 },
   cardWide: { maxWidth: "none" },
-  pulse: { margin: "0 0 18px", padding: "14px 16px", borderRadius: 11, fontSize: "clamp(16px, 4.2vw, 20px)", fontWeight: 800, lineHeight: 1.45, color: "#dc2626", background: "#fef2f2", border: "2px solid #dc2626", animation: "rd-pulse 1.1s ease-in-out infinite" },
-  bar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 16px", fontSize: 13, background: "var(--card, #fff)", borderBottom: "1px solid var(--border, #e2e8f0)", color: "var(--text, #0f172a)" },
+  pulse: { margin: "0 0 22px", padding: "16px 18px", borderRadius: 12, fontSize: "clamp(15px, 2vw, 18px)", fontWeight: 750, lineHeight: 1.55, color: "#8a3d13", background: "#fff8e9", border: "1px solid #ecd39a", animation: "none" },
+  bar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "13px clamp(16px, 4vw, 34px)", fontSize: 13.5, background: "#fff", borderBottom: "1px solid #eee8e9", color: "#3c3037", boxShadow: "0 4px 18px rgba(30,20,25,.04)" },
 };
 
 export default function ReportDownload() {
@@ -188,8 +187,25 @@ export default function ReportDownload() {
 
   // Logos + the admin's message above whatever step is showing (a function call, not a component, so inputs keep focus).
   const shell = (children, { profileHint = false, showStatus = true } = {}) => (
-    <div style={closedMode ? S.pageWide : S.page}>
-      <style>{"@keyframes rd-pulse { 0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(220,38,38,0.55); } 50% { opacity: 0.55; transform: scale(1.015); box-shadow: 0 0 0 10px rgba(220,38,38,0); } } @media (prefers-reduced-motion: reduce) { .rd-pulse { animation: none !important; } }"}</style>
+    <div className="rd-page" style={closedMode ? S.pageWide : S.page}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+        .rd-page, .rd-page * { font-family: Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .rd-card { position: relative; overflow: hidden; }
+        .rd-card:before { content: ""; position: absolute; inset: 0 0 auto; height: 5px; background: linear-gradient(90deg, #7a1b36 0%, #b58b45 100%); }
+        .rd-card input:focus, .rd-card select:focus { border-color: #9b5268 !important; box-shadow: 0 0 0 4px rgba(122,27,54,.10); background: #fff !important; }
+        .rd-card button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(122,27,54,.25); }
+        .rd-card button:disabled { cursor: wait; }
+        .rd-card input::placeholder { color: #aaa2a8; }
+        .rd-card select { cursor: pointer; }
+        .rd-eyebrow { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 15px; color: #96743b; font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+        .rd-eyebrow:before { content: ""; width: 22px; height: 2px; background: #b58b45; border-radius: 2px; }
+        .rd-secure { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 18px; color: #918891; font-size: 11px; text-align: center; }
+        .rd-secure span { color: #7a1b36; font-size: 13px; }
+        @media (max-width: 600px) { .rd-page { padding: 24px 14px !important; align-items: flex-start !important; } .rd-page .rd-card { border-radius: 17px !important; } }
+        @media (prefers-reduced-motion: reduce) { *, *:before, *:after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+        @media print { .rd-no-print { display: none !important; } }
+      `}</style>
       <div style={closedMode ? S.stackWide : S.stack}>
         <DownloadBranding info={info} profileHint={profileHint} showStatus={showStatus} />
         {children}
@@ -245,7 +261,8 @@ export default function ReportDownload() {
 
   if (step === "saved") {
     return shell(
-      <div style={{ ...S.card, ...(closedMode ? S.cardWide : null) }}>
+      <div className="rd-card" style={{ ...S.card, ...(closedMode ? S.cardWide : null) }}>
+        <div className="rd-eyebrow">Doravo Core · Student services</div>
         <h1 style={S.h1}>Details saved</h1>
         <p style={S.sub}>Thank you{who.name ? `, ${who.name}` : ""}. Your profile is now up to date.</p>
         <div style={S.ok}>
@@ -261,7 +278,8 @@ export default function ReportDownload() {
   return shell(
     <>
       {step === "verify" ? (
-        <form onSubmit={verify} style={{ ...S.card, ...(closedMode ? S.cardWide : null) }} autoComplete="off">
+        <form className="rd-card" onSubmit={verify} style={{ ...S.card, ...(closedMode ? S.cardWide : null) }} autoComplete="off">
+          <div className="rd-eyebrow">Doravo Core · Secure results access</div>
           {closedMode ? (
             <>
               <h1 style={S.h1}>Update your details</h1>
@@ -285,9 +303,11 @@ export default function ReportDownload() {
           <button type="submit" style={{ ...S.btn, opacity: busy ? 0.7 : 1 }} disabled={busy}>
             {busy ? "Checking…" : "Continue"}
           </button>
+          <div className="rd-secure"><span>◆</span> Secure access · No portal password required</div>
         </form>
       ) : (
-        <form onSubmit={saveProfile} style={{ ...S.card, ...(closedMode ? S.cardWide : null) }}>
+        <form className="rd-card" onSubmit={saveProfile} style={{ ...S.card, ...(closedMode ? S.cardWide : null) }}>
+          <div className="rd-eyebrow">Doravo Core · Student profile</div>
           <h1 style={S.h1}>Update your details</h1>
           <p style={S.sub}>
             {downloadsOpen
@@ -335,6 +355,7 @@ export default function ReportDownload() {
           <div style={{ textAlign: "center", marginTop: 12 }}>
             <button type="button" style={S.link} onClick={finish}>Not you? Start over</button>
           </div>
+          <div className="rd-secure"><span>◆</span> Your details are used to verify your student record.</div>
         </form>
       )}
     </>,
