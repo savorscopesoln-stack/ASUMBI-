@@ -2322,7 +2322,7 @@ function RankedCandidatesTable({ rows, subjects, positionKey, emptyText }) {
                 <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
                 <Td>{r.class || "—"}</Td>
                 {(r.marks || []).map((m, i) => (
-                  <Td key={i}>{m.not_registered || m.percentage == null ? "—" : `${m.percentage}%`}</Td>
+                  <Td key={i}>{m.absent && !m.not_registered ? "AB" : m.not_registered || m.percentage == null ? "—" : `${m.percentage}%`}</Td>
                 ))}
                 <Td style={{ whiteSpace: "nowrap" }}>{(r.total_obtained != null && r.total_possible) ? `${r.total_obtained}/${r.total_possible}` : "—"}</Td>
                 <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
@@ -2403,7 +2403,7 @@ function NominalRollTable({ data }) {
                 <Td>{r.gender || "—"}</Td>
                 <Td style={{ fontWeight: 700, color: C.textPri }}>{r.name}</Td>
                 {r.marks.map((m, i) => (
-                  <Td key={i}>{m.not_registered || m.percentage == null ? "—" : `${m.percentage}%`}</Td>
+                  <Td key={i}>{m.absent && !m.not_registered ? "AB" : m.not_registered || m.percentage == null ? "—" : `${m.percentage}%`}</Td>
                 ))}
                 <Td style={{ whiteSpace: "nowrap" }}>{(r.total_obtained != null && r.total_possible) ? `${r.total_obtained}/${r.total_possible}` : "—"}</Td>
                 <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
@@ -3198,7 +3198,7 @@ function StudentProfileView({ loading, data, onBack }) {
               <tr key={s.session_id}>
                 <Td style={{ fontWeight: 600, color: C.textPri }}>{s.subject}</Td>
                 <Td><Chip text={s.status} tone={{ completed: "success", absent: "danger", upcoming: "info" }[s.status] || "neutral"} uppercase /></Td>
-                <Td>{s.percentage != null ? `${s.percentage}%` : "—"}</Td>
+                <Td>{s.status === "absent" ? "AB" : s.percentage != null ? `${s.percentage}%` : "—"}</Td>
               </tr>
             ))}
           </tbody>

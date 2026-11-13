@@ -645,7 +645,9 @@ export default function StudentReport() {
     return fromMarks || school?.examName || school?.currentExam || school?.currentTerm || "Current Exam";
   }, [marks, school, source]);
 
-  const hasResults = marks.length > 0;
+  // A student who sat nothing has no marks at all, but must still get a report form
+  // (every finished paper shows AB / ABSENT / CRNM), so a finished subject counts as a result too.
+  const hasResults = marks.length > 0 || (source.mode !== "none" && (source.subjects || []).some((x) => x.over));
 
   /* ================= ANTI-FORGERY: VERIFICATION CODE + DOCUMENT ID =================
      Printed on the sheet (header meta + footer security strip) and
@@ -1028,11 +1030,11 @@ export default function StudentReport() {
               )}
               <div style={{ ...styles.plainInfoGrid, flex: 1 }}>
                 <InfoItem label="Student Name" value={user.name} styles={styles} />
-                <InfoItem label="Admission Number" value={admissionNo} styles={styles} />
+                <InfoItem label="Assessment Number" value={student?.username || user.username || student?.assessmentNumber} styles={styles} />
                 <InfoItem label="Class / Stream" value={studentClass} styles={styles} />
                 <InfoItem label="Year of Study" value={yearOfStudy || null} styles={styles} />
                 <InfoItem label="Gender" value={user.gender || student?.gender} styles={styles} />
-                <InfoItem label="Centre Code" value={school?.centreCode} styles={styles} />
+                <InfoItem label="Email" value={student?.email || user.email} styles={styles} />
               </div>
               </div>
             </div>
@@ -1140,10 +1142,10 @@ export default function StudentReport() {
                               display: "inline-block",
                               letterSpacing: "0.02em",
                             }}>{badge.text}</span>
-                          ) : crnmOrDash}
+                          ) : isAbsent ? <span style={{ fontWeight: 700, fontSize: 8, color: "#b91c1c" }}>ABSENT</span> : crnmOrDash}
                         </td>
                         <td style={{ ...styles.td, textAlign: "center", fontWeight: 600, fontSize: 8 }}>
-                          {valid ? (resultLabel || "—") : crnmOrDash}
+                          {valid ? (resultLabel || "—") : isAbsent ? <span style={styles.crnmTag}>CRNM</span> : crnmOrDash}
                         </td>
                         <td style={{ ...styles.td, textAlign: "left", color: "#64748b" }}>{remark || "—"}</td>
                       </tr>
@@ -1181,6 +1183,11 @@ export default function StudentReport() {
                       {analytics.result || "—"}
                     </td>
                     <td style={styles.td}></td>
+                  </tr>
+                  <tr>
+                    <td colSpan={5} style={{ ...styles.td, textAlign: "left", fontSize: 7.5, color: "#334155", fontWeight: 700 }}>
+                      Key: CRNM = Course Requirement Not Met; AB = Absent.
+                    </td>
                   </tr>
                   {optionalNames.size > 0 && (
                     <tr>

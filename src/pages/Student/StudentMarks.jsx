@@ -181,6 +181,7 @@ export default function StudentMarks() {
   // subject the student didn't take is shown as "—", never CRNM; if they did take
   // it, it counts like any other subject.
   const [optionalNames, setOptionalNames] = useState(() => new Set());
+  const [overNames, setOverNames] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -215,6 +216,7 @@ export default function StudentMarks() {
       try {
         const src = await API.get("/report-card-source");
         setOptionalNames(new Set((src.data?.subjects || []).filter((x) => x.optional).map((x) => x.name)));
+        setOverNames(new Set((src.data?.subjects || []).filter((x) => x.over).map((x) => x.name)));
       } catch (_) { /* optional flag is best-effort */ }
     } catch (err) {
       console.log(err);
@@ -250,9 +252,11 @@ export default function StudentMarks() {
         percentage: m?.percentage ?? null,
         // not taken: compulsory → CRNM, optional → "—" (no CRNM)
         grade: m?.grade ?? (optional && !taken ? "—" : "CRNM"),
+        // paper finished and no mark: absent -> AB / ABSENT / CRNM
+        absent: !taken && !optional && overNames.has(s.name),
       };
     });
-  }, [marks, subjects, optionalNames]);
+  }, [marks, subjects, optionalNames, overNames]);
 
   /* ================= STRICT CLASSIFICATION (unchanged) ================= */
   const classified = useMemo(() => {
@@ -463,8 +467,8 @@ export default function StudentMarks() {
                       return (
                         <tr key={i} className="dash-row">
                           <td style={D.td}>{m.subjectName}</td>
-                          <td style={D.td}>{m.score ?? (m.optional ? "—" : "CRNM")}</td>
-                          <td style={D.td}>{m.percentage ?? (m.optional ? "—" : "CRNM")}</td>
+                          <td style={D.td}>{m.absent ? "AB" : (m.score ?? (m.optional ? "—" : "CRNM"))}</td>
+                          <td style={D.td}>{m.absent ? "ABSENT" : (m.percentage ?? (m.optional ? "—" : "CRNM"))}</td>
                           <td style={D.td}>
                             <span style={{ ...D.badge, background: t.bg, color: t.fg }}>{m.grade}</span>
                           </td>

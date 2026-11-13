@@ -163,14 +163,24 @@ export default function SchoolSettings() {
   // Small clickable thumbnail used for every signature slot below —
   // shows the uploaded image (or a placeholder icon) and opens the
   // file picker for that specific row on click.
-  const SignatureThumb = ({ url, uploading, onClick, title }) => (
-    <button type="button" onClick={onClick} disabled={uploading} title={title || (url ? "Replace signature" : "Upload signature")} style={sx.sigThumb}>
-      {url ? (
-        <img src={resolvePhotoUrl(url)} alt="Signature" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-      ) : (
-        <FileCheck2 size={14} color={C.textMuted} />
-      )}
+  const RemoveBadge = ({ onRemove, label }) => (
+    <button type="button" onClick={onRemove} title={label} aria-label={label}
+      style={{ position: "absolute", top: -7, right: -7, width: 18, height: 18, borderRadius: "50%", border: "none", background: "#dc2626", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 12, fontWeight: 700 }}>
+      ×
     </button>
+  );
+
+  const SignatureThumb = ({ url, uploading, onClick, title, onRemove }) => (
+    <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+      <button type="button" onClick={onClick} disabled={uploading} title={title || (url ? "Replace signature" : "Upload signature")} style={sx.sigThumb}>
+        {url ? (
+          <img src={resolvePhotoUrl(url)} alt="Signature" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        ) : (
+          <FileCheck2 size={14} color={C.textMuted} />
+        )}
+      </button>
+      {url && onRemove && <RemoveBadge onRemove={onRemove} label="Delete signature" />}
+    </span>
   );
 
   // Personalised STAMP-image upload — same shared two-step pattern as
@@ -222,14 +232,17 @@ export default function SchoolSettings() {
 
   // Same clickable-thumbnail pattern as SignatureThumb above, for this
   // individual's own stamp instead of their signature.
-  const StampThumb = ({ url, uploading, onClick, title }) => (
-    <button type="button" onClick={onClick} disabled={uploading} title={title || (url ? "Replace stamp" : "Upload stamp")} style={sx.sigThumb}>
-      {url ? (
-        <img src={resolvePhotoUrl(url)} alt="Stamp" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-      ) : (
-        <Stamp size={14} color={C.textMuted} />
-      )}
-    </button>
+  const StampThumb = ({ url, uploading, onClick, title, onRemove }) => (
+    <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+      <button type="button" onClick={onClick} disabled={uploading} title={title || (url ? "Replace stamp" : "Upload stamp")} style={sx.sigThumb}>
+        {url ? (
+          <img src={resolvePhotoUrl(url)} alt="Stamp" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        ) : (
+          <Stamp size={14} color={C.textMuted} />
+        )}
+      </button>
+      {url && onRemove && <RemoveBadge onRemove={onRemove} label="Delete stamp" />}
+    </span>
   );
 
   // Teachers to pick from instead of hand-typing a name — see
@@ -433,6 +446,22 @@ export default function SchoolSettings() {
     }
   };
 
+  // Delete a saved signature/stamp straight away (saved rows): re-PUT the row with that image cleared.
+  const removeSavedImage = async (kind, row, field) => {
+    const what = field === "signatureUrl" ? "signature" : "stamp";
+    if (!window.confirm(`Delete this ${what}?`)) return;
+    try {
+      const base = { title: row.title, name: row.teacherId ? "" : (row.name || ""), teacherId: row.teacherId || "", sortOrder: row.sortOrder,
+        signatureUrl: row.signatureUrl || "", stampUrl: row.stampUrl || "" };
+      if (kind === "official") await API.put(`/school-settings/officials/${row.id}`, { ...base, isSignatory: !!row.isSignatory, [field]: "" });
+      else await API.put(`/school-settings/class-teachers/${row.id}`, { ...base, className: row.className, [field]: "" });
+      showToast("success", `${what[0].toUpperCase()}${what.slice(1)} deleted`);
+      await refresh();
+    } catch (err) {
+      showToast("error", err?.response?.data?.message || `Failed to delete ${what}`);
+    }
+  };
+
   const deleteOfficial = async (id) => {
     if (!window.confirm("Remove this official?")) return;
     try {
@@ -562,6 +591,11 @@ export default function SchoolSettings() {
               <button type="button" style={sx.secondaryBtn} onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                 <Upload size={14} /> {uploading ? "Uploading…" : form.logoUrl ? "Replace logo" : "Upload logo"}
               </button>
+              {form.logoUrl && (
+                <button type="button" style={sx.secondaryBtn} onClick={() => { setForm((f) => ({ ...f, logoUrl: "" })); showToast("success", "Logo removed — remember to save."); }}>
+                  <Trash2 size={14} /> Delete logo
+                </button>
+              )}
               <span style={{ fontSize: 11.5, color: C.textMuted }}>Shown on the login screen and at the top of downloaded reports.</span>
             </div>
           </div>
@@ -581,7 +615,7 @@ export default function SchoolSettings() {
               </button>
               {form.governmentLogoUrl && (
                 <button type="button" style={sx.secondaryBtn} onClick={() => setForm((f) => ({ ...f, governmentLogoUrl: "" }))}>
-                  <Trash2 size={14} /> Remove government logo
+                  <Trash2 size={14} /> Delete government logo
                 </button>
               )}
               <span style={{ fontSize: 11.5, color: C.textMuted }}>Printed at the top right of downloaded documents, opposite the school logo (top left).</span>
@@ -601,6 +635,11 @@ export default function SchoolSettings() {
               <button type="button" style={sx.secondaryBtn} onClick={() => stampInputRef.current?.click()} disabled={uploadingStamp}>
                 <Upload size={14} /> {uploadingStamp ? "Uploading…" : form.stampUrl ? "Replace stamp" : "Upload official stamp"}
               </button>
+              {form.stampUrl && (
+                <button type="button" style={sx.secondaryBtn} onClick={() => { setForm((f) => ({ ...f, stampUrl: "" })); showToast("success", "Stamp removed — remember to save."); }}>
+                  <Trash2 size={14} /> Delete stamp
+                </button>
+              )}
               <span style={{ fontSize: 11.5, color: C.textMuted }}>Embedded next to the signing officials on a downloaded transcript.</span>
             </div>
           </div>
@@ -781,11 +820,13 @@ export default function SchoolSettings() {
                   )}
                   <SignatureThumb
                     url={editDraft.signatureUrl}
+                    onRemove={() => setEditDraft((d) => ({ ...d, signatureUrl: "" }))}
                     uploading={uploadingSignatureFor === `official:${o.id}`}
                     onClick={() => triggerSignatureUpload("official", o.id)}
                   />
                   <StampThumb
                     url={editDraft.stampUrl}
+                    onRemove={() => setEditDraft((d) => ({ ...d, stampUrl: "" }))}
                     uploading={uploadingPersonalStampFor === `official:${o.id}`}
                     onClick={() => triggerPersonalStampUpload("official", o.id)}
                   />
@@ -805,11 +846,13 @@ export default function SchoolSettings() {
                   </div>
                   <SignatureThumb
                     url={o.signatureUrl}
+                    onRemove={() => removeSavedImage("official", o, "signatureUrl")}
                     uploading={uploadingSignatureFor === `official:${o.id}`}
                     onClick={() => triggerSignatureUpload("official", o.id)}
                   />
                   <StampThumb
                     url={o.stampUrl}
+                    onRemove={() => removeSavedImage("official", o, "stampUrl")}
                     uploading={uploadingPersonalStampFor === `official:${o.id}`}
                     onClick={() => triggerPersonalStampUpload("official", o.id)}
                   />
@@ -838,12 +881,14 @@ export default function SchoolSettings() {
             )}
             <SignatureThumb
               url={newOfficial.signatureUrl}
+              onRemove={() => setNewOfficial((n) => ({ ...n, signatureUrl: "" }))}
               uploading={uploadingSignatureFor === "official:new"}
               onClick={() => triggerSignatureUpload("official", "new")}
               title="Upload signature (optional)"
             />
             <StampThumb
               url={newOfficial.stampUrl}
+              onRemove={() => setNewOfficial((n) => ({ ...n, stampUrl: "" }))}
               uploading={uploadingPersonalStampFor === "official:new"}
               onClick={() => triggerPersonalStampUpload("official", "new")}
               title="Upload stamp (optional)"
@@ -907,11 +952,13 @@ export default function SchoolSettings() {
                 )}
                 <SignatureThumb
                   url={editCtDraft.signatureUrl}
+                  onRemove={() => setEditCtDraft((d) => ({ ...d, signatureUrl: "" }))}
                   uploading={uploadingSignatureFor === `classTeacher:${c.id}`}
                   onClick={() => triggerSignatureUpload("classTeacher", c.id)}
                 />
                 <StampThumb
                   url={editCtDraft.stampUrl}
+                  onRemove={() => setEditCtDraft((d) => ({ ...d, stampUrl: "" }))}
                   uploading={uploadingPersonalStampFor === `classTeacher:${c.id}`}
                   onClick={() => triggerPersonalStampUpload("classTeacher", c.id)}
                 />
@@ -931,11 +978,13 @@ export default function SchoolSettings() {
                 </div>
                 <SignatureThumb
                   url={c.signatureUrl}
+                  onRemove={() => removeSavedImage("classTeacher", c, "signatureUrl")}
                   uploading={uploadingSignatureFor === `classTeacher:${c.id}`}
                   onClick={() => triggerSignatureUpload("classTeacher", c.id)}
                 />
                 <StampThumb
                   url={c.stampUrl}
+                  onRemove={() => removeSavedImage("classTeacher", c, "stampUrl")}
                   uploading={uploadingPersonalStampFor === `classTeacher:${c.id}`}
                   onClick={() => triggerPersonalStampUpload("classTeacher", c.id)}
                 />
@@ -968,12 +1017,14 @@ export default function SchoolSettings() {
           )}
           <SignatureThumb
             url={newClassTeacher.signatureUrl}
+            onRemove={() => setNewClassTeacher((n) => ({ ...n, signatureUrl: "" }))}
             uploading={uploadingSignatureFor === "classTeacher:new"}
             onClick={() => triggerSignatureUpload("classTeacher", "new")}
             title="Upload signature (optional)"
           />
           <StampThumb
             url={newClassTeacher.stampUrl}
+            onRemove={() => setNewClassTeacher((n) => ({ ...n, stampUrl: "" }))}
             uploading={uploadingPersonalStampFor === "classTeacher:new"}
             onClick={() => triggerPersonalStampUpload("classTeacher", "new")}
             title="Upload stamp (optional)"
