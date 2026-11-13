@@ -4,6 +4,7 @@ import { Copy, ExternalLink, MessageCircle, History } from "lucide-react";
 import QRCode from "../../utils/QRCode";
 import { useC, Modal, FieldLabel, ModalTextarea, SaveButton, fmtDateTime } from "./shared";
 import { copyText, miniBtn } from "./LinksResult";
+import ProfileStatusPanel from "./ProfileStatusPanel";
 
 /* =========================================================================
    REPORT DOWNLOAD LINK — one link for the whole school (no per-student
@@ -13,7 +14,10 @@ import { copyText, miniBtn } from "./LinksResult";
    types their username; if their profile is already filled in their report
    form opens with a Download PDF button, and if not they are first asked to
    fill in their details (like after their first login) and the download then
-   unlocks. Share it however you like: copy it, send it on WhatsApp, put it on
+   unlocks. While downloads are closed they can still fill in their details; the
+   "Profile status" list below shows who has and who has not. The page also shows the
+   school logo, the government logo and the message typed in "Message on the download page".
+   Share it however you like: copy it, send it on WhatsApp, put it on
    a notice board as the QR code, or paste it in a class group.
 ========================================================================= */
 
@@ -37,6 +41,7 @@ const KIND_LABEL = { report: "Report form", transcript: "Transcript" };
 const SOURCE_LABEL = { "download-page": "Download page", "report-link": "Report link", "transcript-link": "Transcript link" };
 const METHOD_LABEL = { pdf: "PDF", print: "Print", "transcript-pdf": "PDF" };
 
+const NOTICE_MAX = 1000;
 const DEFAULT_MESSAGE =
   "Hello, you can download your report form here: {link} — type your username, update your details if asked, then tap Download PDF.";
 
@@ -48,7 +53,7 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
   const btn = miniBtn(C);
 
   /* What students may download, and when (utils/downloadAccess.js on the server). */
-  const [access, setAccess] = useState({ mode: "report", opensAt: "", closesAt: "", requirePhoto: true, transcriptExamIds: [] });
+  const [access, setAccess] = useState({ mode: "report", opensAt: "", closesAt: "", requirePhoto: true, transcriptExamIds: [], notice: "" });
   const [state, setState] = useState("open");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -56,7 +61,7 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
     let cancelled = false;
     API.get("/main-exams/download-access").then((r) => {
       if (cancelled) return;
-      setAccess({ mode: r.data.mode || "report", opensAt: toLocalInput(r.data.opensAt), closesAt: toLocalInput(r.data.closesAt), requirePhoto: r.data.requirePhoto !== false, transcriptExamIds: r.data.transcriptExamIds || [] });
+      setAccess({ mode: r.data.mode || "report", opensAt: toLocalInput(r.data.opensAt), closesAt: toLocalInput(r.data.closesAt), requirePhoto: r.data.requirePhoto !== false, transcriptExamIds: r.data.transcriptExamIds || [], notice: r.data.notice || "" });
       setState(r.data.state || "open");
       setLoaded(true);
     }).catch(() => { if (!cancelled) setLoaded(true); });
@@ -68,9 +73,9 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
       setSaving(true);
       const r = await API.put("/main-exams/download-access", {
         mode: access.mode, opensAt: fromLocalInput(access.opensAt), closesAt: fromLocalInput(access.closesAt),
-        requirePhoto: access.requirePhoto, transcriptExamIds: access.transcriptExamIds,
+        requirePhoto: access.requirePhoto, transcriptExamIds: access.transcriptExamIds, notice: access.notice,
       });
-      setAccess({ mode: r.data.mode, opensAt: toLocalInput(r.data.opensAt), closesAt: toLocalInput(r.data.closesAt), requirePhoto: r.data.requirePhoto !== false, transcriptExamIds: r.data.transcriptExamIds || [] });
+      setAccess({ mode: r.data.mode, opensAt: toLocalInput(r.data.opensAt), closesAt: toLocalInput(r.data.closesAt), requirePhoto: r.data.requirePhoto !== false, transcriptExamIds: r.data.transcriptExamIds || [], notice: r.data.notice || "" });
       setState(r.data.state || "open");
       onToast?.("Download settings saved", "success");
     } catch (err) {
@@ -119,7 +124,7 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.textMuted, lineHeight: 1.5 }}>
         One link for every student. They type their username — if their profile details are filled in they can
         download their report form or transcript (as set below) straight away, and if not they are asked to fill them in first (like after
-        their first login).
+        their first login). Outside the download window students can still fill in their details; only the download waits.
       </p>
 
       {/* ── What can students download, and when? ── */}
@@ -151,8 +156,8 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
           </div>
         </div>
         <p style={{ margin: "8px 0 12px", fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
-          Leave a time empty for no limit. Outside this window nobody can open the report download page, a student link
-          or a transcript. Applies to this page, the links sent to students, and transcript links.
+          Leave a time empty for no limit. Outside this window nobody can download a report form or transcript (this page,
+          the links sent to students and transcript links), but students who have not filled in their profile can still do that on the download page.
         </p>
         {/* Exams shown on the transcript */}
         {access.mode !== "report" && (
@@ -177,6 +182,18 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
           </div>
         )}
 
+        {/* The admin's message, shown big on the download page */}
+        <div style={{ margin: "0 0 12px" }}>
+          <FieldLabel>Message on the download page</FieldLabel>
+          <ModalTextarea value={access.notice} rows={4}
+            onChange={(v) => setAccess((a) => ({ ...a, notice: v.slice(0, NOTICE_MAX) }))}
+            placeholder="e.g. Term 3 report forms will be available from Monday 8:00 am. Please update your profile details first." />
+          <p style={{ margin: "-8px 0 0", fontSize: 12, color: C.textMuted, lineHeight: 1.5, display: "flex", justifyContent: "space-between", gap: 10 }}>
+            <span>Shown in big letters under the school and government logos on the download page, whether downloads are open or closed. Leave empty to show no message. Press Save to publish it.</span>
+            <span style={{ flex: "none" }}>{access.notice.length}/{NOTICE_MAX}</span>
+          </p>
+        </div>
+
         {/* Passport photo on/off */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 0", margin: "0 0 12px", borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
           <div style={{ minWidth: 0 }}>
@@ -199,6 +216,9 @@ export default function ReportDownloadLinkModal({ onClose, onToast }) {
           {loaded && <span style={{ fontSize: 12.5, fontWeight: 700, color: stateColor }}>{stateText}</span>}
         </div>
       </div>
+
+      {/* ── Who has / has not filled in their profile ── */}
+      <ProfileStatusPanel />
 
       {/* ── Download history ── */}
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, margin: "0 0 18px", background: C.card }}>
