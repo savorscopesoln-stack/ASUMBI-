@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import API from "../api";
 import StudentReport from "../pages/Student/StudentReport";
+import TranscriptPreview from "./TranscriptPreview";
 
 /* =========================================================================
    STUDENT DOWNLOAD HUB — what a student sees after opening a report link
@@ -38,6 +39,7 @@ function TranscriptPanel({ closesAt }) {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const file = useRef(null);
+  const [preview, setPreview] = useState(null); // { blob, name } — shown on screen before any download
   // Exams the student may choose from (the school's allowed list). They can tick one or more.
   const [exams, setExams] = useState([]);
   const [picked, setPicked] = useState([]);
@@ -50,7 +52,7 @@ function TranscriptPanel({ closesAt }) {
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
-  const toggle = (id) => { setDone(false); setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id])); };
+  const toggle = (id) => { setDone(false); setPreview(null); setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id])); };
 
   const save = () => {
     if (!file.current) return;
@@ -62,7 +64,7 @@ function TranscriptPanel({ closesAt }) {
   };
 
   const download = async () => {
-    setError(""); setDone(false);
+    setError(""); setDone(false); setPreview(null);
     try {
       setBusy(true);
       // Every exam ticked = no filter (the server then uses the school's full list).
@@ -71,10 +73,10 @@ function TranscriptPanel({ closesAt }) {
       const disposition = res.headers?.["content-disposition"] || "";
       const name = /filename="?([^"]+)"?/i.exec(disposition)?.[1] || "transcript.pdf";
       file.current = { blob: new Blob([res.data], { type: "application/pdf" }), name };
-      save();
+      setPreview(file.current); // render first; the student downloads from the preview
       setDone(true);
     } catch (err) {
-      let message = "Could not download your transcript. Please check your connection and try again.";
+      let message = "Could not download your transcript. Kindly check your connection and try again.";
       try {
         const text = await err?.response?.data?.text?.();
         if (text) message = JSON.parse(text).message || message;
@@ -86,11 +88,11 @@ function TranscriptPanel({ closesAt }) {
   };
 
   return (
-    <div style={S.wrap}>
+    <div style={{ ...S.wrap, flexDirection: "column", gap: 18, alignItems: "center" }}>
       <div style={S.card}>
         <p style={{ margin: "0 0 6px", fontSize: 19, fontWeight: 800 }}>Your transcript</p>
         <p style={{ margin: "0 0 18px", color: "var(--text-muted, #64748b)", lineHeight: 1.5, fontSize: 14 }}>
-          A PDF of all your released examination results.
+          View your examination results, then download the PDF.
         </p>
         {exams.length > 1 && (
           <div style={{ textAlign: "left", margin: "0 0 16px" }}>
@@ -104,18 +106,18 @@ function TranscriptPanel({ closesAt }) {
               ))}
             </div>
             <div style={{ marginTop: 6, display: "flex", gap: 12 }}>
-              <button type="button" style={{ background: "none", border: "none", padding: 0, color: "var(--primary, #1d4ed8)", fontWeight: 600, cursor: "pointer", fontSize: 12.5 }} onClick={() => { setDone(false); setPicked(exams.map((e) => e.id)); }}>Select all</button>
-              <button type="button" style={{ background: "none", border: "none", padding: 0, color: "var(--primary, #1d4ed8)", fontWeight: 600, cursor: "pointer", fontSize: 12.5 }} onClick={() => { setDone(false); setPicked([]); }}>Clear</button>
+              <button type="button" style={{ background: "none", border: "none", padding: 0, color: "var(--primary, #1d4ed8)", fontWeight: 600, cursor: "pointer", fontSize: 12.5 }} onClick={() => { setDone(false); setPreview(null); setPicked(exams.map((e) => e.id)); }}>Select all</button>
+              <button type="button" style={{ background: "none", border: "none", padding: 0, color: "var(--primary, #1d4ed8)", fontWeight: 600, cursor: "pointer", fontSize: 12.5 }} onClick={() => { setDone(false); setPreview(null); setPicked([]); }}>Clear</button>
             </div>
           </div>
         )}
         {error && <div style={S.err} role="alert">{error}</div>}
-        {done && !error && <p style={{ margin: "0 0 14px", fontSize: 13.5, color: "#15803d", fontWeight: 600 }}>Downloaded. Use the button to download it again.</p>}
         <button type="button" style={{ ...S.btn, opacity: busy ? 0.7 : 1 }} onClick={download} disabled={busy || (exams.length > 1 && picked.length === 0)}>
-          {busy ? "Preparing…" : done ? "Download again" : "Download transcript"}
+          {busy ? "Preparing…" : preview ? "Refresh preview" : "View transcript"}
         </button>
         {closesAt && <p style={S.note}>Downloads close on {fmtWhen(closesAt)}.</p>}
       </div>
+      {preview && <TranscriptPreview blob={preview.blob} name={preview.name} onDownload={save} />}
     </div>
   );
 }

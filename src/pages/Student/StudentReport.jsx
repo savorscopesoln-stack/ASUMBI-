@@ -775,11 +775,6 @@ export default function StudentReport() {
   };
 
   /* ================= PRINT (unchanged) ================= */
-  const printReportCard = () => {
-    if (photoMissing) { setPhotoNotice(true); return; }
-    window.print();
-    recordDownload("print");
-  };
 
   /* ================= LOADING ================= */
   if (loading) {
@@ -853,9 +848,6 @@ export default function StudentReport() {
           <p style={styles.portalSub}>Official academic performance report</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button onClick={printReportCard} className="sr-btn sr-btn-outline" style={styles.printBtn}>
-            <IconPrinter size={15} /> Print Report Card
-          </button>
           <button onClick={downloadPDF} className="sr-btn sr-btn-primary" style={styles.downloadBtn}>
             <IconDownload size={15} /> Download PDF
           </button>
