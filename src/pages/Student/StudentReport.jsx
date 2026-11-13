@@ -347,7 +347,7 @@ export default function StudentReport() {
           API.get("/student/marks", { params: { studentId: admissionNo, reportCard: 1 } }),
           API.get("/subjects"),
           API.get("/students"),
-          API.get("/report-card-source"),
+          API.get("/report-card-source", { params: { studentId: admissionNo } }),
           API.get("/student/positions", { params: { studentId: rankingStudentId } }),
         ]);
         if (cancelled) return;
@@ -647,7 +647,9 @@ export default function StudentReport() {
 
   // A student who sat nothing has no marks at all, but must still get a report form
   // (every finished paper shows AB / ABSENT / CRNM), so a finished subject counts as a result too.
-  const hasResults = marks.length > 0 || (source.mode !== "none" && (source.subjects || []).some((x) => x.over));
+  // A student registered for the picked exam gets a report card even with no marks in the marks table.
+  const hasResults = marks.length > 0
+    || (source.mode !== "none" && (source.subjects || []).length > 0 && (!!source.registered || (source.subjects || []).some((x) => x.over)));
 
   /* ================= ANTI-FORGERY: VERIFICATION CODE + DOCUMENT ID =================
      Printed on the sheet (header meta + footer security strip) and
@@ -796,7 +798,7 @@ export default function StudentReport() {
         <ScreenState
           icon={<IconAlert size={26} style={{ color: "var(--danger)" }} />}
           title="Unable to load your report card"
-          text="Something went wrong while fetching your academic results. Please check your connection and try again."
+          text="Something went wrong while fetching your academic results. Kindly check your connection and try again."
           action={
             <button onClick={retry} className="sr-btn sr-btn-primary" style={styles.downloadBtn}>
               <IconRefresh size={15} /> Try again
@@ -815,7 +817,7 @@ export default function StudentReport() {
         <ScreenState
           icon={<IconDocEmpty size={26} style={{ color: "var(--text-muted)" }} />}
           title="Report card unavailable"
-          text="Your academic results have not yet been published. Please check back once your subjects have been assessed."
+          text="Your academic results have not yet been published. Kindly check back once your subjects have been assessed."
           action={
             <button onClick={retry} className="sr-btn sr-btn-outline" style={styles.printBtn}>
               <IconRefresh size={15} /> Refresh
@@ -871,7 +873,7 @@ export default function StudentReport() {
             fontSize: 13.5, fontWeight: 600,
           }}
         >
-          📷 Please upload a clear, official passport photo to your profile before downloading or printing your report form.
+          📷 Kindly upload a clear, official passport photo to your profile before downloading or printing your report form.
           {!isReportLinkPath(window.location.pathname) && (
             <> <a href="/student/profile" style={{ color: "#92400e", textDecoration: "underline" }}>Go to my profile</a></>
           )}
