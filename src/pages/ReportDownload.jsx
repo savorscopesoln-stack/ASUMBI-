@@ -85,6 +85,13 @@ export default function ReportDownload() {
   // A fresh visit always starts logged out of this page (shared lab computers).
   useEffect(() => { clearSession(); loadInfo(); return clearSession; }, []);
 
+  // Re-check open / closed every 20s on the first step so the page switches by itself.
+  useEffect(() => {
+    if (step !== "verify") return undefined;
+    const t = setInterval(loadInfo, 20000);
+    return () => clearInterval(t);
+  }, [step]);
+
   const showError = (err, fallback) => {
     const d = err?.response?.data;
     setErrorTone(/^DOWNLOADS_/.test(d?.code || "") ? "info" : "error"); // "not open yet / closed" is not the student's mistake
@@ -147,7 +154,15 @@ export default function ReportDownload() {
         handleResult(data);
       }
     } catch (err) {
-      showError(err, "Could not verify you. Check your connection and try again.");
+      const d = err?.response?.data;
+      if (d?.profileSaved) {
+        // Details already up to date while downloads are closed: show the confirmation screen.
+        setError(""); setProfileToken(""); setClosedMessage(d.message || "");
+        setWho(d.student || { name: "", username: username.trim() });
+        setStep("saved");
+      } else {
+        showError(err, "Could not verify you. Check your connection and try again.");
+      }
     } finally {
       setBusy(false);
     }
@@ -193,13 +208,13 @@ export default function ReportDownload() {
         .rd-page, .rd-page * { font-family: Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         @keyframes rd-alert-pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(220,38,38,.22); } 50% { opacity: .72; box-shadow: 0 0 0 7px rgba(220,38,38,0); } }
         @keyframes rd-success-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.035); opacity: .82; } }
-        .rd-success-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; box-sizing: border-box; background: rgba(255,255,255,.42); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); text-align: center; }
-        .rd-success-content { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; max-width: 620px; width: 100%; animation: rd-success-pulse 1.7s ease-in-out infinite; }
-        .rd-success-tick { width: clamp(76px, 12vw, 112px); height: clamp(76px, 12vw, 112px); display: grid; place-items: center; border-radius: 50%; background: #e9f8ef; border: 3px solid #239653; color: #168344; box-shadow: 0 8px 28px rgba(22,131,68,.14); }
-        .rd-success-title { margin: 0; color: var(--primary, #800000); font-size: clamp(25px, 4vw, 38px); line-height: 1.2; font-weight: 900; letter-spacing: -.025em; }
-        .rd-success-subtitle { margin: 0; color: var(--text, #172033); font-size: clamp(17px, 2.5vw, 22px); line-height: 1.45; font-weight: 800; }
+        .rd-success-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; box-sizing: border-box; background: rgba(255,255,255,.35); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); text-align: center; }
+        .rd-success-content { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; max-width: 720px; width: 100%; }
+        .rd-success-tick { width: clamp(96px, 16vw, 150px); height: clamp(96px, 16vw, 150px); display: grid; place-items: center; border-radius: 50%; background: #e9f8ef; border: 3px solid #239653; color: #168344; box-shadow: 0 8px 28px rgba(22,131,68,.14); }
+        .rd-success-title { margin: 0; color: var(--primary, #800000); font-size: clamp(25px, 5.5vw, 44px); line-height: 1.2; font-weight: 900; letter-spacing: .01em; text-transform: uppercase; animation: rd-success-pulse 1.2s ease-in-out infinite; }
+        .rd-success-subtitle { margin: 0; color: var(--text, #172033); font-size: clamp(17px, 3.2vw, 24px); line-height: 1.45; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
         .rd-success-done { margin-top: 10px; min-width: 150px; padding: 12px 24px; border: 0; border-radius: 8px; background: var(--primary, #800000); color: var(--primary-text, #fff); font-size: 15px; font-weight: 800; cursor: pointer; }
-        @media (prefers-reduced-motion: reduce) { .rd-success-content { animation: none !important; } }
+        @media (prefers-reduced-motion: reduce) { .rd-success-title { animation: none !important; } }
         .rd-closed-banner { width: 100%; box-sizing: border-box; padding: 17px 22px; margin: 0; border: 2px solid #dc2626; border-radius: 9px; background: #fff; color: #b42318; text-align: center; font-size: clamp(18px, 2vw, 23px); line-height: 1.3; font-weight: 900; letter-spacing: .015em; animation: rd-alert-pulse 1.15s ease-in-out infinite; }
         /* Plain institutional header: no decorative accent bars or oversized effects. */
         .rd-page > div > :first-child { width: 100%; max-width: none; box-sizing: border-box; }
