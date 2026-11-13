@@ -192,6 +192,14 @@ export default function ReportDownload() {
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');
         .rd-page, .rd-page * { font-family: Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         @keyframes rd-alert-pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(220,38,38,.22); } 50% { opacity: .72; box-shadow: 0 0 0 7px rgba(220,38,38,0); } }
+        @keyframes rd-success-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.035); opacity: .82; } }
+        .rd-success-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; box-sizing: border-box; background: rgba(255,255,255,.42); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); text-align: center; }
+        .rd-success-content { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; max-width: 620px; width: 100%; animation: rd-success-pulse 1.7s ease-in-out infinite; }
+        .rd-success-tick { width: clamp(76px, 12vw, 112px); height: clamp(76px, 12vw, 112px); display: grid; place-items: center; border-radius: 50%; background: #e9f8ef; border: 3px solid #239653; color: #168344; box-shadow: 0 8px 28px rgba(22,131,68,.14); }
+        .rd-success-title { margin: 0; color: var(--primary, #800000); font-size: clamp(25px, 4vw, 38px); line-height: 1.2; font-weight: 900; letter-spacing: -.025em; }
+        .rd-success-subtitle { margin: 0; color: var(--text, #172033); font-size: clamp(17px, 2.5vw, 22px); line-height: 1.45; font-weight: 800; }
+        .rd-success-done { margin-top: 10px; min-width: 150px; padding: 12px 24px; border: 0; border-radius: 8px; background: var(--primary, #800000); color: var(--primary-text, #fff); font-size: 15px; font-weight: 800; cursor: pointer; }
+        @media (prefers-reduced-motion: reduce) { .rd-success-content { animation: none !important; } }
         .rd-closed-banner { width: 100%; box-sizing: border-box; padding: 17px 22px; margin: 0; border: 2px solid #dc2626; border-radius: 9px; background: #fff; color: #b42318; text-align: center; font-size: clamp(18px, 2vw, 23px); line-height: 1.3; font-weight: 900; letter-spacing: .015em; animation: rd-alert-pulse 1.15s ease-in-out infinite; }
         /* Plain institutional header: no decorative accent bars or oversized effects. */
         .rd-page > div > :first-child { width: 100%; max-width: none; box-sizing: border-box; }
@@ -295,15 +303,17 @@ export default function ReportDownload() {
 
   if (step === "saved") {
     return shell(
-      <div className="rd-card" style={{ ...S.card, ...(closedMode ? S.cardWide : null) }}>
-        <div className="rd-eyebrow">Doravo Core · Student services</div>
-        <h1 style={S.h1}>Details saved</h1>
-        <p style={S.sub}>Thank you{who.name ? `, ${who.name}` : ""}. Your profile is now up to date.</p>
-        <div style={S.ok}>
-          {closedMessage || "Downloads are not open right now."}{" "}
-          When the school opens downloads, come back to this page, type your username and download your results.
+      <div className="rd-success-overlay" role="status" aria-live="polite">
+        <div className="rd-success-content">
+          <div className="rd-success-tick" aria-hidden="true">
+            <svg viewBox="0 0 52 52" width="62%" height="62%" fill="none">
+              <path d="M11 27.5 21.5 38 42 16" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <h1 className="rd-success-title">Your details are up to date</h1>
+          <p className="rd-success-subtitle">Wait for the results</p>
+          <button type="button" className="rd-success-done" onClick={finish}>Done</button>
         </div>
-        <button type="button" style={S.btn} onClick={finish}>Done</button>
       </div>,
       { showStatus: false }
     );
