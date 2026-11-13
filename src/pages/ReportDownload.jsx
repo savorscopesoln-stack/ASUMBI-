@@ -44,7 +44,7 @@ const S = {
   page: { minHeight: "100vh", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "22px 2.5vw", boxSizing: "border-box", background: "var(--bg, #f8fafc)", color: "var(--text, #0f172a)" },
   stack: { width: "95%", maxWidth: "none", display: "flex", flexDirection: "column", alignItems: "stretch", gap: 14 },
   card: { width: "100%", maxWidth: "none", minHeight: 460, boxSizing: "border-box", background: "var(--card, #fff)", border: "1px solid var(--border, #e2e8f0)", borderRadius: 10, padding: "clamp(30px, 4.5vw, 52px)", boxShadow: "0 2px 10px rgba(15,23,42,.045)" },
-  h1: { margin: "0 0 9px", fontSize: "clamp(24px, 4vw, 30px)", letterSpacing: "-0.8px", lineHeight: 1.15, fontWeight: 850, color: "var(--text, #0f172a)" },
+  h1: { margin: "0 0 9px", fontSize: "clamp(30px, 10vw, 36px)", letterSpacing: "-0.8px", lineHeight: 1.15, fontWeight: 850, color: "var(--text, #000000)" },
   sub: { margin: "0 0 25px", fontSize: 14.5, lineHeight: 1.7, color: "var(--text-muted, #64748b)" },
   field: { marginBottom: 18 },
   label: { display: "block", marginBottom: 8, fontSize: 13, fontWeight: 750, letterSpacing: ".01em", color: "var(--text, #334155)" },
