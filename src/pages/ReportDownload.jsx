@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import API from "../api";
 import StudentDownloadHub from "../components/StudentDownloadHub";
 import PassportPhotoStep from "../components/PassportPhotoStep";
+import TeacherReportsHub from "../components/TeacherReportsHub";
 
 /* =========================================================================
    REPORT DOWNLOAD  —  /report-download   (public, no portal login)
@@ -46,7 +47,7 @@ const S = {
 };
 
 export default function ReportDownload() {
-  const [step, setStep] = useState("verify"); // verify | profile | photo | ready
+  const [step, setStep] = useState("verify"); // verify | profile | photo | ready | teacher
   const [username, setUsername] = useState("");
   const [profileToken, setProfileToken] = useState("");
   const [who, setWho] = useState({ name: "", username: "" });
@@ -58,6 +59,14 @@ export default function ReportDownload() {
 
   // A fresh visit always starts logged out of this page (shared lab computers).
   useEffect(() => { clearSession(); return clearSession; }, []);
+
+  // A teacher's username: a teacher-only session that opens just the three teacher reports (never student data).
+  const openTeacher = (data) => {
+    sessionStorage.setItem("report_link_token", data.token);
+    sessionStorage.setItem("report_link_user", JSON.stringify(data.user || {}));
+    sessionStorage.removeItem("report_link_downloads");
+    setStep("teacher");
+  };
 
   const openReport = (data) => {
     sessionStorage.setItem("report_link_token", data.token);
@@ -87,7 +96,9 @@ export default function ReportDownload() {
       setBusy(true);
       clearSession(); // api.js would otherwise attach an old report session to this request
       const { data } = await API.post("/report-access/verify", { username: username.trim() });
-      if (data.status === "profile_required") {
+      if (data.status === "teacher_ready") {
+        openTeacher(data);
+      } else if (data.status === "profile_required") {
         setProfileToken(data.token);
         setWho(data.student || { name: "", username: username.trim() });
         setClasses(data.classes || []);
@@ -133,6 +144,20 @@ export default function ReportDownload() {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  if (step === "teacher") {
+    let tname = "";
+    try { tname = JSON.parse(sessionStorage.getItem("report_link_user") || "{}").name || ""; } catch { /* ignore */ }
+    return (
+      <>
+        <div style={S.bar}>
+          <span>Signed in as <b>{tname || "teacher"}</b></span>
+          <button type="button" style={S.link} onClick={finish}>Finish &amp; sign out</button>
+        </div>
+        <TeacherReportsHub onExpired={() => { finish(); setError("Your session timed out. Please enter your username again."); }} />
+      </>
+    );
+  }
+
   if (step === "ready") {
     let name = "";
     try { name = JSON.parse(sessionStorage.getItem("report_link_user") || "{}").name || ""; } catch { /* ignore */ }
@@ -166,7 +191,7 @@ export default function ReportDownload() {
       {step === "verify" ? (
         <form onSubmit={verify} style={S.card} autoComplete="off">
           <h1 style={S.h1}>Download your results</h1>
-          <p style={S.sub}>Type your student username to download your report form or transcript. You don't need to log in to the portal.</p>
+          <p style={S.sub}>Type your username to continue. Students can download their report form or transcript; teachers can download the examination reports. You don't need to log in to the portal.</p>
           {error && <div style={S.err} role="alert">{error}</div>}
           <div style={S.field}>
             <label style={S.label} htmlFor="rd-username">Username</label>

@@ -2202,6 +2202,7 @@ function SummaryReportView({ data }) {
           { key: "registered", label: "Registered" },
           { key: "scored", label: "Scored" },
           { key: "mean", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
+          { key: "result", label: "Result", strong: true, fmt: (v) => v || "—" },
           { key: "highest", label: "Highest %", fmt: (v) => (v != null ? `${v}%` : "—") },
           { key: "lowest", label: "Lowest %", fmt: (v) => (v != null ? `${v}%` : "—") },
           { key: "pass_rate", label: "Pass Rate", fmt: (v) => (v != null ? `${v}%` : "—") },
@@ -2220,6 +2221,7 @@ function SummaryReportView({ data }) {
           { key: "registered", label: "Registered" },
           { key: "scored", label: "Scored" },
           { key: "mean", label: "Mean %", fmt: (v) => (v != null ? `${v}%` : "—") },
+          { key: "result", label: "Result", strong: true, fmt: (v) => v || "—" },
           { key: "highest", label: "Highest %", fmt: (v) => (v != null ? `${v}%` : "—") },
           { key: "lowest", label: "Lowest %", fmt: (v) => (v != null ? `${v}%` : "—") },
           { key: "pass_rate", label: "Pass Rate", fmt: (v) => (v != null ? `${v}%` : "—") },
@@ -2259,9 +2261,77 @@ function SummaryReportView({ data }) {
 /* Subject Analysis table — subjects ranked best mean first. Used by the
    Summary and by the standalone Subject Analysis report. */
 function SubjectAnalysisTable({ rows }) {
+  const C = useC();
   const p = (v) => (v != null ? `${v}%` : "—");
+  const list = rows || [];
+
+  // Best mean first; subjects nobody has been scored in yet go last.
+  const ranked = [...list].sort((a, b) => {
+    if (a.mean == null && b.mean == null) return 0;
+    if (a.mean == null) return 1;
+    if (b.mean == null) return -1;
+    return b.mean - a.mean;
+  });
+  const chartData = ranked
+    .filter((r) => r.mean != null)
+    .map((r) => ({ name: r.code ? `${r.code}` : r.subject, subject: r.subject, mean: r.mean, pass_rate: r.pass_rate ?? 0 }));
+
+  const subTitle = { fontSize: 13, fontWeight: 700, color: C.textPri, margin: "4px 0 10px" };
+
   return (
-    <RowsTable
+    <div>
+      {list.length > 0 && (
+        <>
+          {/* 1. Graphical representation — mean and pass rate per subject, best first. */}
+          <div style={subTitle}>Graphical Representation</div>
+          {chartData.length === 0 ? (
+            <EmptyState icon={<BarChart3 size={22} />} text="No subject has been scored yet." />
+          ) : (
+            <div className="dash-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 18px 6px", marginBottom: 22, height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.textMuted }} interval={0} angle={-20} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 11, fill: C.textMuted }} domain={[0, 100]} />
+                  <Tooltip
+                    formatter={(v, name) => [`${v}%`, name]}
+                    labelFormatter={(label, payload) => (payload && payload[0] ? payload[0].payload.subject : label)}
+                    contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="mean" name="Mean %" fill={C.accent} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="pass_rate" name="Pass Rate %" fill={C.textMuted} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* 2. Subjects listed by performance, highest mean first. */}
+          <div style={subTitle}>Subjects Ranked by Performance (Highest First)</div>
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 22, overflow: "hidden" }}>
+            {ranked.map((r, i) => (
+              <div
+                key={r.session_id ?? i}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderTop: i ? `1px solid ${C.border}` : "none" }}
+              >
+                <div style={{ width: 28, fontWeight: 800, color: C.textSec }}>{i + 1}</div>
+                <div style={{ flex: "0 0 32%", minWidth: 120, fontWeight: 700, color: C.textPri }}>
+                  {r.subject}{r.code ? <span style={{ fontWeight: 500, color: C.textMuted }}> · {r.code}</span> : null}
+                </div>
+                <div style={{ flex: 1, height: 8, borderRadius: 999, background: C.border, overflow: "hidden", minWidth: 60 }}>
+                  <div style={{ width: `${Math.max(0, Math.min(100, Number(r.mean) || 0))}%`, height: "100%", background: C.accent }} />
+                </div>
+                <div style={{ width: 56, textAlign: "right", fontWeight: 700, color: C.textPri }}>{p(r.mean)}</div>
+                <div style={{ width: 104, textAlign: "right", fontWeight: 700, color: C.textSec, whiteSpace: "nowrap" }}>{r.result || "—"}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 3. The full analysis table. */}
+          <div style={subTitle}>Detailed Subject Analysis</div>
+        </>
+      )}
+      <RowsTable
       rows={(rows || []).map((r) => ({ ...r, rank: r.rank ?? "—" }))}
       emptyText="No subjects with an attached assessment yet."
       columns={[
@@ -2272,6 +2342,7 @@ function SubjectAnalysisTable({ rows }) {
         { key: "sat", label: "Sat" },
         { key: "absent", label: "Absent" },
         { key: "mean", label: "Mean %", fmt: p },
+        { key: "result", label: "Result", strong: true, fmt: (v) => v || "—" },
         { key: "median", label: "Median %", fmt: p },
         { key: "highest", label: "Highest %", fmt: p },
         { key: "highest_student", label: "Top Student", fmt: (v) => <span style={{ whiteSpace: "nowrap" }}>{v || "—"}</span> },
@@ -2282,6 +2353,7 @@ function SubjectAnalysisTable({ rows }) {
         { key: "best_class", label: "Best Class", fmt: (v) => v || "—" },
       ]}
     />
+    </div>
   );
 }
 
@@ -2312,7 +2384,7 @@ function RankedCandidatesTable({ rows, subjects, positionKey, emptyText }) {
           <thead><tr>
             <Th>Position</Th><Th>Admission No</Th><Th>Name</Th><Th>Class</Th>
             {subjectList.map((s) => <Th key={s.session_id} title={s.subject}>{s.code}</Th>)}
-            <Th>Total</Th><Th>Mean %</Th>
+            <Th>Total</Th><Th>Mean %</Th><Th>Result</Th>
           </tr></thead>
           <tbody>
             {list.map((r) => (
@@ -2326,6 +2398,7 @@ function RankedCandidatesTable({ rows, subjects, positionKey, emptyText }) {
                 ))}
                 <Td style={{ whiteSpace: "nowrap" }}>{(r.total_obtained != null && r.total_possible) ? `${r.total_obtained}/${r.total_possible}` : "—"}</Td>
                 <Td>{r.average_percentage != null ? `${r.average_percentage}%` : "—"}</Td>
+                <Td style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{r.result || "—"}</Td>
               </tr>
             ))}
           </tbody>
