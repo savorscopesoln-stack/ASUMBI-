@@ -612,7 +612,7 @@ export default function StudentReport() {
   const generalRemarks = useMemo(() => buildGeneralRemarks({
     passMark,
     weak: subjectMap.filter((s) => s.score !== null && s.score < passMark).map((s) => ({ name: s.subject, score: s.score })),
-    absent: subjectMap.filter((s) => s.score === null && s.over && !s.optional && !isOptionalSubject(s.subject)
+    absent: subjectMap.filter((s) => s.score === null && !s.optional && !isOptionalSubject(s.subject)
       && !(s.splitGroup && subjectMap.some((o) => o.splitGroup === s.splitGroup && o.score !== null))).map((s) => s.subject),
     all: subjectMap.filter((s) => s.score !== null).map((s) => ({ name: s.subject, score: s.score })),
   }), [subjectMap, passMark, visibleMarks]);
@@ -1107,8 +1107,8 @@ export default function StudentReport() {
                     const splitSpare = !!s.splitGroup && subjectMap.some((o) => o.splitGroup === s.splitGroup && o.score !== null && o.score !== undefined);
                     const notRequired = s.optional || splitSpare || isOptionalSubject(s.subject);
                     // Paper finished and no mark: the student was absent -> AB. Not finished yet -> CRNM as before.
-                    // AB only once the exam's marks are released (s.over): a student with no mark then did not sit it. Before release: CRNM.
-                    const isAbsent = !valid && !notRequired && s.over;
+                    // No mark in the marks table (compulsory subject) = AB / ABSENT / CRNM + remark, whether or not marks have been released.
+                    const isAbsent = !valid && !notRequired;
                     const crnmOrDash = notRequired || isAbsent ? <span style={{ color: "#64748b" }}>—</span> : <span style={styles.crnmTag}>CRNM</span>;
                     return (
                       <tr key={s.code || i} style={{ background: i % 2 === 0 ? "#ffffff" : reportTheme.zebra }}>
