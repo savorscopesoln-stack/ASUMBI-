@@ -325,8 +325,8 @@ export default function ReportDownload() {
               <path d="M11 27.5 21.5 38 42 16" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
-          <h1 className="rd-success-title">Your details are up to date</h1>
-          <p className="rd-success-subtitle">Wait for the results</p>
+          <h1 className="rd-success-title">CONGRATS Your details are up to date</h1>
+          <p className="rd-success-subtitle">Close this page and Wait for the results to be released</p>
           <button type="button" className="rd-success-done" onClick={finish}>Done</button>
         </div>
       </div>,
