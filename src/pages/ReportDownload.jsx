@@ -327,7 +327,7 @@ export default function ReportDownload() {
           </div>
           <h1 className="rd-success-title">CONGRATS Your details are up to date</h1>
           <p className="rd-success-subtitle">Close this page and Wait for the results to be released</p>
-          <button type="button" className="rd-success-done" onClick={finish}>Done</button>
+          <button type="button" className="rd-success-done" onClick={finish}>BACK</button>
         </div>
       </div>,
       { showStatus: false }
